@@ -1,0 +1,345 @@
+<?= $this->extend('layouts/main') ?>
+
+<?= $this->section('content') ?>
+
+<div class="page-title-container">
+    <div class="page-title d-flex justify-content-between w-100">
+        <div>
+            <h1>Nota #<?= (int)$nota['folio'] ?> — Paso 3: Confirmar</h1>
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb">
+                    <li class="breadcrumb-item"><a href="<?= base_url('mostrador') ?>">Mostrador</a></li>
+                    <li class="breadcrumb-item active">Confirmar Nota</li>
+                </ol>
+            </nav>
+        </div>
+        <div class="pt-2">
+            <a href="<?= base_url('mostrador/venta/' . (int)$nota['folio'] . '/productos') ?>"
+               class="btn btn-outline-secondary">
+                <i class="iconsminds-arrow-left"></i> Volver
+            </a>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <!-- Resumen de la nota -->
+    <div class="col-md-5">
+        <div class="card mb-3">
+            <div class="card-header font-weight-bold">Datos de la Nota</div>
+            <div class="card-body">
+                <table class="table table-sm mb-0">
+                    <tr><th>Folio</th><td><?= (int)$nota['folio'] ?></td></tr>
+                    <tr><th>Cliente</th><td><?= esc($nota['cliente'] ?? '') ?></td></tr>
+                    <tr><th>Vendedor</th><td><?= esc($usuario['nombre']) ?></td></tr>
+                    <tr><th>Fecha</th><td><?= date('Y-m-d', strtotime($nota['fecha_inicial'])) ?></td></tr>
+                    <tr><th>Total Piezas</th>
+                        <td>
+                            <?= (int)$totalPiezas ?>
+                            <?php if ($esMayoreo): ?>
+                            <span class="badge badge-success ml-1">Mayoreo</span>
+                            <?php else: ?>
+                            <span class="badge badge-secondary ml-1">Menudeo</span>
+                            <?php endif; ?>
+                        </td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+
+        <!-- Detalle de productos -->
+        <div class="card">
+            <div class="card-header font-weight-bold">Productos</div>
+            <div class="table-responsive">
+                <table class="table table-sm mb-0">
+                    <thead>
+                        <tr>
+                            <th>SKU</th>
+                            <th>Descripción</th>
+                            <th class="text-right">P.U.</th>
+                            <th class="text-right">Cant.</th>
+                            <th class="text-right">Importe</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($detalle as $d): ?>
+                        <tr>
+                            <td><?= esc($d['sku']) ?></td>
+                            <td><?= esc($d['estilo']) ?></td>
+                            <td class="text-right">$<?= number_format($d['precio'], 2) ?></td>
+                            <td class="text-right"><?= (int)$d['cantidad'] ?></td>
+                            <td class="text-right">$<?= number_format($d['importe'], 2) ?></td>
+                        </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Formulario de pago -->
+    <div class="col-md-7">
+        <div class="card">
+            <div class="card-header font-weight-bold">Cierre de Nota</div>
+            <div class="card-body">
+
+                <form id="formConfirmar">
+                    <?= csrf_field() ?>
+                    <input type="hidden" name="folio" value="<?= (int)$nota['folio'] ?>">
+                    <input type="hidden" name="Id_Notas_1" id="hidIdNotas1" value="<?= (int)$nota['Id_Notas_1'] ?>">
+                    <input type="hidden" name="totalPiezas" value="<?= (int)$totalPiezas ?>">
+
+                    <!-- Descuento (solo acceso 1 y 4) -->
+                    <?php if (in_array((int)$usuario['acceso'], [1, 4])): ?>
+                    <div class="form-group">
+                        <label>Descuento (%)</label>
+                        <div class="input-group" style="max-width:200px">
+                            <input type="number" id="inputDescuento" name="descuento" class="form-control"
+                                   value="0" min="0" max="100" step="1">
+                            <div class="input-group-append">
+                                <span class="input-group-text">%</span>
+                            </div>
+                        </div>
+                    </div>
+                    <?php else: ?>
+                    <input type="hidden" name="descuento" value="0">
+                    <?php endif; ?>
+
+                    <!-- Totales calculados -->
+                    <table class="table table-sm mb-3">
+                        <tr>
+                            <th>Subtotal (sin IVA):</th>
+                            <td class="text-right" id="tdSubtotal">
+                                $<?= number_format($sumaImportes, 2) ?>
+                            </td>
+                        </tr>
+                        <tr>
+                            <th>IVA (16%):</th>
+                            <td class="text-right" id="tdIva">—</td>
+                        </tr>
+                        <tr class="font-weight-bold">
+                            <th>Total:</th>
+                            <td class="text-right text-success" id="tdTotal">—</td>
+                        </tr>
+                    </table>
+                    <input type="hidden" id="hidSubtotal" name="subtotal" value="<?= $sumaImportes ?>">
+                    <input type="hidden" id="hidIva" name="iva" value="">
+                    <input type="hidden" id="hidTotal" name="total" value="">
+
+                    <!-- Estatus -->
+                    <div class="form-group">
+                        <label>Estatus de la nota <span class="text-danger">*</span></label>
+                        <select name="estatus" id="selectEstatus" class="form-control">
+                            <option value="1">Abierta</option>
+                            <option value="4">Anticipo</option>
+                            <option value="5" selected>Pagada</option>
+                        </select>
+                    </div>
+
+                    <!-- Factura -->
+                    <div class="form-group">
+                        <div class="custom-control custom-checkbox">
+                            <input type="checkbox" class="custom-control-input" id="chkFactura" name="factura" value="1">
+                            <label class="custom-control-label" for="chkFactura">Requiere Factura</label>
+                        </div>
+                    </div>
+
+                    <!-- Pagos -->
+                    <div class="card card-body bg-light mb-3" id="panelPagos">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <strong>Formas de Pago</strong>
+                            <button type="button" class="btn btn-sm btn-primary" data-toggle="modal" data-target="#modalPago">
+                                <i class="iconsminds-add"></i> Agregar Pago
+                            </button>
+                        </div>
+                        <ul id="listaPagos" class="list-group">
+                            <li class="list-group-item text-muted text-center" id="liSinPagos">Sin pagos registrados aún.</li>
+                        </ul>
+                        <div class="mt-2 text-right">
+                            <strong>Monto pagado: <span id="spMontoPagado" class="text-success">$0.00</span></strong><br>
+                            <strong>Restante: <span id="spRestante" class="text-danger">$0.00</span></strong>
+                        </div>
+                    </div>
+
+                    <div class="text-right">
+                        <button type="button" id="btnGuardar" class="btn btn-success btn-lg">
+                            <i class="iconsminds-yes"></i> Cerrar Nota
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal para agregar pago -->
+<div class="modal fade" id="modalPago" tabindex="-1" role="dialog">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Agregar Forma de Pago</h5>
+                <button type="button" class="close" data-dismiss="modal"><span>&times;</span></button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>Tipo de Pago</label>
+                    <select id="modalTipoPago" class="form-control">
+                        <option value="">— Selecciona —</option>
+                        <?php foreach ($tipoPagos as $tp): ?>
+                        <option value="<?= (int)$tp['id'] ?>"
+                                data-desc="<?= esc($tp['descripcion']) ?>"
+                                data-cargo="<?= (float)($tp['cargo_pct'] ?? 0) ?>">
+                            <?= esc($tp['descripcion']) ?>
+                        </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Monto</label>
+                    <div class="input-group">
+                        <div class="input-group-prepend"><span class="input-group-text">$</span></div>
+                        <input type="number" id="modalMonto" class="form-control" min="0" step="0.01" value="0">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <div class="custom-control custom-checkbox">
+                        <input type="checkbox" class="custom-control-input" id="modalAnticipo">
+                        <label class="custom-control-label" for="modalAnticipo">Es Anticipo</label>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Cerrar</button>
+                <button type="button" id="btnAgregarPago" class="btn btn-primary">Agregar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<input type="hidden" id="hidCsrfName" value="<?= csrf_token() ?>">
+<input type="hidden" id="hidCsrfHash" value="<?= csrf_hash() ?>">
+<input type="hidden" id="hidSumaImportes" value="<?= $sumaImportes ?>">
+<input type="hidden" id="hidFolio" value="<?= (int)$nota['folio'] ?>">
+
+<?= $this->endSection() ?>
+
+<?= $this->section('page_scripts') ?>
+<script>
+var pagos = [];
+var sumaImportes = parseFloat($('#hidSumaImportes').val()) || 0;
+var descuento = 0;
+
+function recalcular() {
+    var desc = parseFloat($('#inputDescuento').val()) || 0;
+    descuento = desc;
+    var subtotal = sumaImportes * (1 - desc / 100);
+    var iva = subtotal * 0.16;
+    var total = subtotal + iva;
+
+    // Cargos de TC/TD
+    var cargos = 0;
+    pagos.forEach(function(p) { cargos += parseFloat(p.cargo || 0); });
+    total += cargos;
+
+    $('#tdSubtotal').text('$' + subtotal.toFixed(2));
+    $('#tdIva').text('$' + iva.toFixed(2));
+    $('#tdTotal').text('$' + total.toFixed(2));
+    $('#hidSubtotal').val(subtotal.toFixed(2));
+    $('#hidIva').val(iva.toFixed(2));
+    $('#hidTotal').val(total.toFixed(2));
+
+    // Pagos registrados
+    var montoPagado = pagos.reduce(function(acc, p) { return acc + parseFloat(p.monto); }, 0);
+    var restante = total - montoPagado;
+    $('#spMontoPagado').text('$' + montoPagado.toFixed(2));
+    $('#spRestante').text('$' + restante.toFixed(2));
+    $('#spRestante').toggleClass('text-danger text-success', restante > 0);
+}
+
+$('#inputDescuento').on('input', recalcular);
+
+$('#btnAgregarPago').on('click', function() {
+    var tipo = $('#modalTipoPago').val();
+    var desc = $('#modalTipoPago option:selected').data('desc');
+    var monto = parseFloat($('#modalMonto').val()) || 0;
+    var anticipo = $('#modalAnticipo').is(':checked') ? 1 : 0;
+    var cargoPct = parseFloat($('#modalTipoPago option:selected').data('cargo')) || 0;
+    var cargo = monto * cargoPct / 100;
+
+    if (!tipo || monto <= 0) {
+        alert('Selecciona tipo de pago y monto válido.');
+        return;
+    }
+
+    pagos.push({ tipo: tipo, desc: desc, monto: monto, cargo: cargo, anticipo: anticipo });
+    renderPagos();
+    recalcular();
+    $('#modalPago').modal('hide');
+    $('#modalTipoPago').val('');
+    $('#modalMonto').val(0);
+    $('#modalAnticipo').prop('checked', false);
+});
+
+function renderPagos() {
+    if (pagos.length === 0) {
+        $('#listaPagos').html('<li class="list-group-item text-muted text-center" id="liSinPagos">Sin pagos registrados aún.</li>');
+        return;
+    }
+    var html = '';
+    pagos.forEach(function(p, i) {
+        html += '<li class="list-group-item d-flex justify-content-between align-items-center">'
+            + '<span>' + p.desc + (p.anticipo ? ' <span class="badge badge-warning">Anticipo</span>' : '') + '</span>'
+            + '<span>$' + parseFloat(p.monto).toFixed(2)
+            + ' <button type="button" class="btn btn-xs btn-outline-danger ml-2 btn-del-pago" data-idx="' + i + '">&times;</button></span>'
+            + '</li>';
+    });
+    $('#listaPagos').html(html);
+}
+
+$(document).on('click', '.btn-del-pago', function() {
+    var idx = parseInt($(this).data('idx'), 10);
+    pagos.splice(idx, 1);
+    renderPagos();
+    recalcular();
+});
+
+$('#btnGuardar').on('click', function() {
+    if (pagos.length === 0 && parseFloat($('#hidTotal').val()) > 0) {
+        alert('Agrega al menos una forma de pago.');
+        return;
+    }
+
+    var csrf = {};
+    csrf[$('#hidCsrfName').val()] = $('#hidCsrfHash').val();
+
+    var payload = $.extend({
+        folio: $('#hidFolio').val(),
+        Id_Notas_1: $('#hidIdNotas1').val(),
+        descuento: $('#inputDescuento').val() || 0,
+        subtotal: $('#hidSubtotal').val(),
+        iva: $('#hidIva').val(),
+        total: $('#hidTotal').val(),
+        estatus: $('#selectEstatus').val(),
+        factura: $('#chkFactura').is(':checked') ? 1 : 0,
+        pagos: JSON.stringify(pagos)
+    }, csrf);
+
+    $('#btnGuardar').prop('disabled', true).text('Guardando...');
+
+    $.post('<?= base_url('mostrador/venta/' . (int)$nota['folio'] . '/confirmar') ?>', payload, function(resp) {
+        if (resp.success) {
+            window.location.href = '<?= base_url('mostrador/consulta') ?>';
+        } else {
+            alert(resp.message || 'Error al cerrar la nota.');
+            $('#btnGuardar').prop('disabled', false).text('Cerrar Nota');
+        }
+    }, 'json').fail(function() {
+        alert('Error de comunicación.');
+        $('#btnGuardar').prop('disabled', false).text('Cerrar Nota');
+    });
+});
+
+// Inicializar cálculo al cargar
+recalcular();
+</script>
+<?= $this->endSection() ?>
