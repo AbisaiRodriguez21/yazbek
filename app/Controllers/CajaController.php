@@ -292,6 +292,167 @@ class CajaController extends BaseController
     }
 
     // ──────────────────────────────────────────────────────────────
+    // ──────────────────────────────────────────────────────────────
+    // GET /caja/cobrar/ajax/:folio  —  AJAX: datos de un folio para Verificar Caja
+    // ──────────────────────────────────────────────────────────────
+    public function cobrarFolioAjax(int $folio): \CodeIgniter\HTTP\ResponseInterface
+    {
+        require_once APPPATH . 'Helpers/CantidadLetraHelper.php';
+        $db = \Config\Database::connect();
+
+        $nota = $db->query(
+            "SELECT n.Id_Notas_1, n.folio, n.fecha_inicial, n.total,
+                    n.status, n.verificado, n.descuento, n.subTotal, n.iva,
+                    n.cargoTarjeta, n.subTotal2, n.tipoImpresion, n.cargoPorImpresion,
+                    n.factura, n.totalPiezas, n.idCliente, n.idVendedor,
+                    c.nombre AS cliente_nombre, c.direccion, c.telefono, c.mail,
+                    u.usuario AS vendedor_nombre,
+                    s.nombre AS status_nombre
+             FROM notas_1 n
+             LEFT JOIN clientes  c ON c.id = n.idCliente
+             LEFT JOIN usuarios  u ON u.Id = n.idVendedor
+             LEFT JOIN status    s ON s.id = n.status
+             WHERE n.folio = ?
+             LIMIT 1",
+            [$folio]
+        )->getRowArray();
+
+        if (! $nota) {
+            return $this->response->setJSON(['error' => 'Folio no encontrado']);
+        }
+
+        // Formatear fecha igual que el original: Y-m-d h:i A (12h con AM/PM)
+        $nota['fecha_inicial'] = $nota['fecha_inicial']
+            ? date('Y-m-d h:i A', strtotime($nota['fecha_inicial']))
+            : '';
+
+        // Cantidad en letra (igual que AifLibNumber::toCurrency en el original)
+        $total = (float) ($nota['total'] ?? 0);
+        $letra = \AifLibNumber::toCurrency((string) $total);
+        $nota['cantidadLetra'] = $letra ? mb_strtoupper($letra) : '';
+
+        // Castear a int para evitar bug de string "0"/"1" en JS
+        $nota['factura'] = (int) $nota['factura'];
+        $nota['status']  = (int) $nota['status'];
+
+        $detalle = $db->query(
+            "SELECT nd.cantidad, nd.pUnitario, nd.importe,
+                    CONCAT(COALESCE(p.estilo,''), ' - ', COALESCE(p.Descripcion_Larga,''), ' - ', COALESCE(p.Talla,''), ' - ', COALESCE(p.Color,'')) AS descripcion
+             FROM Notas_2 nd
+             LEFT JOIN productosYazbek p ON nd.estilo = p.sku
+             WHERE nd.folio = ?",
+            [$folio]
+        )->getResultArray();
+
+        $pagos = $db->query(
+            "SELECT mn.monto, mn.cargos, mn.anticipo, mn.idTipoPago, tp.descripcion AS tipo
+             FROM montosnotas mn
+             INNER JOIN tipopago tp ON mn.idTipoPago = tp.id
+             WHERE mn.idNotas = ?",
+            [$nota['Id_Notas_1']]
+        )->getResultArray();
+
+        // Castear anticipo a int para evitar bug de string "0"/"1" en JS
+        foreach ($pagos as &$pago) {
+            $pago['anticipo']    = (int) $pago['anticipo'];
+            $pago['idTipoPago']  = (int) $pago['idTipoPago'];
+        }
+        unset($pago);
+
+        return $this->response->setJSON([
+            'nota'    => $nota,
+            'detalle' => $detalle,
+            'pagos'   => $pagos,
+        ]);
+    }
+
+    // ──────────────────────────────────────────────────────────────
+    // GET /caja/clientes  —  Lista de clientes (server-side DataTables)
+    // ──────────────────────────────────────────────────────────────
+    public function clientes(): string
+    {
+        return view('mostrador/clientes', [
+            'usuario'  => $this->getUsuarioSesion(),
+            'rutaBase' => 'caja',
+        ]);
+    }
+
+    // GET /caja/clientes/datatable  —  AJAX server-side
+    public function clientesDatatable(): \CodeIgniter\HTTP\ResponseInterface
+    {
+        $clienteModel = new \App\Models\ClienteModel();
+        $draw     = (int) $this->request->getGet('draw');
+        $start    = (int) $this->request->getGet('start');
+        $length   = (int) $this->request->getGet('length');
+        $search   = $this->request->getGet('search')['value'] ?? '';
+        $orderCol = $this->request->getGet('order')[0]['column'] ?? 0;
+        $orderDir = $this->request->getGet('order')[0]['dir'] ?? 'asc';
+
+        $result = $clienteModel->getDatatable($start, $length, $search, $orderCol, $orderDir);
+
+        return $this->response->setJSON([
+            'draw'            => $draw,
+            'recordsTotal'    => $result['total'],
+            'recordsFiltered' => $result['filtered'],
+            'data'            => $result['data'],
+        ]);
+    }
+
+    // POST /caja/clientes/crear
+    public function crearCliente(): \CodeIgniter\HTTP\RedirectResponse
+    {
+        $clienteModel = new \App\Models\ClienteModel();
+        $clienteModel->insert([
+            'nombre'        => strtoupper(trim($this->request->getPost('nombre') ?? '')),
+            'telefono'      => trim($this->request->getPost('telefono') ?? ''),
+            'celular'       => trim($this->request->getPost('celular') ?? ''),
+            'mail'          => trim($this->request->getPost('mail') ?? ''),
+            'RFC'           => strtoupper(trim($this->request->getPost('RFC') ?? '')),
+            'direccion'     => strtoupper(trim($this->request->getPost('direccion') ?? '')),
+            'CP'            => trim($this->request->getPost('CP') ?? ''),
+            'estado'        => strtoupper(trim($this->request->getPost('estado') ?? '')),
+            'ciudad'        => strtoupper(trim($this->request->getPost('ciudad') ?? '')),
+            'NombreEmpresa' => strtoupper(trim($this->request->getPost('NombreEmpresa') ?? '')),
+            'razonSocial'   => strtoupper(trim($this->request->getPost('razonSocial') ?? '')),
+            'comoNosConoce' => $this->request->getPost('comoNosConoce'),
+            'fechaIngreso'  => date('Y-m-d'),
+        ]);
+        return redirect()->to('/caja/clientes')->with('success', 'Cliente registrado correctamente.');
+    }
+
+    // POST /caja/clientes/actualizar/:id
+    public function actualizarCliente(int $id): \CodeIgniter\HTTP\RedirectResponse
+    {
+        $clienteModel = new \App\Models\ClienteModel();
+        $clienteModel->update($id, [
+            'nombre'        => strtoupper(trim($this->request->getPost('nombre') ?? '')),
+            'telefono'      => trim($this->request->getPost('telefono') ?? ''),
+            'celular'       => trim($this->request->getPost('celular') ?? ''),
+            'mail'          => trim($this->request->getPost('mail') ?? ''),
+            'RFC'           => strtoupper(trim($this->request->getPost('RFC') ?? '')),
+            'direccion'     => strtoupper(trim($this->request->getPost('direccion') ?? '')),
+            'CP'            => trim($this->request->getPost('CP') ?? ''),
+            'estado'        => strtoupper(trim($this->request->getPost('estado') ?? '')),
+            'ciudad'        => strtoupper(trim($this->request->getPost('ciudad') ?? '')),
+            'NombreEmpresa' => strtoupper(trim($this->request->getPost('NombreEmpresa') ?? '')),
+            'razonSocial'   => strtoupper(trim($this->request->getPost('razonSocial') ?? '')),
+            'comoNosConoce' => $this->request->getPost('comoNosConoce'),
+        ]);
+        return redirect()->to('/caja/clientes')->with('success', 'Cliente actualizado.');
+    }
+
+    // POST /caja/clientes/eliminar
+    public function eliminarCliente(): \CodeIgniter\HTTP\RedirectResponse
+    {
+        $id = (int) $this->request->getPost('clienteDelete');
+        if ($id) {
+            $clienteModel = new \App\Models\ClienteModel();
+            $clienteModel->delete($id);
+        }
+        return redirect()->to('/caja/clientes')->with('success', 'Cliente eliminado.');
+    }
+
+    // ──────────────────────────────────────────────────────────────
     // Helper: datos del usuario activo desde la sesión
     // ──────────────────────────────────────────────────────────────
     private function getUsuarioSesion(): array

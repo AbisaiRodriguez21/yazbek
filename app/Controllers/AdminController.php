@@ -294,11 +294,30 @@ class AdminController extends BaseController
     // ──────────────────────────────────────────────────────────────
     public function clientes(): string
     {
-        $clienteModel = new \App\Models\ClienteModel();
         return view('mostrador/clientes', [
             'usuario'  => $this->getUsuarioSesion(),
-            'clientes' => $clienteModel->getTodos(),
             'rutaBase' => 'admin',
+        ]);
+    }
+
+    // GET /admin/clientes/datatable  —  AJAX server-side
+    public function clientesDatatable(): \CodeIgniter\HTTP\ResponseInterface
+    {
+        $clienteModel = new \App\Models\ClienteModel();
+        $draw   = (int) $this->request->getGet('draw');
+        $start  = (int) $this->request->getGet('start');
+        $length = (int) $this->request->getGet('length');
+        $search = $this->request->getGet('search')['value'] ?? '';
+        $orderCol = $this->request->getGet('order')[0]['column'] ?? 0;
+        $orderDir = $this->request->getGet('order')[0]['dir'] ?? 'asc';
+
+        $result = $clienteModel->getDatatable($start, $length, $search, $orderCol, $orderDir);
+
+        return $this->response->setJSON([
+            'draw'            => $draw,
+            'recordsTotal'    => $result['total'],
+            'recordsFiltered' => $result['filtered'],
+            'data'            => $result['data'],
         ]);
     }
 
@@ -308,17 +327,17 @@ class AdminController extends BaseController
         $clienteModel = new \App\Models\ClienteModel();
 
         $clienteModel->insert([
-            'nombre'        => strtoupper($this->request->getPost('nombre') ?? ''),
-            'telefono'      => $this->request->getPost('telefono'),
-            'celular'       => $this->request->getPost('celular'),
-            'mail'          => $this->request->getPost('mail'),
-            'RFC'           => strtoupper($this->request->getPost('RFC') ?? ''),
-            'direccion'     => strtoupper($this->request->getPost('direccion') ?? ''),
-            'CP'            => $this->request->getPost('CP'),
-            'estado'        => strtoupper($this->request->getPost('estado') ?? ''),
-            'ciudad'        => strtoupper($this->request->getPost('ciudad') ?? ''),
-            'NombreEmpresa' => strtoupper($this->request->getPost('NombreEmpresa') ?? ''),
-            'razonSocial'   => strtoupper($this->request->getPost('razonSocial') ?? ''),
+            'nombre'        => strtoupper(trim($this->request->getPost('nombre') ?? '')),
+            'telefono'      => trim($this->request->getPost('telefono') ?? ''),
+            'celular'       => trim($this->request->getPost('celular') ?? ''),
+            'mail'          => trim($this->request->getPost('mail') ?? ''),
+            'RFC'           => strtoupper(trim($this->request->getPost('RFC') ?? '')),
+            'direccion'     => strtoupper(trim($this->request->getPost('direccion') ?? '')),
+            'CP'            => trim($this->request->getPost('CP') ?? ''),
+            'estado'        => strtoupper(trim($this->request->getPost('estado') ?? '')),
+            'ciudad'        => strtoupper(trim($this->request->getPost('ciudad') ?? '')),
+            'NombreEmpresa' => strtoupper(trim($this->request->getPost('NombreEmpresa') ?? '')),
+            'razonSocial'   => strtoupper(trim($this->request->getPost('razonSocial') ?? '')),
             'comoNosConoce' => $this->request->getPost('comoNosConoce'),
             'fechaIngreso'  => date('Y-m-d'),
         ]);
@@ -332,17 +351,17 @@ class AdminController extends BaseController
         $clienteModel = new \App\Models\ClienteModel();
 
         $clienteModel->update($id, [
-            'nombre'        => strtoupper($this->request->getPost('nombre') ?? ''),
-            'telefono'      => $this->request->getPost('telefono'),
-            'celular'       => $this->request->getPost('celular'),
-            'mail'          => $this->request->getPost('mail'),
-            'RFC'           => strtoupper($this->request->getPost('RFC') ?? ''),
-            'direccion'     => strtoupper($this->request->getPost('direccion') ?? ''),
-            'CP'            => $this->request->getPost('CP'),
-            'estado'        => strtoupper($this->request->getPost('estado') ?? ''),
-            'ciudad'        => strtoupper($this->request->getPost('ciudad') ?? ''),
-            'NombreEmpresa' => strtoupper($this->request->getPost('NombreEmpresa') ?? ''),
-            'razonSocial'   => strtoupper($this->request->getPost('razonSocial') ?? ''),
+            'nombre'        => strtoupper(trim($this->request->getPost('nombre') ?? '')),
+            'telefono'      => trim($this->request->getPost('telefono') ?? ''),
+            'celular'       => trim($this->request->getPost('celular') ?? ''),
+            'mail'          => trim($this->request->getPost('mail') ?? ''),
+            'RFC'           => strtoupper(trim($this->request->getPost('RFC') ?? '')),
+            'direccion'     => strtoupper(trim($this->request->getPost('direccion') ?? '')),
+            'CP'            => trim($this->request->getPost('CP') ?? ''),
+            'estado'        => strtoupper(trim($this->request->getPost('estado') ?? '')),
+            'ciudad'        => strtoupper(trim($this->request->getPost('ciudad') ?? '')),
+            'NombreEmpresa' => strtoupper(trim($this->request->getPost('NombreEmpresa') ?? '')),
+            'razonSocial'   => strtoupper(trim($this->request->getPost('razonSocial') ?? '')),
             'comoNosConoce' => $this->request->getPost('comoNosConoce'),
         ]);
 

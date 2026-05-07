@@ -54,27 +54,6 @@ $rutaBase = $rutaBase ?? 'mostrador';
 
 <div class="row">
     <div class="col-12 mb-4">
-        <?php foreach ($clientes as $c): ?>
-        <?php
-            $infoVal = implode('*', [
-                htmlspecialchars($c['NombreEmpresa'] ?? '', ENT_QUOTES),
-                htmlspecialchars($c['nombre']        ?? '', ENT_QUOTES),
-                htmlspecialchars($c['celular']       ?? '', ENT_QUOTES),
-                htmlspecialchars($c['telefono']      ?? '', ENT_QUOTES),
-                htmlspecialchars($c['mail']          ?? '', ENT_QUOTES),
-                htmlspecialchars($c['razonSocial']   ?? '', ENT_QUOTES),
-                htmlspecialchars($c['RFC']           ?? '', ENT_QUOTES),
-                htmlspecialchars($c['direccion']     ?? '', ENT_QUOTES),
-                htmlspecialchars($c['CP']            ?? '', ENT_QUOTES),
-                htmlspecialchars($c['estado']        ?? '', ENT_QUOTES),
-                htmlspecialchars($c['ciudad']        ?? '', ENT_QUOTES),
-                htmlspecialchars($c['localidad_id']  ?? '', ENT_QUOTES),
-            ]);
-        ?>
-        <input type="hidden" id="informacionCliente<?= (int)$c['id'] ?>"
-               value="<?= $infoVal ?>">
-        <?php endforeach; ?>
-
         <table id="datatableProductos" class="table data-table responsive nowrap" style="width:100%">
             <thead>
                 <tr>
@@ -86,29 +65,7 @@ $rutaBase = $rutaBase ?? 'mostrador';
                     <th>Acciones</th>
                 </tr>
             </thead>
-            <tbody>
-                <?php foreach ($clientes as $c): ?>
-                <tr>
-                    <td><?= esc($c['nombre']   ?? '') ?></td>
-                    <td><?= esc($c['RFC']       ?? '') ?></td>
-                    <td><?= esc($c['celular']   ?? '') ?></td>
-                    <td><?= esc($c['telefono']  ?? '') ?></td>
-                    <td><?= esc($c['mail']      ?? '') ?></td>
-                    <td>
-                        <button class="btn btn-sm btn-primary mr-1"
-                                data-toggle="modal" data-target="#modal-form"
-                                onclick="newUpdateClient(<?= (int)$c['id'] ?>, 1)">
-                            <i class="simple-icon-pencil"></i>
-                        </button>
-                        <button class="btn btn-sm btn-danger"
-                                data-toggle="modal" data-target="#modalPregunta"
-                                onclick="deleteClient(<?= (int)$c['id'] ?>)">
-                            <i class="simple-icon-trash"></i>
-                        </button>
-                    </td>
-                </tr>
-                <?php endforeach; ?>
-            </tbody>
+            <tbody></tbody>
         </table>
     </div>
 </div>
@@ -254,31 +211,51 @@ $rutaBase = $rutaBase ?? 'mostrador';
 <script>
 var rutaBase = '<?= base_url($rutaBase) ?>';
 
+var rutaDatatable = '<?= base_url($rutaBase . '/clientes/datatable') ?>';
+
 $(document).ready(function() {
-    $('#datatableProductos').DataTable({
-        responsive: true,
-        pageLength: 25,
+    var table = $('#datatableProductos').DataTable({
+        processing: true,
+        serverSide: true,
+        ajax: { url: rutaDatatable, type: 'GET' },
+        pageLength: 10,
         order: [[0, 'asc']],
-        language: { url: '/assets/js/vendor/datatables.spanish.json' }
+        language: { url: '<?= base_url('assets/js/vendor/datatables.spanish.json') ?>' },
+        columns: [
+            { data: 'nombre' },
+            { data: 'RFC' },
+            { data: 'celular' },
+            { data: 'telefono' },
+            { data: 'mail' },
+            {
+                data: 'id',
+                orderable: false,
+                searchable: false,
+                render: function(id, type, row) {
+                    return '<button class="btn btn-sm btn-primary mr-1" data-toggle="modal" data-target="#modal-form" onclick="newUpdateClient(' + id + ', 1, ' + JSON.stringify(row).replace(/"/g, '&quot;') + ')">'
+                         + '<i class="simple-icon-pencil"></i></button>'
+                         + '<button class="btn btn-sm btn-danger" data-toggle="modal" data-target="#modalPregunta" onclick="deleteClient(' + id + ')">'
+                         + '<i class="simple-icon-trash"></i></button>';
+                }
+            }
+        ]
     });
 });
 
-function newUpdateClient(idCliente, operacion) {
-    if (operacion === 1) {
-        var idDatos = document.getElementById('informacionCliente' + idCliente).value;
-        var datos   = idDatos.split('*');
+function newUpdateClient(idCliente, operacion, row) {
+    if (operacion === 1 && row) {
         $('.header-clientes').text('Actualizar Cliente');
-        $('#NombreEmpresa').val(datos[0]);
-        $('#nombre').val(datos[1]);
-        $('#celular').val(datos[2]);
-        $('#telefono').val(datos[3]);
-        $('#mail').val(datos[4]);
-        $('#razonSocial').val(datos[5]);
-        $('#rfc').val(datos[6]);
-        $('#direccion').val(datos[7]);
-        $('#cp').val(datos[8]);
-        $('#estado').val(datos[9]);
-        $('#ciudad').val(datos[10]);
+        $('#NombreEmpresa').val((row.NombreEmpresa || '').trim());
+        $('#nombre').val((row.nombre || '').trim());
+        $('#celular').val((row.celular || '').trim());
+        $('#telefono').val((row.telefono || '').trim());
+        $('#mail').val((row.mail || '').trim());
+        $('#razonSocial').val((row.razonSocial || '').trim());
+        $('#rfc').val((row.RFC || '').trim());
+        $('#direccion').val((row.direccion || '').trim());
+        $('#cp').val((row.CP || '').trim());
+        $('#estado').val((row.estado || '').trim());
+        $('#ciudad').val((row.ciudad || '').trim());
         $('#guardarCliente').text('Actualizar Cliente');
         $('#MM_insert').val('actualizarCliente');
         $('#clienteid').val(idCliente);

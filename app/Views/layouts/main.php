@@ -22,6 +22,14 @@
     <link rel="stylesheet" href="<?= base_url('assets/vendor/glide.core.min.css') ?>">
     <link rel="stylesheet" href="<?= base_url('assets/vendor/nouislider.min.css') ?>">
 
+    <style>
+    @media print {
+        .app-menu, .navbar, .page-footer, .btn, .breadcrumb, .page-title-container { display: none !important; }
+        main { margin: 0 !important; padding: 0 !important; }
+        .card { border: none !important; box-shadow: none !important; }
+    }
+    </style>
+
     <?= $this->renderSection('page_css') ?>
 </head>
 <body id="app-container" class="menu-default show-spinner">
@@ -233,26 +241,41 @@
 
     <?php elseif ($acceso === 2): ?>
     <!-- CAJA — single sidebar -->
+    <?php
+        $cajUri  = service('uri')->setSilent();
+        $cajSeg2 = (string) $cajUri->getSegment(2);
+        $cajSeg3 = (string) $cajUri->getSegment(3);
+        // active helpers
+        $cajActivo = function(string ...$segs) use ($cajSeg2, $cajSeg3): string {
+            foreach ($segs as $s) {
+                if ($cajSeg2 === $s) return 'active';
+            }
+            return '';
+        };
+        $cajDash = ($cajSeg2 === '' || $cajSeg2 === null) ? 'active' : '';
+        $cajCobrar = in_array($cajSeg2, ['cobrar','folio','venta','pago']) ? 'active' : '';
+        $cajCorte  = in_array($cajSeg2, ['corte']) ? 'active' : '';
+    ?>
     <div class="menu">
         <div class="main-menu">
             <div class="scroll">
                 <ul class="list-unstyled">
-                    <li>
+                    <li class="<?= $cajDash ?>">
                         <a href="<?= base_url('caja') ?>">
                             <i class="iconsminds-shop-4"></i>
                             <span>Dashboard</span>
                         </a>
                     </li>
-                    <li>
-                        <a href="<?= base_url('mostrador/clientes') ?>">
+                    <li class="<?= $cajSeg2 === 'clientes' ? 'active' : '' ?>">
+                        <a href="<?= base_url('caja/clientes') ?>">
                             <i class="iconsminds-digital-drawing"></i>
                             <span>Clientes</span>
                         </a>
                     </li>
-                    <li>
+                    <li class="<?= $cajCobrar ?>">
                         <a href="<?= base_url('caja/cobrar') ?>">
                             <i class="iconsminds-cash-register-2"></i>
-                            <span>Cobrar</span>
+                            <span>Verificar Caja</span>
                         </a>
                     </li>
                     <li>
@@ -261,7 +284,7 @@
                             <span>Consultar Folios</span>
                         </a>
                     </li>
-                    <li>
+                    <li class="<?= $cajCorte ?>">
                         <a href="<?= base_url('caja/corte') ?>">
                             <i class="iconsminds-receipt-4"></i>
                             <span>Corte de Caja</span>
@@ -274,53 +297,57 @@
 
     <?php elseif ($acceso === 3 || $acceso === 4): ?>
     <!-- MOSTRADOR / GVENTAS — single sidebar -->
+    <?php
+        $mosUri  = service('uri')->setSilent();
+        $mosSeg2 = (string) $mosUri->getSegment(2);
+    ?>
     <div class="menu">
         <div class="main-menu">
             <div class="scroll">
                 <ul class="list-unstyled">
-                    <li>
+                    <li class="<?= ($mosSeg2 === '' || $mosSeg2 === null) ? 'active' : '' ?>">
                         <a href="<?= base_url('mostrador') ?>">
                             <i class="iconsminds-shop-4"></i>
                             <span>Dashboard</span>
                         </a>
                     </li>
-                    <li>
+                    <li class="<?= $mosSeg2 === 'clientes' ? 'active' : '' ?>">
                         <a href="<?= base_url('mostrador/clientes') ?>">
                             <i class="iconsminds-digital-drawing"></i>
                             <span>Clientes</span>
                         </a>
                     </li>
-                    <li>
+                    <li class="<?= $mosSeg2 === 'venta' ? 'active' : '' ?>">
                         <a href="<?= base_url('mostrador/venta') ?>">
                             <i class="iconsminds-air-balloon-1"></i>
                             <span>Venta</span>
                         </a>
                     </li>
-                    <li>
+                    <li class="<?= $mosSeg2 === 'mayoreo' ? 'active' : '' ?>">
                         <a href="<?= base_url('mostrador/mayoreo') ?>">
                             <i class="iconsminds-air-balloon-1"></i>
                             <span>Venta Mayoreo</span>
                         </a>
                     </li>
-                    <li>
+                    <li class="<?= $mosSeg2 === 'consulta' ? 'active' : '' ?>">
                         <a href="<?= base_url('mostrador/consulta') ?>">
                             <i class="iconsminds-pantone"></i>
                             <span>Consultar Folios</span>
                         </a>
                     </li>
-                    <li>
+                    <li class="<?= $mosSeg2 === 'inventario' ? 'active' : '' ?>">
                         <a href="<?= base_url('mostrador/inventario') ?>">
                             <i class="iconsminds-three-arrow-fork"></i>
                             <span>Inventario</span>
                         </a>
                     </li>
-                    <li>
+                    <li class="<?= $mosSeg2 === 'anticipos' ? 'active' : '' ?>">
                         <a href="<?= base_url('mostrador/anticipos') ?>">
                             <i class="iconsminds-dollar"></i>
                             <span>Anticipos</span>
                         </a>
                     </li>
-                    <li>
+                    <li class="<?= $mosSeg2 === 'metas' ? 'active' : '' ?>">
                         <a href="<?= base_url('mostrador/metas') ?>">
                             <i class="iconsminds-bullseye"></i>
                             <span>Metas</span>

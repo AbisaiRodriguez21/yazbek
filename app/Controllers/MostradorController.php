@@ -631,9 +631,28 @@ class MostradorController extends BaseController
     {
         return view('mostrador/clientes', [
             'usuario'  => $this->getUsuarioSesion(),
-            'clientes' => $this->clienteModel->getTodos(),
             'error'    => session()->getFlashdata('error'),
             'success'  => session()->getFlashdata('success'),
+        ]);
+    }
+
+    // GET /mostrador/clientes/datatable  —  AJAX server-side
+    public function clientesDatatable(): \CodeIgniter\HTTP\ResponseInterface
+    {
+        $draw     = (int) $this->request->getGet('draw');
+        $start    = (int) $this->request->getGet('start');
+        $length   = (int) $this->request->getGet('length');
+        $search   = $this->request->getGet('search')['value'] ?? '';
+        $orderCol = $this->request->getGet('order')[0]['column'] ?? 0;
+        $orderDir = $this->request->getGet('order')[0]['dir'] ?? 'asc';
+
+        $result = $this->clienteModel->getDatatable($start, $length, $search, $orderCol, $orderDir);
+
+        return $this->response->setJSON([
+            'draw'            => $draw,
+            'recordsTotal'    => $result['total'],
+            'recordsFiltered' => $result['filtered'],
+            'data'            => $result['data'],
         ]);
     }
 
@@ -691,17 +710,18 @@ class MostradorController extends BaseController
         }
 
         $this->clienteModel->insert([
-            'nombre'        => $this->request->getPost('nombre'),
-            'telefono'      => $this->request->getPost('telefono'),
-            'celular'       => $this->request->getPost('celular'),
-            'mail'          => $this->request->getPost('mail'),
-            'RFC'           => $this->request->getPost('RFC'),
-            'direccion'     => $this->request->getPost('direccion'),
-            'CP'            => $this->request->getPost('CP'),
-            'estado'        => $this->request->getPost('estado'),
-            'ciudad'        => $this->request->getPost('ciudad'),
-            'NombreEmpresa' => $this->request->getPost('NombreEmpresa'),
-            'razonSocial'   => $this->request->getPost('razonSocial'),
+            'nombre'        => strtoupper(trim($this->request->getPost('nombre') ?? '')),
+            'telefono'      => trim($this->request->getPost('telefono') ?? ''),
+            'celular'       => trim($this->request->getPost('celular') ?? ''),
+            'mail'          => trim($this->request->getPost('mail') ?? ''),
+            'RFC'           => strtoupper(trim($this->request->getPost('RFC') ?? '')),
+            'direccion'     => strtoupper(trim($this->request->getPost('direccion') ?? '')),
+            'CP'            => trim($this->request->getPost('CP') ?? ''),
+            'estado'        => strtoupper(trim($this->request->getPost('estado') ?? '')),
+            'ciudad'        => strtoupper(trim($this->request->getPost('ciudad') ?? '')),
+            'NombreEmpresa' => strtoupper(trim($this->request->getPost('NombreEmpresa') ?? '')),
+            'razonSocial'   => strtoupper(trim($this->request->getPost('razonSocial') ?? '')),
+            'comoNosConoce' => $this->request->getPost('comoNosConoce'),
             'fechaIngreso'  => date('Y-m-d'),
         ]);
 
@@ -712,17 +732,17 @@ class MostradorController extends BaseController
     public function actualizarCliente(int $id): \CodeIgniter\HTTP\RedirectResponse
     {
         $this->clienteModel->update($id, [
-            'nombre'        => strtoupper($this->request->getPost('nombre') ?? ''),
-            'telefono'      => $this->request->getPost('telefono'),
-            'celular'       => $this->request->getPost('celular'),
-            'mail'          => $this->request->getPost('mail'),
-            'RFC'           => strtoupper($this->request->getPost('RFC') ?? ''),
-            'direccion'     => strtoupper($this->request->getPost('direccion') ?? ''),
-            'CP'            => $this->request->getPost('CP'),
-            'estado'        => strtoupper($this->request->getPost('estado') ?? ''),
-            'ciudad'        => strtoupper($this->request->getPost('ciudad') ?? ''),
-            'NombreEmpresa' => strtoupper($this->request->getPost('NombreEmpresa') ?? ''),
-            'razonSocial'   => strtoupper($this->request->getPost('razonSocial') ?? ''),
+            'nombre'        => strtoupper(trim($this->request->getPost('nombre') ?? '')),
+            'telefono'      => trim($this->request->getPost('telefono') ?? ''),
+            'celular'       => trim($this->request->getPost('celular') ?? ''),
+            'mail'          => trim($this->request->getPost('mail') ?? ''),
+            'RFC'           => strtoupper(trim($this->request->getPost('RFC') ?? '')),
+            'direccion'     => strtoupper(trim($this->request->getPost('direccion') ?? '')),
+            'CP'            => trim($this->request->getPost('CP') ?? ''),
+            'estado'        => strtoupper(trim($this->request->getPost('estado') ?? '')),
+            'ciudad'        => strtoupper(trim($this->request->getPost('ciudad') ?? '')),
+            'NombreEmpresa' => strtoupper(trim($this->request->getPost('NombreEmpresa') ?? '')),
+            'razonSocial'   => strtoupper(trim($this->request->getPost('razonSocial') ?? '')),
             'comoNosConoce' => $this->request->getPost('comoNosConoce'),
         ]);
 
@@ -857,6 +877,67 @@ class MostradorController extends BaseController
         return view('mostrador/consulta_stp_1', [
             'usuario'   => $this->getUsuarioSesion(),
             'tipoPagos' => $tipoPagos,
+        ]);
+    }
+
+    // GET /mostrador/consulta/datatable  —  AJAX server-side DataTables para consulta de folios
+    public function notasDatatable(): \CodeIgniter\HTTP\ResponseInterface
+    {
+        $draw     = (int) $this->request->getGet('draw');
+        $start    = (int) $this->request->getGet('start');
+        $length   = (int) $this->request->getGet('length');
+        $search   = $this->request->getGet('search')['value'] ?? '';
+        $orderColIdx = (int) ($this->request->getGet('order')[0]['column'] ?? 0);
+        $orderDir = $this->request->getGet('order')[0]['dir'] ?? 'desc';
+
+        $cols = ['n.folio', 'n.fecha_inicial', 'c.nombre', 'u.usuario', 'n.tipoPago', 'n.total', 'n.status'];
+        $orderCol = $cols[$orderColIdx] ?? 'n.folio';
+        $orderDir = $orderDir === 'asc' ? 'ASC' : 'DESC';
+
+        $db = \Config\Database::connect();
+
+        // Total sin filtro
+        $total = $db->query("SELECT COUNT(*) AS total FROM notas_1")->getRow()->total;
+
+        // Base query
+        $baseSql = "FROM notas_1 n
+                    LEFT JOIN clientes c ON c.id = n.idCliente
+                    LEFT JOIN usuarios u ON u.Id = n.idVendedor
+                    LEFT JOIN status s ON s.id = n.status";
+
+        $whereClauses = [];
+        $params = [];
+
+        if ($search !== '') {
+            $s = '%' . $search . '%';
+            $whereClauses[] = "(n.folio LIKE ? OR c.nombre LIKE ? OR u.usuario LIKE ?)";
+            $params = array_merge($params, [$s, $s, $s]);
+        }
+
+        $where = $whereClauses ? "WHERE " . implode(" AND ", $whereClauses) : "";
+
+        $countResult = $db->query("SELECT COUNT(*) AS cnt {$baseSql} {$where}", $params)->getRow();
+        $filtered = $countResult->cnt ?? 0;
+
+        $data = $db->query(
+            "SELECT n.folio, n.fecha_inicial,
+                    COALESCE(c.nombre, n.NombreCliente, '—') AS cliente,
+                    COALESCE(u.usuario, n.vendedor, '—') AS vendedor,
+                    COALESCE(n.tipoPago, '—') AS tipopago,
+                    n.total, n.status AS idstatus,
+                    COALESCE(s.nombre, '') AS status_nombre,
+                    n.verificado
+             {$baseSql} {$where}
+             ORDER BY {$orderCol} {$orderDir}
+             LIMIT ? OFFSET ?",
+            array_merge($params, [$length, $start])
+        )->getResultArray();
+
+        return $this->response->setJSON([
+            'draw'            => $draw,
+            'recordsTotal'    => (int) $total,
+            'recordsFiltered' => (int) $filtered,
+            'data'            => $data,
         ]);
     }
 

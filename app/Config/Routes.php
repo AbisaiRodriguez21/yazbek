@@ -40,6 +40,7 @@ $routes->group('admin', ['filter' => 'role:1'], function ($routes) {
 
     // Clientes (admin también puede gestionar clientes, igual que en el original)
     $routes->get('clientes', 'AdminController::clientes');
+    $routes->get('clientes/datatable', 'AdminController::clientesDatatable');
     $routes->post('clientes/crear', 'AdminController::crearCliente');
     $routes->post('clientes/actualizar/(:num)', 'AdminController::actualizarCliente/$1');
     $routes->post('clientes/eliminar', 'AdminController::eliminarCliente');
@@ -103,6 +104,7 @@ $routes->group('mostrador', ['filter' => 'role:3,4'], function ($routes) {
 
     // ── Clientes ──
     $routes->get('clientes', 'MostradorController::clientes');
+    $routes->get('clientes/datatable', 'MostradorController::clientesDatatable');
     $routes->post('clientes/buscar', 'MostradorController::buscarClientes');
     $routes->post('clientes/datos', 'MostradorController::obtieneDatosCliente');
     $routes->post('clientes/crear', 'MostradorController::crearCliente');
@@ -142,6 +144,7 @@ $routes->group('mostrador', ['filter' => 'role:3,4'], function ($routes) {
     $routes->get('menudeo',  'MostradorController::menudeo');
 
     // ── Consulta de notas / metas ──
+    $routes->get('consulta/datatable', 'MostradorController::notasDatatable');
     $routes->get('consulta', 'MostradorController::consultaStp1');
     $routes->get('metas', 'MostradorController::metas');
 });
@@ -153,8 +156,16 @@ $routes->group('caja', ['filter' => 'role:2'], function ($routes) {
     // Dashboard caja
     $routes->get('/', 'CajaController::index');
 
-    // Módulo caja (lista de notas a cobrar)
+    // Clientes desde caja
+    $routes->get('clientes', 'CajaController::clientes');
+    $routes->get('clientes/datatable', 'CajaController::clientesDatatable');
+    $routes->post('clientes/crear', 'CajaController::crearCliente');
+    $routes->post('clientes/actualizar/(:num)', 'CajaController::actualizarCliente/$1');
+    $routes->post('clientes/eliminar', 'CajaController::eliminarCliente');
+
+    // Módulo caja (lista de notas a cobrar / verificar)
     $routes->get('cobrar', 'CajaController::caja');
+    $routes->get('cobrar/ajax/(:num)', 'CajaController::cobrarFolioAjax/$1');
 
     // Consulta por folio
     $routes->get('folio/(:num)', 'CajaController::porFolio/$1');
