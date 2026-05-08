@@ -98,7 +98,7 @@ class ReportesController extends BaseController
                     u.usuario   AS vendedor,
                     n2.sku,
                     n2.cantidad,
-                    n2.precio,
+                    n2.pUnitario AS precio,
                     n2.importe,
                     n.fecha_inicial,
                     tp.descripcion AS tipopago

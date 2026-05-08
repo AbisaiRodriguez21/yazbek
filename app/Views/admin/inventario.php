@@ -101,6 +101,12 @@
         <?php if (session()->getFlashdata('success')): ?>
         <div class="alert alert-success rounded"><?= session()->getFlashdata('success') ?></div>
         <?php endif; ?>
+        <?php if (session()->getFlashdata('error')): ?>
+        <div class="alert alert-danger rounded"><?= session()->getFlashdata('error') ?></div>
+        <?php endif; ?>
+
+        <!-- Mensaje de confirmación para edición inline -->
+        <div id="status-inline" class="alert alert-success rounded" style="display:none"></div>
 
         <div class="separator mb-5"></div>
 
@@ -122,9 +128,9 @@
                         <tr>
                             <td><?= esc($p['sku']) ?></td>
                             <td><?= esc($p['estilo']) ?> - <?= esc($p['Descripcion_Larga']) ?> - <?= esc($p['Color']) ?> - <?= esc($p['Talla']) ?></td>
-                            <td>$<?= number_format($p['pMayoreo'] ?? 0, 2) ?></td>
-                            <td>$<?= number_format($p['pMenudeo'] ?? 0, 2) ?></td>
-                            <td><?= (int)($p['piezas'] ?? 0) ?></td>
+                            <td contenteditable="true" id="pMayoreo:<?= $p['id'] ?>"><?= $p['pMayoreo'] ?? 0 ?></td>
+                            <td contenteditable="true" id="pMenudeo:<?= $p['id'] ?>"><?= $p['pMenudeo'] ?? 0 ?></td>
+                            <td contenteditable="true" id="piezas:<?= $p['id'] ?>"><?= (int)($p['piezas'] ?? 0) ?></td>
                         </tr>
                         <?php endforeach; ?>
                     </tbody>
@@ -145,6 +151,30 @@ $(document).ready(function () {
         responsive: true,
         pageLength: 25,
         language: { url: '<?= base_url('assets/js/vendor/datatables.spanish.json') ?>' }
+    });
+
+    // Edición inline igual que el original (ajax.php → /admin/inventario/ajax)
+    var message_status = $('#status-inline');
+
+    $('td[contenteditable=true]').on('blur', function () {
+        var fieldId = $(this).attr('id');   // ej: pMayoreo:42
+        var value   = $(this).text().trim();
+
+        $.post('<?= base_url('admin/inventario/ajax') ?>', {
+            '<?= csrf_token() ?>': '<?= csrf_hash() ?>',
+            [fieldId]: value
+        }, function (data) {
+            if (data !== '') {
+                message_status.text(data).show();
+                setTimeout(function () { message_status.hide(); }, 3000);
+            }
+        });
+    });
+
+    // Mostrar nombre del archivo seleccionado en el label
+    $('#file-input').on('change', function () {
+        var fileName = $(this).val().split('\\').pop();
+        $(this).siblings('.custom-file-label').text(fileName || 'Selecciona archivo CSV');
     });
 });
 </script>

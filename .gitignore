@@ -57,6 +57,9 @@ Vagrantfile
 /writable/session/*
 !/writable/session/index.html
 
+# Sesiones mal dirigidas (por session.savePath = null en .env)
+/public/null/
+
 /writable/uploads/*
 !/writable/uploads/index.html
 

@@ -516,68 +516,111 @@ class AdminController extends BaseController
         $folio = (int) $this->request->getPost('folio');
         $db    = \Config\Database::connect();
 
-        $nota = $db->query(
-            "SELECT n.folio, n.fecha_inicial, n.subTotal, n.descuento, n.iva, n.total,
-                    n.referencia, n.verificado, s.nombre AS status,
-                    c.nombre AS cliente, c.telefono,
-                    u.nombre AS vendedor
-             FROM notas_1 n
-             LEFT JOIN clientes  c ON n.idCliente  = c.id
-             LEFT JOIN usuarios  u ON n.idVendedor = u.Id
-             LEFT JOIN status    s ON n.status     = s.id
-             WHERE n.folio = ?",
-            [$folio]
-        )->getRowArray();
+        try {
+            // Columnas correctas del original:
+            //   usuarios  → u.usuario  (no u.nombre)
+            //   notas_1   → n.referencia, n.verificado, n.subTotal, n.total, etc.
+            $nota = $db->query(
+                "SELECT n.folio, n.fecha_inicial, n.subTotal, n.descuento, n.iva, n.total,
+                        n.referencia, n.verificado, s.nombre AS status,
+                        c.nombre AS cliente, c.telefono,
+                        u.usuario AS vendedor
+                 FROM notas_1 n
+                 LEFT JOIN clientes c ON n.idCliente  = c.id
+                 LEFT JOIN usuarios u ON n.idVendedor = u.Id
+                 LEFT JOIN status   s ON n.status     = s.id
+                 WHERE n.folio = ?",
+                [$folio]
+            )->getRowArray();
 
-        if (! $nota) {
-            return '<p class="text-danger">No se encontró el folio <strong>' . $folio . '</strong>.</p>';
-        }
-
-        $pagos = $db->query(
-            "SELECT tp.descripcion AS tipopago, mn.monto, mn.cargos
-             FROM montosnotas mn
-             LEFT JOIN tipopago tp ON mn.idTipoPago = tp.id
-             WHERE mn.idNotas = (SELECT Id_Notas_1 FROM notas_1 WHERE folio = ?)",
-            [$folio]
-        )->getResultArray();
-
-        $detalles = $db->query(
-            "SELECT nd.sku, nd.cantidad, nd.precio, nd.importe
-             FROM notas_2 nd WHERE nd.folio = ?",
-            [$folio]
-        )->getResultArray();
-
-        // Generar HTML igual que la respuesta AJAX del original
-        $html  = '<table class="table table-sm table-bordered">';
-        $html .= '<tr><th>Folio</th><td>' . $nota['folio'] . '</td>';
-        $html .= '<th>Fecha</th><td>' . $nota['fecha_inicial'] . '</td></tr>';
-        $html .= '<tr><th>Cliente</th><td>' . esc($nota['cliente']) . '</td>';
-        $html .= '<th>Vendedor</th><td>' . esc($nota['vendedor']) . '</td></tr>';
-        $html .= '<tr><th>Estatus</th><td>' . esc($nota['status']) . '</td>';
-        $html .= '<th>Verificado</th><td>' . esc($nota['verificado']) . '</td></tr>';
-        $html .= '</table>';
-
-        if ($pagos) {
-            $html .= '<h6 class="mt-3">Pagos</h6><table class="table table-sm">';
-            $html .= '<tr><th>Tipo</th><th>Monto</th><th>Cargos</th></tr>';
-            foreach ($pagos as $p) {
-                $html .= '<tr><td>' . esc($p['tipopago']) . '</td>';
-                $html .= '<td>$' . number_format($p['monto'], 2) . '</td>';
-                $html .= '<td>$' . number_format($p['cargos'] ?? 0, 2) . '</td></tr>';
+            if (! $nota) {
+                return '<p class="text-danger">No se encontró el folio <strong>' . $folio . '</strong>.</p>';
             }
-            $html .= '</table>';
+
+            // Pagos — usando Id_Notas_1 del registro encontrado
+            $pagos = $db->query(
+                "SELECT tp.descripcion AS tipopago, mn.monto, mn.cargos, mn.anticipo
+                 FROM montosnotas mn
+                 LEFT JOIN tipopago tp ON mn.idTipoPago = tp.id
+                 WHERE mn.idNotas = (SELECT Id_Notas_1 FROM notas_1 WHERE folio = ?)",
+                [$folio]
+            )->getResultArray();
+
+            // Productos — columnas reales de notas_2: estilo (SKU), pUnitario (precio)
+            $detalles = $db->query(
+                "SELECT nd.estilo AS sku,
+                        CONCAT(p.estilo, '-', p.Descripcion_Larga, '-', p.Talla, '-', p.Color) AS descripcion,
+                        nd.cantidad, nd.pUnitario AS precio, nd.importe
+                 FROM notas_2 nd
+                 LEFT JOIN productosyazbek p ON p.sku = nd.estilo
+                 WHERE nd.folio = ?",
+                [$folio]
+            )->getResultArray();
+
+        } catch (\Exception $e) {
+            log_message('error', 'cajaAjax error: ' . $e->getMessage());
+            return '<p class="text-danger">Error al consultar el folio. Detalle: ' . esc($e->getMessage()) . '</p>';
         }
 
-        $html .= '<h6 class="mt-3">Productos</h6><table class="table table-sm">';
-        $html .= '<tr><th>SKU</th><th>Cantidad</th><th>Precio</th><th>Importe</th></tr>';
-        foreach ($detalles as $d) {
-            $html .= '<tr><td>' . esc($d['sku']) . '</td>';
-            $html .= '<td>' . $d['cantidad'] . '</td>';
-            $html .= '<td>$' . number_format($d['precio'], 2) . '</td>';
-            $html .= '<td>$' . number_format($d['importe'], 2) . '</td></tr>';
-        }
+        // ── HTML — igual al layout del original ──
+        $html  = '<table width="100%">';
+        $html .= '<tr>';
+        $html .= '<td><strong>Fecha:</strong></td><td>' . date('Y-m-d h:i A', strtotime($nota['fecha_inicial'])) . '</td>';
+        $html .= '<td><strong>Nombre Cliente:</strong></td><td>' . esc($nota['cliente']) . '</td>';
+        $html .= '</tr>';
+        $html .= '<tr>';
+        $html .= '<td><strong>Estatus:</strong></td><td>' . esc($nota['status']) . '</td>';
+        $html .= '<td><strong>Folio:</strong></td><td>' . $nota['folio'] . '</td>';
+        $html .= '</tr>';
         $html .= '</table>';
-        $html .= '<div class="text-right font-weight-bold">Total: $' . number_format($nota['total'], 2) . '</div>';
+
+        // Calculadora (igual al original)
+        if ($pagos) {
+            foreach ($pagos as $pago) {
+                $html .= '<div class="col-sm-4 col-lg-4 mt-3">';
+                $html .= '<div class="font-w600 push-5">Calculadora</div>';
+                $html .= '<table><tr>';
+                $html .= '<td>Ingresa la cantidad</td><td>Total</td><td>Cambio</td>';
+                $html .= '</tr><tr>';
+                $html .= '<td><input class="font-w600" type="text" id="importe" placeholder="Ingresa la cantidad" onblur="blurFunction()" /></td>';
+                $html .= '<td><input class="font-w600" type="text" id="pagar" disabled value="' . $nota['total'] . '" /></td>';
+                $html .= '<td><input type="text" id="resultado" disabled /></td>';
+                $html .= '<input type="hidden" id="pagar2" value="' . $nota['total'] . '" />';
+                $html .= '</tr></table>';
+                $html .= '</div>';
+                break; // Solo mostrar calculadora una vez
+            }
+        }
+
+        // Tabla de productos
+        $html .= '<div class="line mt-3"></div>';
+        $html .= '<table class="table" id="tabla">';
+        $html .= '<thead><tr>';
+        $html .= '<th>CANTIDAD</th><th>DESCRIPCION</th><th>PRECIO UNITARIO</th><th>IMPORTE</th>';
+        $html .= '</tr></thead><tbody>';
+        foreach ($detalles as $d) {
+            $html .= '<tr>';
+            $html .= '<td>' . $d['cantidad'] . '</td>';
+            $html .= '<td>' . esc($d['descripcion'] ?? $d['sku']) . '</td>';
+            $html .= '<td>$ ' . number_format($d['precio'], 2) . '</td>';
+            $html .= '<td>$ ' . number_format($d['importe'], 2) . '</td>';
+            $html .= '</tr>';
+        }
+        $html .= '</tbody>';
+
+        // Totales — igual al original
+        $html .= '<tr><td colspan="3" class="text-right"><strong>Descuento</strong></td><td>$ ' . number_format($nota['descuento'] ?? 0, 2) . '</td></tr>';
+        $html .= '<tr><td colspan="3" class="text-right no-border"><strong>SubTotal</strong></td><td>$ ' . number_format($nota['subTotal'] ?? 0, 2) . '</td></tr>';
+        $html .= '<tr><td colspan="3" class="text-right"><strong>IVA</strong></td><td>$ ' . number_format($nota['iva'] ?? 0, 2) . '</td></tr>';
+        $html .= '<tr><td colspan="3" class="text-right"><strong>TOTAL</strong></td><td>$ ' . number_format($nota['total'] ?? 0, 2) . '</td></tr>';
+        $html .= '</table>';
+
+        // Script calculadora
+        $html .= '<script>function blurFunction(){';
+        $html .= 'var pagar=parseFloat(document.getElementById("pagar2").value);';
+        $html .= 'var importe=parseFloat(document.getElementById("importe").value);';
+        $html .= 'document.getElementById("resultado").value=(importe-pagar).toFixed(2);}';
+        $html .= '</script>';
 
         return $html;
     }
@@ -675,13 +718,19 @@ class AdminController extends BaseController
         ]);
     }
 
-    // POST /admin/importar/procesar
+    // POST /admin/importar/procesar  (también usado desde /admin/importar/subir)
     public function procesarImportacion(): \CodeIgniter\HTTP\RedirectResponse
     {
-        $archivo = $this->request->getFile('archivo_csv');
+        // El form de inventario usa 'dataCliente'; el de importar usa 'archivo_csv'
+        $archivo = $this->request->getFile('dataCliente')
+                ?? $this->request->getFile('archivo_csv');
+
+        // Detectar desde dónde se llamó para redirigir correctamente
+        $referer      = $this->request->getServer('HTTP_REFERER') ?? '';
+        $redirectBack = str_contains($referer, 'inventario') ? '/admin/inventario' : '/admin/importar';
 
         if (! $archivo || ! $archivo->isValid()) {
-            return redirect()->to('/admin/importar')->with('error', 'Archivo inválido.');
+            return redirect()->to($redirectBack)->with('error', 'Archivo inválido.');
         }
 
         // Mover archivo al directorio de uploads
@@ -723,7 +772,7 @@ class AdminController extends BaseController
 
         unlink($ruta);
 
-        return redirect()->to('/admin/importar')
+        return redirect()->to($redirectBack)
                          ->with('success', "Importación completa: {$insertados} insertados, {$errores} errores.");
     }
 
