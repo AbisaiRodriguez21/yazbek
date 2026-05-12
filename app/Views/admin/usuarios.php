@@ -1,8 +1,7 @@
 <?= $this->extend('layouts/main') ?>
 
 <?= $this->section('page_css') ?>
-<link rel="stylesheet" href="<?= base_url('assets/vendor/dataTables.bootstrap4.min.css') ?>">
-<link rel="stylesheet" href="<?= base_url('assets/vendor/datatables.responsive.bootstrap4.min.css') ?>">
+<?php /* DataTables CSS ya viene en el layout — no duplicar */ ?>
 <link rel="stylesheet" href="<?= base_url('assets/vendor/bootstrap-float-label.min.css') ?>">
 <?= $this->endSection() ?>
 
@@ -63,12 +62,15 @@
                         <td>
                             <?php if (($user['bandera'] ?? 0) == 1): ?>
                                 <span class="badge badge-warning">Activo</span>
-                                <a href="<?= base_url('admin/usuarios/liberar/' . (int)$user['Id']) ?>"
-                                   class="btn btn-xs btn-outline-secondary ml-1" title="Liberar ticket">
-                                    <i class="simple-icon-arrow-right"></i>
-                                </a>
+                                <form method="POST" action="<?= base_url('admin/usuarios/liberar/' . (int)$user['Id']) ?>"
+                                      style="display:inline">
+                                    <?= csrf_field() ?>
+                                    <button type="submit" class="btn btn-xs btn-outline-secondary ml-1" title="Liberar ticket">
+                                        <i class="simple-icon-arrow-right"></i>
+                                    </button>
+                                </form>
                             <?php else: ?>
-                                <span class="badge badge-secondary">Inactivo</span>
+                                <span class="badge badge-success">Libre</span>
                             <?php endif; ?>
                         </td>
                         <td><?= esc($user['nombre'] ?? '') ?></td>
@@ -78,11 +80,14 @@
                             <?= esc($user['pass'] ?? '') ?>
                         </td>
                         <td>
-                            <a href="<?= base_url('admin/usuarios/eliminar/' . (int)$user['Id']) ?>"
-                               class="btn btn-sm btn-danger"
-                               onclick="return confirm('¿Eliminar este usuario?')">
-                                <i class="simple-icon-trash"></i>
-                            </a>
+                            <form method="POST" action="<?= base_url('admin/usuarios/eliminar/' . (int)$user['Id']) ?>"
+                                  style="display:inline"
+                                  onsubmit="return confirm('¿Eliminar este usuario?')">
+                                <?= csrf_field() ?>
+                                <button type="submit" class="btn btn-sm btn-danger">
+                                    <i class="simple-icon-trash"></i>
+                                </button>
+                            </form>
                         </td>
                     </tr>
                     <?php endforeach; ?>
@@ -138,14 +143,26 @@
 <?= $this->endSection() ?>
 
 <?= $this->section('page_scripts') ?>
-<script src="<?= base_url('assets/vendor/dataTables.bootstrap4.min.js') ?>"></script>
 <script>
-$(document).ready(function() {
-    $('#usuariosTable').DataTable({
-        responsive: true,
-        pageLength: 25,
-        language: { url: '/assets/js/vendor/datatables.spanish.json' }
-    });
+/* DataTables JS ya cargado en el layout — no importar de nuevo */
+(function initUsuariosTable() {
+    var $table = $('#usuariosTable');
+    if (!$table.length) return;
+
+    if (!$.fn.DataTable.isDataTable($table[0])) {
+        $table.DataTable({
+            responsive: true,
+            pageLength: 25,
+            language: {
+                search:       'Buscar:',
+                lengthMenu:   'Mostrar _MENU_ registros',
+                info:         'Mostrando _START_ a _END_ de _TOTAL_ registros',
+                infoEmpty:    'Mostrando 0 a 0 de 0 registros',
+                zeroRecords:  'No se encontraron resultados',
+                paginate: { first: 'Primero', previous: 'Anterior', next: 'Siguiente', last: 'Último' }
+            }
+        });
+    }
 
     // Edición inline de contraseña — igual que el original
     $('td[contenteditable="true"]').on('blur', function() {
@@ -164,6 +181,6 @@ $(document).ready(function() {
     $('td[contenteditable="true"]').on('keydown', function(e) {
         if (e.which === 13) { e.preventDefault(); $(this).blur(); }
     });
-});
+})();
 </script>
 <?= $this->endSection() ?>

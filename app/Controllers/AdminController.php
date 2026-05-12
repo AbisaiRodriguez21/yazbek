@@ -260,25 +260,48 @@ class AdminController extends BaseController
     }
 
     // POST /admin/mensajes/subir  —  AJAX: sube imagen del banner (igual que blog_subir.php original)
-    public function subirImagenMensaje(): void
+    public function subirImagenMensaje(): \CodeIgniter\HTTP\Response
     {
         $orden = $this->request->getPost('orden') ?? '0';
 
-        $img = $this->request->getFile('archivo0');
-        if ($img && $img->isValid() && ! $img->hasMoved()) {
-            $fecha   = date('dmY_His');
-            $nombre  = 'imgAdmin/' . $fecha . '_' . $img->getClientName();
-            $destino = FCPATH . 'imgAdmin/';
+        try {
+            // Itera $_FILES igual que el original blog_subir.php
+            foreach ($this->request->getFiles() as $files) {
+                if (! is_array($files)) {
+                    $files = [$files];
+                }
+                foreach ($files as $img) {
+                    if ($img && $img->isValid() && ! $img->hasMoved()) {
+                        $fecha   = date('dmY_His');
+                        $newName = $fecha . '_' . $img->getClientName();
+                        $nombre  = 'imgAdmin/' . $newName;
+                        $destino = FCPATH . 'imgAdmin/';
 
-            if (! is_dir($destino)) {
-                mkdir($destino, 0777, true);
+                        if (! is_dir($destino)) {
+                            mkdir($destino, 0777, true);
+                        }
+
+                        $img->move($destino, $newName);
+
+                        return $this->response
+                            ->setStatusCode(200)
+                            ->setContentType('text/plain')
+                            ->setBody($nombre . '*-' . $orden);
+                    }
+                }
             }
-
-            $img->move($destino, $fecha . '_' . $img->getClientName());
-            echo $nombre . '*-' . $orden;
-        } else {
-            echo 'no *-' . $orden;
+        } catch (\Throwable $e) {
+            log_message('error', 'subirImagenMensaje: ' . $e->getMessage());
+            return $this->response
+                ->setStatusCode(200)
+                ->setContentType('text/plain')
+                ->setBody('no *-' . $orden);
         }
+
+        return $this->response
+            ->setStatusCode(200)
+            ->setContentType('text/plain')
+            ->setBody('no *-' . $orden);
     }
 
     // GET /admin/mensajes/eliminar/:id
@@ -511,118 +534,226 @@ class AdminController extends BaseController
     }
 
     // POST /admin/caja/ajax  —  Devuelve detalles de un folio (AJAX)
+    // Migrado desde: mostrador/llamadasAjax.php (tipo=3)
     public function cajaAjax(): string
     {
         $folio = (int) $this->request->getPost('folio');
-        $db    = \Config\Database::connect();
 
         try {
-            // Columnas correctas del original:
-            //   usuarios  → u.usuario  (no u.nombre)
-            //   notas_1   → n.referencia, n.verificado, n.subTotal, n.total, etc.
+            $db = \Config\Database::connect();
+
+            // Columna real: u.usuario (NO u.nombre)
             $nota = $db->query(
-                "SELECT n.folio, n.fecha_inicial, n.subTotal, n.descuento, n.iva, n.total,
-                        n.referencia, n.verificado, s.nombre AS status,
-                        c.nombre AS cliente, c.telefono,
-                        u.usuario AS vendedor
+                "SELECT n.Id_Notas_1, n.fecha_inicial,
+                        c.nombre  AS NombreCliente,
+                        u.usuario AS vendedor,
+                        n.folio, n.verificado, n.factura, n.descuento,
+                        s.nombre AS status, s.id AS statusId,
+                        n.sumaImportes, n.subTotal, n.tipoPago,
+                        n.cargoTarjeta, n.subTotal2, n.iva, n.total,
+                        n.tipoImpresion, n.cargoPorImpresion,
+                        n.montoTCTD, n.totalPiezas
                  FROM notas_1 n
-                 LEFT JOIN clientes c ON n.idCliente  = c.id
-                 LEFT JOIN usuarios u ON n.idVendedor = u.Id
-                 LEFT JOIN status   s ON n.status     = s.id
-                 WHERE n.folio = ?",
+                 LEFT JOIN status   s ON n.status    = s.id
+                 LEFT JOIN clientes c ON n.idCliente = c.id
+                 LEFT JOIN usuarios u ON u.Id        = n.idVendedor
+                 WHERE n.folio = ?
+                 ORDER BY n.Id_Notas_1 DESC
+                 LIMIT 1",
                 [$folio]
             )->getRowArray();
 
             if (! $nota) {
-                return '<p class="text-danger">No se encontró el folio <strong>' . $folio . '</strong>.</p>';
+                return '<p class="text-danger">FOLIO NO ENCONTRADO</p>';
             }
 
-            // Pagos — usando Id_Notas_1 del registro encontrado
+            // Pagos (Id_Notas_1 directo, igual al original)
             $pagos = $db->query(
-                "SELECT tp.descripcion AS tipopago, mn.monto, mn.cargos, mn.anticipo
-                 FROM montosnotas mn
-                 LEFT JOIN tipopago tp ON mn.idTipoPago = tp.id
-                 WHERE mn.idNotas = (SELECT Id_Notas_1 FROM notas_1 WHERE folio = ?)",
-                [$folio]
+                "SELECT m.idTipoPago, t.descripcion AS tipopago,
+                        m.monto, m.cargos AS cargo, m.anticipo
+                 FROM montosnotas m
+                 INNER JOIN tipopago t ON m.idTipoPago = t.id
+                 WHERE m.idNotas = ?",
+                [$nota['Id_Notas_1']]
             )->getResultArray();
 
-            // Productos — columnas reales de notas_2: estilo (SKU), pUnitario (precio)
+            // Productos: pUnitario=precio real, estilo=sku en notas_2
             $detalles = $db->query(
-                "SELECT nd.estilo AS sku,
-                        CONCAT(p.estilo, '-', p.Descripcion_Larga, '-', p.Talla, '-', p.Color) AS descripcion,
-                        nd.cantidad, nd.pUnitario AS precio, nd.importe
-                 FROM notas_2 nd
-                 LEFT JOIN productosyazbek p ON p.sku = nd.estilo
-                 WHERE nd.folio = ?",
+                "SELECT n.cantidad,
+                        CONCAT(p.estilo,'-',p.Descripcion_Larga,'-',p.Talla,'-',p.Color) AS descripcion,
+                        n.pUnitario, n.importe
+                 FROM notas_2 n
+                 LEFT JOIN productosyazbek p ON p.sku = n.estilo
+                 WHERE n.folio = ?",
                 [$folio]
             )->getResultArray();
 
         } catch (\Exception $e) {
-            log_message('error', 'cajaAjax error: ' . $e->getMessage());
-            return '<p class="text-danger">Error al consultar el folio. Detalle: ' . esc($e->getMessage()) . '</p>';
+            log_message('error', 'cajaAjax folio=' . $folio . ': ' . $e->getMessage());
+            return '<p class="text-danger">Error al consultar el folio.<br><small>' . esc($e->getMessage()) . '</small></p>';
         }
 
-        // ── HTML — igual al layout del original ──
-        $html  = '<table width="100%">';
-        $html .= '<tr>';
-        $html .= '<td><strong>Fecha:</strong></td><td>' . date('Y-m-d h:i A', strtotime($nota['fecha_inicial'])) . '</td>';
-        $html .= '<td><strong>Nombre Cliente:</strong></td><td>' . esc($nota['cliente']) . '</td>';
-        $html .= '</tr>';
-        $html .= '<tr>';
-        $html .= '<td><strong>Estatus:</strong></td><td>' . esc($nota['status']) . '</td>';
-        $html .= '<td><strong>Folio:</strong></td><td>' . $nota['folio'] . '</td>';
-        $html .= '</tr>';
-        $html .= '</table>';
-
-        // Calculadora (igual al original)
-        if ($pagos) {
-            foreach ($pagos as $pago) {
-                $html .= '<div class="col-sm-4 col-lg-4 mt-3">';
-                $html .= '<div class="font-w600 push-5">Calculadora</div>';
-                $html .= '<table><tr>';
-                $html .= '<td>Ingresa la cantidad</td><td>Total</td><td>Cambio</td>';
-                $html .= '</tr><tr>';
-                $html .= '<td><input class="font-w600" type="text" id="importe" placeholder="Ingresa la cantidad" onblur="blurFunction()" /></td>';
-                $html .= '<td><input class="font-w600" type="text" id="pagar" disabled value="' . $nota['total'] . '" /></td>';
-                $html .= '<td><input type="text" id="resultado" disabled /></td>';
-                $html .= '<input type="hidden" id="pagar2" value="' . $nota['total'] . '" />';
-                $html .= '</tr></table>';
-                $html .= '</div>';
-                break; // Solo mostrar calculadora una vez
-            }
+        // Número a letras (igual al original AifLibNumber::toCurrency)
+        $letras = '';
+        try {
+            $letras = mb_strtoupper(\App\Libraries\AifLibNumber::toCurrency($nota['total']));
+        } catch (\Throwable $e) {
+            $letras = '';
         }
 
-        // Tabla de productos
-        $html .= '<div class="line mt-3"></div>';
-        $html .= '<table class="table" id="tabla">';
-        $html .= '<thead><tr>';
-        $html .= '<th>CANTIDAD</th><th>DESCRIPCION</th><th>PRECIO UNITARIO</th><th>IMPORTE</th>';
+        $total = $nota['total'] ?? 0;
+
+        // HTML idéntico al original (llamadasAjax.php tipo=3)
+        $html  = '<div style="overflow-x:auto"><table style="width:100%"><tr>';
+        $html .= '<td><strong>Fecha:&nbsp;</strong></td>';
+        $html .= '<td>' . date('Y-m-d h:i A', strtotime($nota['fecha_inicial'])) . '</td>';
+        $html .= '<td>&nbsp;</td><td><strong>Nombre Cliente:&nbsp;</strong></td>';
+        $html .= '<td>' . esc($nota['NombreCliente']) . '</td>';
+        $html .= '</tr><tr>';
+        $html .= '<td><strong>Estatus:&nbsp;</strong></td><td>' . esc($nota['status']) . '</td>';
+        $html .= '<td>&nbsp;</td><td><strong>Folio:&nbsp;</strong></td>';
+        $html .= '<td>' . $nota['folio'] . '</td>';
+        $html .= '</tr></table></div>';
+
+        // Calculadora
+        $html .= '<div class="col-sm-4 col-lg-4"><div class="font-w600 push-5">Calculadora</div>';
+        $html .= '<table><tr><td>Ingresa la cantidad</td><td>&nbsp;</td>';
+        $html .= '<td>Total</td><td>&nbsp;</td><td>Cambio</td></tr><tr>';
+        $html .= '<td><input class="font-w600 push-5" type="text" id="importe_cj"';
+        $html .= ' placeholder="Ingresa la cantidad" onblur="blurFnCj()" onchange="blurFnCj()" /></td>';
+        $html .= '<td></td>';
+        $html .= '<td><input class="font-w600 push-5" type="text" id="pagar_cj" disabled value="' . $total . '" /></td>';
+        $html .= '<td></td><td><input type="text" id="resultado_cj" disabled /></td>';
+        $html .= '</tr></table>';
+        $html .= '<input type="hidden" id="pagar2_cj" value="' . $total . '" /></div>';
+
+        // Productos
+        $html .= '<div class="line mt-3"></div><div class="line"></div>';
+        $html .= '<div style="overflow-x:auto"><table class="table" id="tabla_cj"><thead><tr>';
+        $html .= '<th width="60">CANTIDAD</th><th>DESCRIPCION</th>';
+        $html .= '<th width="180">PRECIO UNITARIO</th><th width="90">IMPORTE</th>';
         $html .= '</tr></thead><tbody>';
         foreach ($detalles as $d) {
-            $html .= '<tr>';
-            $html .= '<td>' . $d['cantidad'] . '</td>';
-            $html .= '<td>' . esc($d['descripcion'] ?? $d['sku']) . '</td>';
-            $html .= '<td>$ ' . number_format($d['precio'], 2) . '</td>';
-            $html .= '<td>$ ' . number_format($d['importe'], 2) . '</td>';
-            $html .= '</tr>';
+            $html .= '<tr><td>' . $d['cantidad'] . '</td>';
+            $html .= '<td>' . esc($d['descripcion'] ?? '') . '</td>';
+            $html .= '<td>$ ' . number_format($d['pUnitario'] ?? 0, 2) . '</td>';
+            $html .= '<td>$ ' . number_format($d['importe']   ?? 0, 2) . '</td></tr>';
         }
-        $html .= '</tbody>';
 
-        // Totales — igual al original
+        // Totales
+        $ti    = (int)($nota['tipoImpresion'] ?? 0);
+        $otros = $ti === 1 ? 'Ninguno' : ($ti === 2 ? 'Impresion' : ($ti === 3 ? 'Bordado' : ''));
+        $html .= '<tr><td colspan="3" class="text-right"><strong>Otros</strong></td><td id="cargo">' . $otros . '</td></tr>';
+        $html .= '<tr><td colspan="3" class="text-right"><strong>Cargo por otros</strong></td><td>$ ' . number_format($nota['cargoPorImpresion'] ?? 0, 2) . '</td></tr>';
         $html .= '<tr><td colspan="3" class="text-right"><strong>Descuento</strong></td><td>$ ' . number_format($nota['descuento'] ?? 0, 2) . '</td></tr>';
-        $html .= '<tr><td colspan="3" class="text-right no-border"><strong>SubTotal</strong></td><td>$ ' . number_format($nota['subTotal'] ?? 0, 2) . '</td></tr>';
+        $html .= '<tr><td colspan="3" class="text-right no-border"><strong>SubTotal</strong></td><td id="subtotal">$ ' . number_format($nota['subTotal'] ?? 0, 2) . '</td></tr>';
+        $html .= '<tr><td colspan="3" class="text-right"><strong>Cargo TC/TD</strong></td><td>$ ' . number_format($nota['montoTCTD'] ?? $nota['cargoTarjeta'] ?? 0, 2) . '</td></tr>';
+        $html .= '<tr><td colspan="3" class="text-right"><strong>SubTotal2</strong></td><td>$ ' . number_format($nota['subTotal2'] ?? 0, 2) . '</td></tr>';
         $html .= '<tr><td colspan="3" class="text-right"><strong>IVA</strong></td><td>$ ' . number_format($nota['iva'] ?? 0, 2) . '</td></tr>';
-        $html .= '<tr><td colspan="3" class="text-right"><strong>TOTAL</strong></td><td>$ ' . number_format($nota['total'] ?? 0, 2) . '</td></tr>';
-        $html .= '</table>';
+        $html .= '<tr><td colspan="3" class="text-right"><strong>Total</strong></td><td id="total_cj">$ ' . number_format($total, 2) . '</td></tr>';
 
-        // Script calculadora
-        $html .= '<script>function blurFunction(){';
-        $html .= 'var pagar=parseFloat(document.getElementById("pagar2").value);';
-        $html .= 'var importe=parseFloat(document.getElementById("importe").value);';
-        $html .= 'document.getElementById("resultado").value=(importe-pagar).toFixed(2);}';
-        $html .= '</script>';
+        if ($letras) {
+            $html .= '<tr><td colspan="4" class="text-right no-border" align="left">';
+            $html .= '<strong>Cantidad con letra( ' . esc($letras) . ')</strong></td></tr>';
+        }
+
+        foreach ($pagos as $p) {
+            $html .= '<tr><td colspan="4" class="text-right no-border">';
+            $html .= '<strong>Forma de Pago:</strong> ' . esc($p['tipopago']);
+            $html .= ' <strong>Monto: </strong>$ ' . number_format($p['monto'] ?? 0, 2);
+            if (in_array($p['idTipoPago'] ?? 0, [2, 3])) {
+                $html .= ' <strong>Cargo: </strong>$ ' . number_format($p['cargo'] ?? 0, 2);
+            }
+            $html .= ' <strong>Es anticipo:</strong> ' . (($p['anticipo'] ?? 0) == 1 ? 'Si' : 'No');
+            $html .= '</td></tr>';
+        }
+
+        $statusId   = (int)($nota['statusId']  ?? 0);
+        $verificado = $nota['verificado'] ?? '';
+        $html .= '<tr><td colspan="2" class="text-right no-border" align="left"><strong>Estatus:</strong></td>';
+        $html .= '<td colspan="2" align="left" id="estatusPago">' . esc($nota['status']) . '</td></tr>';
+        $html .= '<tr><td colspan="2" class="text-right no-border" align="left"><strong>Factura:</strong></td>';
+        $html .= '<td colspan="2" align="left">' . (($nota['factura'] ?? 0) == 1 ? 'Si requiere' : 'No requiere') . '</td></tr>';
+
+        $html .= '<tr><input type="hidden" id="folio_input" value="' . $nota['folio'] . '" />';
+        if ($statusId !== 3 && $statusId !== 5 && $verificado !== 'Pagado') {
+            $html .= '<td></td>';
+            $html .= '<td colspan="2" class="text-right no-border"><button type="button" class="btn btn-danger" onclick="fn_modal_calcelar_nota()">Cancelar Nota</button></td>';
+            $html .= '<td colspan="2" class="text-right no-border"><button type="button" class="btn btn-success" onclick="fn_muestra_modal()">Pago Verificado</button></td>';
+        }
+        $html .= '</tr></tbody></table></div>';
+        $html .= '<script>function blurFnCj(){var p=parseFloat(document.getElementById("pagar2_cj").value)||0;var i=parseFloat(document.getElementById("importe_cj").value)||0;document.getElementById("resultado_cj").value=(i-p).toFixed(2);}</script>';
 
         return $html;
+    }
+    // ──────────────────────────────────────────────────────────────
+    // POST /admin/caja/verificar  —  Marca nota como verificada/pagada
+    // Migrado desde: mostrador/verificarPago.php
+    // ──────────────────────────────────────────────────────────────
+    public function cajaVerificar(): \CodeIgniter\HTTP\Response
+    {
+        $folio = (int) $this->request->getPost('folio');
+        if (! $folio) {
+            return $this->response->setBody('mal');
+        }
+        try {
+            $db = \Config\Database::connect();
+            $db->query("UPDATE notas_1 SET verificado = 'Pagado' WHERE folio = ?", [$folio]);
+            return $this->response->setBody('bien');
+        } catch (\Exception $e) {
+            log_message('error', 'cajaVerificar folio=' . $folio . ': ' . $e->getMessage());
+            return $this->response->setBody('mal');
+        }
+    }
+
+    // ──────────────────────────────────────────────────────────────
+    // POST /admin/caja/cancelar  —  Cancela nota y restaura inventario
+    // Migrado desde: mostrador/cancelarPago.php + caja/cancelar_nota.php
+    // ──────────────────────────────────────────────────────────────
+    public function cajaCancelar(): \CodeIgniter\HTTP\Response
+    {
+        $folio = (int) $this->request->getPost('folio');
+        if (! $folio) {
+            return $this->response->setBody('0');
+        }
+        try {
+            $db = \Config\Database::connect();
+
+            $nota = $db->query(
+                "SELECT Id_Notas_1, totalPiezas, referencia FROM notas_1 WHERE folio = ? LIMIT 1",
+                [$folio]
+            )->getRowArray();
+
+            if (! $nota) {
+                return $this->response->setBody('0');
+            }
+
+            // Siempre actualizar status = 3 (cancelado) para el folio y su referencia
+            $db->query(
+                "UPDATE notas_1 SET status = 3 WHERE folio = ? OR referencia = ?",
+                [$folio, $folio]
+            );
+
+            // Restaurar piezas en inventario si hay productos vinculados
+            if (($nota['totalPiezas'] ?? 0) > 0 && empty($nota['referencia'])) {
+                $productos = $db->query(
+                    "SELECT cantidad, estilo FROM notas_2 WHERE Id_Notas_1 = ?",
+                    [$nota['Id_Notas_1']]
+                )->getResultArray();
+
+                foreach ($productos as $p) {
+                    $db->query(
+                        "UPDATE productosyazbek SET piezas = piezas + ? WHERE sku = ?",
+                        [(int)$p['cantidad'], $p['estilo']]
+                    );
+                }
+            }
+
+            return $this->response->setBody('1');
+        } catch (\Exception $e) {
+            log_message('error', 'cajaCancelar folio=' . $folio . ': ' . $e->getMessage());
+            return $this->response->setBody('0');
+        }
     }
 
     // ──────────────────────────────────────────────────────────────

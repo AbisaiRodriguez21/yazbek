@@ -1,8 +1,7 @@
 <?= $this->extend('layouts/main') ?>
 
 <?= $this->section('page_css') ?>
-<link rel="stylesheet" href="<?= base_url('assets/vendor/dataTables.bootstrap4.min.css') ?>">
-<link rel="stylesheet" href="<?= base_url('assets/vendor/datatables.responsive.bootstrap4.min.css') ?>">
+<?php /* DataTables CSS ya viene en el layout — no duplicar */ ?>
 <?= $this->endSection() ?>
 
 <?= $this->section('content') ?>
@@ -113,7 +112,7 @@
         <!-- Tabla de inventario — igual al original -->
         <div class="row">
             <div class="col-12 mb-4">
-                <table id="datatableProductos" class="data-table responsive nowrap w-100">
+                <table id="datatableProductos" class="table responsive nowrap w-100">
                     <thead>
                         <tr>
                             <th>SKU</th>
@@ -144,19 +143,28 @@
 <?= $this->endSection() ?>
 
 <?= $this->section('page_scripts') ?>
-<script src="<?= base_url('assets/js/vendor/datatables.min.js') ?>"></script>
 <script>
-$(document).ready(function () {
-    $('#datatableProductos').DataTable({
-        responsive: true,
-        pageLength: 25,
-        language: { url: '<?= base_url('assets/js/vendor/datatables.spanish.json') ?>' }
-    });
+(function initInventarioPage() {
+    var $table = $('#datatableProductos');
+    if ($table.length && !$.fn.DataTable.isDataTable($table[0])) {
+        $table.DataTable({
+            responsive: true,
+            pageLength: 25,
+            language: {
+                search:       'Buscar:',
+                lengthMenu:   'Mostrar _MENU_ registros',
+                info:         'Mostrando _START_ a _END_ de _TOTAL_ registros',
+                infoEmpty:    'Mostrando 0 a 0 de 0 registros',
+                zeroRecords:  'No se encontraron resultados',
+                paginate: { first: 'Primero', previous: 'Anterior', next: 'Siguiente', last: 'Último' }
+            }
+        });
+    }
 
     // Edición inline igual que el original (ajax.php → /admin/inventario/ajax)
     var message_status = $('#status-inline');
 
-    $('td[contenteditable=true]').on('blur', function () {
+    $('td[contenteditable=true]').off('blur').on('blur', function () {
         var fieldId = $(this).attr('id');   // ej: pMayoreo:42
         var value   = $(this).text().trim();
 
@@ -172,10 +180,10 @@ $(document).ready(function () {
     });
 
     // Mostrar nombre del archivo seleccionado en el label
-    $('#file-input').on('change', function () {
+    $('#file-input').off('change').on('change', function () {
         var fileName = $(this).val().split('\\').pop();
         $(this).siblings('.custom-file-label').text(fileName || 'Selecciona archivo CSV');
     });
-});
+})();
 </script>
 <?= $this->endSection() ?>

@@ -921,8 +921,8 @@ class MostradorController extends BaseController
 
         $data = $db->query(
             "SELECT n.folio, n.fecha_inicial,
-                    COALESCE(c.nombre, n.NombreCliente, '—') AS cliente,
-                    COALESCE(u.usuario, n.vendedor, '—') AS vendedor,
+                    COALESCE(c.nombre, '—') AS cliente,
+                    COALESCE(u.usuario, '—') AS vendedor,
                     COALESCE(n.tipoPago, '—') AS tipopago,
                     n.total, n.status AS idstatus,
                     COALESCE(s.nombre, '') AS status_nombre,

@@ -1,8 +1,7 @@
 <?= $this->extend('layouts/main') ?>
 
 <?= $this->section('page_css') ?>
-<link rel="stylesheet" href="<?= base_url('assets/vendor/dataTables.bootstrap4.min.css') ?>">
-<link rel="stylesheet" href="<?= base_url('assets/vendor/datatables.responsive.bootstrap4.min.css') ?>">
+<?php /* DataTables CSS ya viene en el layout principal — no duplicar */ ?>
 <?= $this->endSection() ?>
 
 <?= $this->section('content') ?>
@@ -54,7 +53,7 @@ $rutaBase = $rutaBase ?? 'mostrador';
 
 <div class="row">
     <div class="col-12 mb-4">
-        <table id="datatableProductos" class="table data-table responsive nowrap" style="width:100%">
+        <table id="datatableProductos" class="table responsive nowrap" style="width:100%">
             <thead>
                 <tr>
                     <th>Nombre</th>
@@ -207,20 +206,41 @@ $rutaBase = $rutaBase ?? 'mostrador';
 <?= $this->endSection() ?>
 
 <?= $this->section('page_scripts') ?>
-<script src="<?= base_url('assets/vendor/dataTables.bootstrap4.min.js') ?>"></script>
 <script>
+/* DataTables JS ya cargado en el layout — no importar de nuevo */
 var rutaBase = '<?= base_url($rutaBase) ?>';
 
 var rutaDatatable = '<?= base_url($rutaBase . '/clientes/datatable') ?>';
 
-$(document).ready(function() {
-    var table = $('#datatableProductos').DataTable({
+(function initClientesTable() {
+    var $table = $('#datatableProductos');
+    if (!$table.length) return;
+
+    // destroy:true elimina cualquier instancia previa (incluso huérfanas) antes de crear una nueva
+    $table.DataTable({
+        destroy:    true,
         processing: true,
         serverSide: true,
-        ajax: { url: rutaDatatable, type: 'GET' },
+        ajax: {
+            url:   rutaDatatable,
+            type:  'GET',
+            error: function(xhr, err) {
+                console.error('[Clientes] DataTable AJAX error:', xhr.status, err, xhr.responseText);
+            }
+        },
         pageLength: 10,
         order: [[0, 'asc']],
-        language: { url: '<?= base_url('assets/js/vendor/datatables.spanish.json') ?>' },
+        language: {
+            processing:   'Procesando...',
+            search:       'Buscar:',
+            lengthMenu:   'Mostrar _MENU_ registros',
+            info:         'Mostrando _START_ a _END_ de _TOTAL_ registros',
+            infoEmpty:    'Mostrando 0 a 0 de 0 registros',
+            infoFiltered: '(filtrado de _MAX_ registros totales)',
+            zeroRecords:  'No se encontraron resultados',
+            emptyTable:   'No hay datos disponibles',
+            paginate: { first: 'Primero', previous: 'Anterior', next: 'Siguiente', last: 'Último' }
+        },
         columns: [
             { data: 'nombre' },
             { data: 'RFC' },
@@ -232,15 +252,23 @@ $(document).ready(function() {
                 orderable: false,
                 searchable: false,
                 render: function(id, type, row) {
-                    return '<button class="btn btn-sm btn-primary mr-1" data-toggle="modal" data-target="#modal-form" onclick="newUpdateClient(' + id + ', 1, ' + JSON.stringify(row).replace(/"/g, '&quot;') + ')">'
-                         + '<i class="simple-icon-pencil"></i></button>'
-                         + '<button class="btn btn-sm btn-danger" data-toggle="modal" data-target="#modalPregunta" onclick="deleteClient(' + id + ')">'
-                         + '<i class="simple-icon-trash"></i></button>';
+                    if (type !== 'display') return id;
+                    try {
+                        var rowJson = JSON.stringify(row).replace(/"/g, '&quot;');
+                        return '<button class="btn btn-sm btn-primary mr-1" data-toggle="modal" data-target="#modal-form" onclick="newUpdateClient(' + id + ', 1, ' + rowJson + ')">'
+                             + '<i class="simple-icon-pencil"></i></button>'
+                             + '<button class="btn btn-sm btn-danger" data-toggle="modal" data-target="#modalPregunta" onclick="deleteClient(' + id + ')">'
+                             + '<i class="simple-icon-trash"></i></button>';
+                    } catch(e) {
+                        console.error('[Clientes] render error:', e);
+                        return '<button class="btn btn-sm btn-danger" data-toggle="modal" data-target="#modalPregunta" onclick="deleteClient(' + id + ')">'
+                             + '<i class="simple-icon-trash"></i></button>';
+                    }
                 }
             }
         ]
     });
-});
+})();
 
 function newUpdateClient(idCliente, operacion, row) {
     if (operacion === 1 && row) {

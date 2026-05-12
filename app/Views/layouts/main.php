@@ -278,8 +278,8 @@
                             <span>Verificar Caja</span>
                         </a>
                     </li>
-                    <li>
-                        <a href="<?= base_url('mostrador/consulta') ?>">
+                    <li class="<?= $cajSeg2 === 'consulta' ? 'active' : '' ?>">
+                        <a href="<?= base_url('caja/consulta') ?>">
                             <i class="iconsminds-pantone"></i>
                             <span>Consultar Folios</span>
                         </a>

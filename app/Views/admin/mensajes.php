@@ -104,6 +104,11 @@ function seleccionado_principal(valor) {
         processData: false,
         cache: false
     }).done(function(msg) {
+        msg = (msg || '').trim();
+        if (msg.indexOf('*-') === -1 || msg.substring(0, 2) === 'no') {
+            alert('No se pudo guardar el archivo en el servidor.');
+            return;
+        }
         var msgArray    = msg.split('*-');
         var orden_nuevo = msgArray[1];
         document.getElementById('imagen_nueva_principal' + orden_nuevo).value = msgArray[0];
@@ -111,8 +116,9 @@ function seleccionado_principal(valor) {
             '<img src="<?= base_url() ?>' + msgArray[0] + '" class="img-fluid" style="max-width:400px;"> ' +
             '<small class="text-success ml-2">Archivo cargado</small>'
         );
-    }).fail(function() {
-        alert('Error al subir la imagen.');
+    }).fail(function(jqXHR) {
+        console.error('subirImagenMensaje error HTTP', jqXHR.status, jqXHR.responseText);
+        alert('Error al subir la imagen. (HTTP ' + jqXHR.status + ') — revisa la consola del navegador para más detalles.');
     });
 }
 </script>

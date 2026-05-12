@@ -45,13 +45,12 @@
 <?= $this->endSection() ?>
 
 <?= $this->section('page_css') ?>
-<link rel="stylesheet" href="<?= base_url('assets/vendor/dataTables.bootstrap4.min.css') ?>">
-<link rel="stylesheet" href="<?= base_url('assets/vendor/datatables.responsive.bootstrap4.min.css') ?>">
+<?php /* DataTables CSS ya viene en el layout — no duplicar */ ?>
 <?= $this->endSection() ?>
 
 <?= $this->section('page_scripts') ?>
-<script src="<?= base_url('assets/vendor/dataTables.bootstrap4.min.js') ?>"></script>
 <script>
+/* DataTables JS ya cargado en el layout — no importar de nuevo */
 var STATUS_LABELS = {
     1: '<span class="badge badge-primary">Abierta</span>',
     2: '<span class="badge badge-info">En proceso</span>',

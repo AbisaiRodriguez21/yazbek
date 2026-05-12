@@ -157,15 +157,44 @@
                 <!-- Verificar pago con un clic -->
                 <p class="text-muted text-center mb-2">O simplemente verificar el pago ya registrado:</p>
                 <div class="text-center">
-                    <a href="<?= base_url('caja/pago/verificado/' . (int)$folio) ?>"
-                       class="btn btn-outline-primary"
-                       onclick="return confirm('¿Marcar la nota #<?= (int)$folio ?> como pagada?')">
+                    <button type="button" class="btn btn-outline-primary" id="btnPagoVerificado">
                         <i class="iconsminds-yes"></i> Pago Verificado
-                    </a>
+                    </button>
                 </div>
             </div>
         </div>
     </div>
 </div>
 
+<?= $this->endSection() ?>
+
+<?= $this->section('page_scripts') ?>
+<script>
+(function() {
+    var btn = document.getElementById('btnPagoVerificado');
+    if (!btn) return;
+
+    btn.addEventListener('click', function() {
+        if (!confirm('¿Marcar la nota #<?= (int)$folio ?> como pagada?')) return;
+
+        btn.disabled = true;
+        btn.textContent = 'Procesando...';
+
+        fetch('<?= base_url('caja/pago/verificado/' . (int)$folio) ?>', {
+            method: 'GET',
+            headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            alert(data.mensaje || 'Pago verificado correctamente.');
+            window.location.href = '<?= base_url('caja/consulta') ?>';
+        })
+        .catch(function() {
+            alert('Error al verificar el pago. Intenta de nuevo.');
+            btn.disabled = false;
+            btn.innerHTML = '<i class="iconsminds-yes"></i> Pago Verificado';
+        });
+    });
+})();
+</script>
 <?= $this->endSection() ?>

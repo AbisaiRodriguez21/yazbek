@@ -25,8 +25,8 @@ $routes->group('admin', ['filter' => 'role:1'], function ($routes) {
     // Usuarios
     $routes->get('usuarios', 'AdminController::usuarios');
     $routes->post('usuarios/crear', 'AdminController::crearUsuario');
-    $routes->get('usuarios/eliminar/(:num)', 'AdminController::eliminarUsuario/$1');
-    $routes->get('usuarios/liberar/(:num)', 'AdminController::liberarUsuario/$1');
+    $routes->post('usuarios/eliminar/(:num)', 'AdminController::eliminarUsuario/$1');
+    $routes->post('usuarios/liberar/(:num)', 'AdminController::liberarUsuario/$1');
 
     // Inventario de productos
     $routes->get('inventario', 'AdminController::inventario');
@@ -58,6 +58,8 @@ $routes->group('admin', ['filter' => 'role:1'], function ($routes) {
     // Caja admin (corte, vista corte2)
     $routes->get('caja', 'AdminController::caja');
     $routes->post('caja/ajax', 'AdminController::cajaAjax');
+    $routes->post('caja/verificar', 'AdminController::cajaVerificar');
+    $routes->post('caja/cancelar', 'AdminController::cajaCancelar');
     $routes->get('caja/corte', 'AdminController::cajaCorte');
     $routes->post('caja/corte', 'AdminController::cajaCorte');
 
@@ -184,6 +186,10 @@ $routes->group('caja', ['filter' => 'role:2'], function ($routes) {
     // Venta stp 2 desde caja (cobro)
     $routes->get('venta/(:num)', 'CajaController::ventaStp2/$1');
     $routes->post('venta/(:num)', 'CajaController::ventaStp2Post/$1');
+
+    // Consulta de folios (accesible también desde caja — igual que original: roles 1,2,3,4)
+    $routes->get('consulta', 'CajaController::consulta');
+    $routes->get('consulta/datatable', 'CajaController::consultaDatatable');
 });
 
 // =============================================================

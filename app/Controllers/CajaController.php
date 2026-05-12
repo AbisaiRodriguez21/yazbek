@@ -128,21 +128,21 @@ class CajaController extends BaseController
     // GET /caja/pago/verificado/:folio  —  Confirma el pago de una nota
     // Migrado desde: caja/pagoVerificado.php
     // ──────────────────────────────────────────────────────────────
-    public function pagoVerificado(int $folio): \CodeIgniter\HTTP\Response
+    public function pagoVerificado(int $folio): \CodeIgniter\HTTP\ResponseInterface
     {
         $nota = $this->notaModel->getPorFolio($folio);
 
         if (! $nota) {
-            return $this->response->setStatusCode(404)->setBody('Nota no encontrada');
+            return $this->response->setJSON(['ok' => false, 'mensaje' => 'Nota no encontrada.']);
         }
 
-        // Actualizar status a 5 (completada/pagada) — lógica de pagoVerificado.php
+        // Actualizar status a 5 (completada/pagada)
         \Config\Database::connect()->query(
-            "UPDATE notas_1 SET status = 5 WHERE folio = ?",
+            "UPDATE notas_1 SET status = 5, verificado = 1 WHERE folio = ?",
             [$folio]
         );
 
-        return $this->response->setBody('Pago Verificado Correctamente');
+        return $this->response->setJSON(['ok' => true, 'mensaje' => "Pago del folio #{$folio} verificado correctamente."]);
     }
 
     // ──────────────────────────────────────────────────────────────
@@ -172,7 +172,7 @@ class CajaController extends BaseController
         // Marcar la nota como pagada
         $this->notaModel->marcarPagada($nota['Id_Notas_1']);
 
-        return redirect()->to("/caja/folio/{$folio}")->with('success', 'Pago registrado correctamente.');
+        return redirect()->to('/caja/consulta')->with('success', "Pago del folio #{$folio} registrado correctamente.");
     }
 
     // ──────────────────────────────────────────────────────────────
@@ -241,18 +241,18 @@ class CajaController extends BaseController
         $nota = $this->notaModel->getPorFolio($folio);
 
         if (! $nota) {
-            return redirect()->to('/caja')->with('error', 'Nota no encontrada.');
+            return redirect()->to('/caja/consulta')->with('error', 'Nota no encontrada.');
         }
 
         // Solo se puede cancelar si no está ya completada (status=5)
         if ($nota['status'] === 5) {
-            return redirect()->to("/caja/folio/{$folio}")
+            return redirect()->to('/caja/consulta')
                              ->with('error', 'No se puede cancelar una nota ya pagada.');
         }
 
         $this->notaModel->cambiarStatus($nota['Id_Notas_1'], 3);
 
-        return redirect()->to('/caja')->with('success', "Nota #{$folio} cancelada.");
+        return redirect()->to('/caja/consulta')->with('success', "Nota #{$folio} cancelada.");
     }
 
     // ──────────────────────────────────────────────────────────────
@@ -261,13 +261,29 @@ class CajaController extends BaseController
     // ──────────────────────────────────────────────────────────────
     public function ventaStp2(int $folio): string
     {
-        $nota        = $this->notaModel->getPorFolio($folio);
+        $db = \Config\Database::connect();
+
+        // JOIN con clientes y usuarios para traer nombre y vendedor
+        $nota = $db->query(
+            "SELECT n.*,
+                    COALESCE(c.nombre, '—') AS cliente,
+                    COALESCE(u.usuario, '—') AS vendedor
+             FROM notas_1 n
+             LEFT JOIN clientes c ON c.id = n.idCliente
+             LEFT JOIN usuarios u ON u.Id = n.idVendedor
+             WHERE n.folio = ?
+             LIMIT 1",
+            [$folio]
+        )->getRowArray();
+
+        if (! $nota) {
+            return redirect()->to('/caja/consulta')->with('error', 'Folio no encontrado.');
+        }
+
         $detalle     = $this->notaDetalleModel->getPorFolio($folio);
         $totalPiezas = $this->notaDetalleModel->totalPiezas($folio);
-
-        $db        = \Config\Database::connect();
-        $tipoPagos = $db->query("SELECT * FROM tipopago ORDER BY id ASC")->getResultArray();
-        $pagos     = $db->query(
+        $tipoPagos   = $db->query("SELECT * FROM tipopago ORDER BY id ASC")->getResultArray();
+        $pagos       = $db->query(
             "SELECT mn.*, tp.descripcion FROM montosnotas mn
              INNER JOIN tipopago tp ON mn.idTipoPago = tp.id
              WHERE mn.idNotas = ?",
@@ -450,6 +466,74 @@ class CajaController extends BaseController
             $clienteModel->delete($id);
         }
         return redirect()->to('/caja/clientes')->with('success', 'Cliente eliminado.');
+    }
+
+    // ──────────────────────────────────────────────────────────────
+    // GET /caja/consulta  —  Consulta de folios (caja, rol 2)
+    // ──────────────────────────────────────────────────────────────
+    public function consulta(): string
+    {
+        return view('caja/consulta', [
+            'usuario' => $this->getUsuarioSesion(),
+        ]);
+    }
+
+    // GET /caja/consulta/datatable  —  AJAX server-side DataTables
+    public function consultaDatatable(): \CodeIgniter\HTTP\ResponseInterface
+    {
+        $draw        = (int) $this->request->getGet('draw');
+        $start       = (int) $this->request->getGet('start');
+        $length      = (int) $this->request->getGet('length');
+        $search      = $this->request->getGet('search')['value'] ?? '';
+        $orderColIdx = (int) ($this->request->getGet('order')[0]['column'] ?? 0);
+        $orderDir    = $this->request->getGet('order')[0]['dir'] ?? 'desc';
+
+        $cols     = ['n.folio', 'n.fecha_inicial', 'c.nombre', 'u.usuario', 'n.tipoPago', 'n.total', 'n.status'];
+        $orderCol = $cols[$orderColIdx] ?? 'n.folio';
+        $orderDir = $orderDir === 'asc' ? 'ASC' : 'DESC';
+
+        $db = \Config\Database::connect();
+
+        $total = (int) $db->query("SELECT COUNT(*) AS total FROM notas_1")->getRow()->total;
+
+        $baseSql = "FROM notas_1 n
+                    LEFT JOIN clientes c ON c.id = n.idCliente
+                    LEFT JOIN usuarios u ON u.Id = n.idVendedor
+                    LEFT JOIN status s ON s.id = n.status";
+
+        $whereClauses = [];
+        $params       = [];
+
+        if ($search !== '') {
+            $s = '%' . $search . '%';
+            $whereClauses[] = "(n.folio LIKE ? OR c.nombre LIKE ? OR u.usuario LIKE ?)";
+            $params = [$s, $s, $s];
+        }
+
+        $where = $whereClauses ? "WHERE " . implode(" AND ", $whereClauses) : "";
+
+        $filtered = (int) $db->query("SELECT COUNT(*) AS cnt {$baseSql} {$where}", $params)->getRow()->cnt;
+
+        $data = $db->query(
+            "SELECT n.folio, n.fecha_inicial,
+                    COALESCE(c.nombre, '—') AS cliente,
+                    COALESCE(u.usuario, '—') AS vendedor,
+                    COALESCE(n.tipoPago, '—')                AS tipopago,
+                    n.total, n.status AS idstatus,
+                    COALESCE(s.nombre, '')                   AS status_nombre,
+                    n.verificado
+             {$baseSql} {$where}
+             ORDER BY {$orderCol} {$orderDir}
+             LIMIT ? OFFSET ?",
+            array_merge($params, [$length, $start])
+        )->getResultArray();
+
+        return $this->response->setJSON([
+            'draw'            => $draw,
+            'recordsTotal'    => $total,
+            'recordsFiltered' => $filtered,
+            'data'            => $data,
+        ]);
     }
 
     // ──────────────────────────────────────────────────────────────
