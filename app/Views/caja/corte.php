@@ -3,134 +3,167 @@
 <?= $this->section('page_css') ?>
 <link rel="stylesheet" href="<?= base_url('assets/vendor/bootstrap-datepicker3.min.css') ?>">
 <link rel="stylesheet" href="<?= base_url('assets/vendor/dataTables.bootstrap4.min.css') ?>">
+<style>
+    @media print { .no-print { display: none !important; } }
+</style>
 <?= $this->endSection() ?>
 
 <?= $this->section('content') ?>
 
-<div class="page-title-container">
-    <div class="page-title d-flex justify-content-between w-100">
-        <div>
-            <h1>Corte de Caja</h1>
-            <nav aria-label="breadcrumb">
-                <ol class="breadcrumb">
-                    <li class="breadcrumb-item"><a href="<?= base_url('caja') ?>">Caja</a></li>
-                    <li class="breadcrumb-item active">Corte</li>
-                </ol>
-            </nav>
-        </div>
-        <div class="pt-2">
-            <button class="btn btn-outline-secondary" onclick="window.print()">
-                <i class="iconsminds-printer"></i> Imprimir
-            </button>
-        </div>
-    </div>
-</div>
-
-<!-- Filtro por fecha -->
-<div class="card mb-3">
-    <div class="card-body">
-        <form method="GET" action="<?= base_url('caja/corte') ?>" class="form-inline">
-            <label class="mr-2">Fecha:</label>
-            <input type="text" name="fecha" id="inputFecha" class="form-control mr-2"
-                   value="<?= esc($fecha) ?>" placeholder="YYYY-MM-DD">
-            <button type="submit" class="btn btn-primary">Ver Corte</button>
-        </form>
-    </div>
-</div>
-
-<!-- Desglose por tipo de pago -->
-<div class="row mb-3">
-    <div class="col-md-5">
-        <div class="card h-100">
-            <div class="card-header font-weight-bold">
-                Desglose por Tipo de Pago — <?= esc($fecha) ?>
-            </div>
-            <div class="card-body p-0">
-                <table class="table table-sm mb-0">
-                    <thead>
-                        <tr>
-                            <th>Tipo de Pago</th>
-                            <th class="text-right">Monto</th>
-                            <th class="text-right">Cargos</th>
-                            <th class="text-right">Cantidad</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php foreach ($desglose as $d): ?>
-                        <tr>
-                            <td><?= esc($d['tipopago']) ?></td>
-                            <td class="text-right">$<?= number_format($d['monto'] ?? 0, 2) ?></td>
-                            <td class="text-right">$<?= number_format($d['cargos'] ?? 0, 2) ?></td>
-                            <td class="text-right"><?= (int)($d['cantidad'] ?? 0) ?></td>
-                        </tr>
-                        <?php endforeach; ?>
-                        <?php if (empty($desglose)): ?>
-                        <tr><td colspan="4" class="text-center text-muted py-3">Sin movimientos.</td></tr>
-                        <?php endif; ?>
-                    </tbody>
-                </table>
-            </div>
-            <div class="card-footer font-weight-bold d-flex justify-content-between">
-                <span>Total del Día</span>
-                <span class="text-success">$<?= number_format($totalDia, 2) ?></span>
-            </div>
-        </div>
+<div class="row">
+    <div class="col-12">
+        <h1>Corte de Caja</h1>
+        <nav class="breadcrumb-container d-none d-sm-block d-lg-inline-block" aria-label="breadcrumb">
+            <ol class="breadcrumb pt-0">
+                <li class="breadcrumb-item"><a href="<?= base_url('caja') ?>">Caja</a></li>
+                <li class="breadcrumb-item active">Corte</li>
+            </ol>
+        </nav>
+        <div class="separator mb-5"></div>
     </div>
 
-    <div class="col-md-7">
-        <div class="card h-100">
-            <div class="card-header font-weight-bold">Notas Pagadas</div>
-            <div class="table-responsive">
-                <table class="table table-striped table-sm mb-0" id="tablaCorte">
-                    <thead>
-                        <tr>
-                            <th>Folio</th>
-                            <th>Cliente</th>
-                            <th>Vendedor</th>
-                            <th class="text-right">Total</th>
-                            <th>Tipo Pago</th>
-                            <th>Ver</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php foreach ($notas as $n): ?>
-                        <tr>
-                            <td><?= (int)$n['folio'] ?></td>
-                            <td><?= esc($n['cliente'] ?? '') ?></td>
-                            <td><?= esc($n['vendedor'] ?? '') ?></td>
-                            <td class="text-right">$<?= number_format($n['total'] ?? 0, 2) ?></td>
-                            <td><?= esc($n['tipopago'] ?? '') ?></td>
-                            <td>
-                                <a href="<?= base_url('caja/folio/' . (int)$n['folio']) ?>"
-                                   class="btn btn-xs btn-outline-primary">Detalle</a>
-                            </td>
-                        </tr>
-                        <?php endforeach; ?>
-                        <?php if (empty($notas)): ?>
-                        <tr><td colspan="6" class="text-center text-muted py-3">Sin notas pagadas.</td></tr>
-                        <?php endif; ?>
-                    </tbody>
-                </table>
-            </div>
+    <div class="col-12 mb-4 data-table-rows data-tables-hide-filter">
+
+        <!-- Filtros — misma estructura que admin/caja_corte.php -->
+        <div class="row mb-3 no-print">
+            <form action="<?= base_url('caja/corte') ?>" method="post" class="block-content w-100">
+                <?= csrf_field() ?>
+                <div class="row">
+                    <div class="col-md-2">
+                        <div class="form-group">
+                            <label>Fecha</label>
+                            <input name="fecha" type="text"
+                                   class="form-control"
+                                   id="inputFecha"
+                                   placeholder="dd/mm/yyyy"
+                                   value="<?= esc($fecha ?? '') ?>"
+                                   autocomplete="off">
+                        </div>
+                    </div>
+                    <div class="col-md-2">
+                        <div class="form-group">
+                            <label>Estatus</label>
+                            <select name="estatus" class="form-control" id="estatus">
+                                <option value="0">Todos</option>
+                                <?php foreach ($statusList as $s): ?>
+                                    <option value="<?= (int)$s['Id'] ?>"
+                                        <?= (int)($estatus ?? 0) === (int)$s['Id'] ? 'selected' : '' ?>>
+                                        <?= esc($s['nombre']) ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="col-md-2">
+                        <div class="form-group">
+                            <label>Tipo Pago</label>
+                            <select name="tipopago" class="form-control" id="tipopago">
+                                <option value="0">Todos</option>
+                                <?php foreach ($tipoPagoList as $tp): ?>
+                                    <option value="<?= (int)$tp['id'] ?>"
+                                        <?= (int)($tipopago ?? 0) === (int)$tp['id'] ? 'selected' : '' ?>>
+                                        <?= esc($tp['descripcion']) ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="col-md-2">
+                        <label>&nbsp;</label><br>
+                        <button type="submit" class="btn btn-success">Buscar</button>
+                    </div>
+                    <div class="col-md-2">
+                        <label>&nbsp;</label><br>
+                        <a href="<?= base_url('caja/corte/exportar')
+                            . '?fecha='    . urlencode($fecha    ?? '')
+                            . '&estatus='  . (int)($estatus  ?? 0)
+                            . '&tipopago=' . (int)($tipopago ?? 0) ?>"
+                           class="btn btn-success">
+                            Exportar
+                        </a>
+                    </div>
+                </div>
+            </form>
         </div>
+
+        <!-- Tabla de resultados — mismas columnas que corte2.php -->
+        <table id="datatableCorte" class="table table-striped b-t b-light">
+            <thead>
+                <tr>
+                    <th>Folio</th>
+                    <th>Referencia</th>
+                    <th>Fecha</th>
+                    <th>Nombre Cliente</th>
+                    <th>Vendedor</th>
+                    <th>Tipo de Pago &nbsp;/&nbsp; Monto</th>
+                    <th>Estatus Nota</th>
+                    <th>Verificado</th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php foreach ($notas as $n): ?>
+                <tr>
+                    <td valign="middle"><?= esc($n['folio']) ?></td>
+                    <td valign="middle"><?= esc($n['referencia'] ?? '') ?></td>
+                    <td valign="middle"><?= esc($n['fecha'] ?? '') ?></td>
+                    <td valign="middle"><?= esc($n['cliente'] ?? '') ?></td>
+                    <td valign="middle"><?= esc($n['vendedor'] ?? '') ?></td>
+                    <td><?= implode('<br>', array_map('esc', $n['pagos'])) ?></td>
+                    <td valign="middle"><?= esc($n['status'] ?? '') ?></td>
+                    <td valign="middle"><?= esc($n['verificado'] ?? '') ?></td>
+                </tr>
+                <?php endforeach; ?>
+            </tbody>
+        </table>
+
     </div>
 </div>
 
 <?= $this->endSection() ?>
 
 <?= $this->section('page_scripts') ?>
-<script src="<?= base_url('assets/js/vendor/bootstrap-datepicker.min.js') ?>"></script>
+<script src="<?= base_url('assets/js/vendor/bootstrap-datepicker.js') ?>"></script>
 <script>
-$('#inputFecha').datepicker({
-    format: 'yyyy-mm-dd',
-    autoclose: true,
-    todayHighlight: true
-});
-$('#tablaCorte').DataTable({
-    responsive: true,
-    pageLength: 20,
-    order: [[0, 'desc']],
-    language: { url: '/assets/js/vendor/datatables.spanish.json' }
+$(document).ready(function () {
+
+    // ── Locale español (debe definirse ANTES de init para evitar corrupción de fecha)
+    if ($.fn.datepicker && $.fn.datepicker.dates) {
+        $.fn.datepicker.dates['es'] = {
+            days:        ["Domingo","Lunes","Martes","Miércoles","Jueves","Viernes","Sábado"],
+            daysShort:   ["Dom","Lun","Mar","Mié","Jue","Vie","Sáb"],
+            daysMin:     ["Do","Lu","Ma","Mi","Ju","Vi","Sa"],
+            months:      ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"],
+            monthsShort: ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"],
+            today:       "Hoy",
+            clear:       "Borrar",
+            titleFormat: "MM yyyy"
+        };
+    }
+
+    // ── Datepicker — inicializa solo por ID (evita doble-init de dore.script.js)
+    var $fp = $('#inputFecha');
+    if ($fp.data('datepicker')) { $fp.datepicker('destroy'); }
+    $fp.datepicker({
+        format:         'dd/mm/yyyy',
+        language:       'es',
+        autoclose:      true,
+        todayHighlight: true,
+        orientation:    'bottom auto',
+        weekStart:      1
+    });
+
+    // ── DataTable sin búsqueda (igual que corte2.php: searching: false)
+    if ($.fn.DataTable.isDataTable('#datatableCorte')) {
+        $('#datatableCorte').DataTable().destroy();
+    }
+    $('#datatableCorte').DataTable({
+        searching: false,
+        language: {
+            url:        '<?= base_url('assets/js/vendor/datatables.spanish.json') ?>',
+            emptyTable: 'No hay resultados para los filtros seleccionados.'
+        }
+    });
+
 });
 </script>
 <?= $this->endSection() ?>

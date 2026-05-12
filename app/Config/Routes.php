@@ -178,6 +178,8 @@ $routes->group('caja', ['filter' => 'role:2'], function ($routes) {
 
     // Corte de caja
     $routes->get('corte', 'CajaController::corte');
+    $routes->post('corte', 'CajaController::corte');
+    $routes->get('corte/exportar', 'CajaController::exportarCorte');
     $routes->get('corte/detalle', 'CajaController::corteDetalle');
 
     // Cancelar nota desde caja
@@ -190,6 +192,10 @@ $routes->group('caja', ['filter' => 'role:2'], function ($routes) {
     // Consulta de folios (accesible también desde caja — igual que original: roles 1,2,3,4)
     $routes->get('consulta', 'CajaController::consulta');
     $routes->get('consulta/datatable', 'CajaController::consultaDatatable');
+
+    // Exportar corte de caja (accesible desde módulo caja)
+    $routes->get('cortecaja', 'ReportesController::corteCaja');
+    $routes->get('cortecaja2', 'ReportesController::corteCaja2');
 });
 
 // =============================================================
