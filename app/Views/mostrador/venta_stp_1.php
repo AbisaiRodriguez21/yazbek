@@ -51,11 +51,8 @@ $accionForm  = $esMayoreo ? base_url('mostrador/mayoreo') : base_url('mostrador/
 
                     <div class="form-group">
                         <label>Nombre del Cliente <span class="text-danger">*</span></label>
-                        <select name="idCliente" id="selectCliente" class="form-control select2" required>
-                            <option value="">— Selecciona un cliente —</option>
-                            <?php foreach ($clientes as $c): ?>
-                            <option value="<?= $c['id'] ?>"><?= esc($c['nombre']) ?></option>
-                            <?php endforeach; ?>
+                        <select name="idCliente" id="selectCliente" class="form-control" required>
+                            <option value="">— Escribe para buscar un cliente —</option>
                         </select>
                     </div>
 
@@ -96,14 +93,48 @@ $accionForm  = $esMayoreo ? base_url('mostrador/mayoreo') : base_url('mostrador/
 <?= $this->endSection() ?>
 
 <?= $this->section('page_scripts') ?>
-<script src="<?= base_url('assets/js/vendor/select2.min.js') ?>"></script>
+<script src="<?= base_url('assets/js/vendor/select2.full.js') ?>"></script>
 <script>
-$(document).ready(function() {
-    $('#selectCliente').select2({
+(function() {
+    function initSelectCliente() {
+        if (typeof $.fn.select2 === 'undefined') {
+            setTimeout(initSelectCliente, 100);
+            return;
+        }
+        $('#selectCliente').select2({
         theme: 'bootstrap',
-        placeholder: '— Selecciona un cliente —',
+        placeholder: '— Escribe para buscar un cliente —',
         allowClear: true,
-        width: '100%'
+        width: '100%',
+        minimumInputLength: 1,
+        language: {
+            inputTooShort: function() { return 'Escribe al menos 1 carácter para buscar...'; },
+            searching: function() { return 'Buscando...'; },
+            noResults: function() { return 'No se encontraron clientes.'; }
+        },
+        ajax: {
+            url: '<?= base_url('mostrador/clientes/buscar') ?>',
+            type: 'POST',
+            dataType: 'json',
+            delay: 300,
+            data: function(params) {
+                return {
+                    termino: params.term,
+                    '<?= csrf_token() ?>': '<?= csrf_hash() ?>'
+                };
+            },
+            processResults: function(data) {
+                return {
+                    results: $.map(data, function(c) {
+                        return {
+                            id: c.id,
+                            text: (c.RFC ? c.RFC + ' | ' : '') + c.nombre
+                        };
+                    })
+                };
+            },
+            cache: true
+        }
     });
 
     $('#selectCliente').on('change', function() {
@@ -126,6 +157,8 @@ $(document).ready(function() {
             $('#datosCliente').hide();
         });
     });
-});
+    }
+    initSelectCliente();
+})();
 </script>
 <?= $this->endSection() ?>

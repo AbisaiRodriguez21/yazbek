@@ -7,6 +7,7 @@
 .carrito-table td, .carrito-table th { vertical-align: middle; }
 .btn-quitar { padding: 2px 8px; }
 #panelResumen { position: sticky; top: 80px; }
+.precio-tachado { text-decoration: line-through; color: #888; }
 </style>
 <?= $this->endSection() ?>
 
@@ -51,11 +52,9 @@
                 <p class="mb-1">
                     <strong>Total piezas:</strong>
                     <span id="spTotalPiezas" class="badge badge-info"><?= (int)$totalPiezas ?></span>
-                    <?php if ($esMayoreo): ?>
-                    <span class="badge badge-success ml-1">Mayoreo</span>
-                    <?php else: ?>
-                    <span class="badge badge-secondary ml-1">Menudeo</span>
-                    <?php endif; ?>
+                    <span id="badgeTipo" class="badge ml-1 <?= $esMayoreo ? 'badge-success' : 'badge-secondary' ?>">
+                        <?= $esMayoreo ? 'Mayoreo' : 'Menudeo' ?>
+                    </span>
                 </p>
                 <p class="mb-1">
                     <strong>Importe:</strong>
@@ -63,6 +62,7 @@
                         $<?= number_format($sumaImportes, 2) ?>
                     </span>
                 </p>
+
             </div>
         </div>
 
@@ -109,7 +109,7 @@
                             <?php foreach ($detalle as $d): ?>
                             <tr id="row-<?= (int)$d['Id_Notas_2'] ?>">
                                 <td><?= esc($d['sku']) ?></td>
-                                <td><?= esc($d['estilo']) ?></td>
+                                <td><?= esc(($d['descripcion'] ?? $d['estilo']) . (!empty($d['color']) ? ' — ' . $d['color'] : '')) ?></td>
                                 <td class="text-right">$<?= number_format($d['precio'], 2) ?></td>
                                 <td class="text-right"><?= (int)$d['cantidad'] ?></td>
                                 <td class="text-right">$<?= number_format($d['importe'], 2) ?></td>
@@ -150,17 +150,25 @@
 <?= $this->endSection() ?>
 
 <?= $this->section('page_scripts') ?>
-<script src="<?= base_url('assets/js/vendor/select2.min.js') ?>"></script>
+<script src="<?= base_url('assets/js/vendor/select2.full.js') ?>"></script>
 <script>
-var BASE_URL = '<?= base_url() ?>';
+var BURL = '<?= base_url() ?>';
+
+(function initStp2() {
+    if (typeof $.fn.select2 === 'undefined') { setTimeout(initStp2, 100); return; }
 
 // Select2 con AJAX para buscar productos
 $('#selectProducto').select2({
     theme: 'bootstrap',
     placeholder: 'Escribe SKU o descripción...',
     minimumInputLength: 2,
+    language: {
+        inputTooShort: function() { return 'Escribe al menos 2 caracteres...'; },
+        searching: function() { return 'Buscando...'; },
+        noResults: function() { return 'No se encontraron productos.'; }
+    },
     ajax: {
-        url: BASE_URL + 'mostrador/productos/buscar',
+        url: BURL + 'mostrador/productos/buscar',
         type: 'POST',
         dataType: 'json',
         delay: 300,
@@ -174,7 +182,7 @@ $('#selectProducto').select2({
                 results: data.map(function(p) {
                     return {
                         id: p.sku,
-                        text: p.sku + ' — ' + p.descripcion + ' (Stock: ' + p.piezas + ')',
+                        text: '[' + p.sku + '] ' + p.descripcion + '  (' + p.piezas + ' pzs)',
                         sku: p.sku,
                         descripcion: p.descripcion
                     };
@@ -198,7 +206,7 @@ $('#btnAgregar').on('click', function() {
     var csrf = {};
     csrf[$('#hidCsrfName').val()] = $('#hidCsrfHash').val();
 
-    $.post(BASE_URL + 'mostrador/nota/agregarProducto', $.extend({
+    $.post(BURL + 'mostrador/nota/agregarProducto', $.extend({
         sku: sku,
         cantidad: cantidad,
         folio: folio
@@ -208,7 +216,6 @@ $('#btnAgregar').on('click', function() {
             $('#msgAgregar').html('<span class="text-success">Producto agregado.</span>');
             $('#selectProducto').val(null).trigger('change');
             $('#inputCantidad').val(1);
-            // Update CSRF token
             $('#hidCsrfHash').val(resp.csrf_hash);
         } else {
             $('#msgAgregar').html('<span class="text-danger">' + (resp.message || 'Error al agregar.') + '</span>');
@@ -225,7 +232,7 @@ $(document).on('click', '.btn-quitar', function() {
     var csrf = {};
     csrf[$('#hidCsrfName').val()] = $('#hidCsrfHash').val();
 
-    $.post(BASE_URL + 'mostrador/nota/eliminarProducto', $.extend({
+    $.post(BURL + 'mostrador/nota/eliminarProducto', $.extend({
         idLinea: idLinea,
         folio: folio
     }, csrf), function(resp) {
@@ -236,16 +243,20 @@ $(document).on('click', '.btn-quitar', function() {
     }, 'json');
 });
 
+function fmt(n) {
+    return '$' + parseFloat(n || 0).toFixed(2);
+}
+
 function renderCarrito(resp) {
     var filas = '';
     if (resp.detalle && resp.detalle.length > 0) {
         resp.detalle.forEach(function(d) {
             filas += '<tr id="row-' + d.Id_Notas_2 + '">'
                 + '<td>' + escHtml(d.sku) + '</td>'
-                + '<td>' + escHtml(d.estilo) + '</td>'
-                + '<td class="text-right">$' + parseFloat(d.precio).toFixed(2) + '</td>'
+                + '<td>' + escHtml((d.descripcion || d.estilo) + (d.color ? ' — ' + d.color : '')) + '</td>'
+                + '<td class="text-right">' + fmt(d.precio) + '</td>'
                 + '<td class="text-right">' + d.cantidad + '</td>'
-                + '<td class="text-right">$' + parseFloat(d.importe).toFixed(2) + '</td>'
+                + '<td class="text-right">' + fmt(d.importe) + '</td>'
                 + '<td class="text-center">'
                 + '<button class="btn btn-sm btn-outline-danger btn-quitar" data-id="' + d.Id_Notas_2 + '" data-folio="' + resp.folio + '">&times;</button>'
                 + '</td></tr>';
@@ -255,11 +266,19 @@ function renderCarrito(resp) {
     }
     $('#tbodyCarrito').html(filas);
     $('#spTotalPiezas').text(resp.totalPiezas || 0);
-    $('#spImporte').text('$' + parseFloat(resp.sumaImportes || 0).toFixed(2));
+    $('#spImporte').text(fmt(resp.sumaImportes));
+
+    if (resp.esMayoreo) {
+        $('#badgeTipo').text('Mayoreo').removeClass('badge-secondary').addClass('badge-success');
+    } else {
+        $('#badgeTipo').text('Menudeo').removeClass('badge-success').addClass('badge-secondary');
+    }
 }
 
 function escHtml(str) {
     return $('<div>').text(str).html();
 }
+
+})(); // fin initStp2
 </script>
 <?= $this->endSection() ?>

@@ -2,70 +2,78 @@
 
 <?= $this->section('content') ?>
 
-<div class="page-title-container">
-    <div class="page-title d-flex justify-content-between w-100">
-        <div>
-            <h1>Dashboard Mostrador</h1>
-            <nav aria-label="breadcrumb">
-                <ol class="breadcrumb">
-                    <li class="breadcrumb-item active">Inicio</li>
-                </ol>
-            </nav>
-        </div>
-        <div class="pt-2">
-            <a href="<?= base_url('mostrador/venta') ?>" class="btn btn-primary btn-lg">
-                <i class="iconsminds-add mr-1"></i> Nueva Nota
-            </a>
-        </div>
-    </div>
-</div>
+<div class="row">
+    <div class="col-12">
+        <h1>Hola</h1>
+        <nav class="breadcrumb-container d-none d-sm-block d-lg-inline-block" aria-label="breadcrumb">
+            <ol class="breadcrumb pt-0">
+                <li class="breadcrumb-item"><a href="<?= base_url('mostrador') ?>">Home</a></li>
+                <li class="breadcrumb-item active"><?= esc($mensaje['fecha'] ?? '') ?></li>
+            </ol>
+        </nav>
 
-<?php if (!empty($banner['texto'])): ?>
-<div class="alert alert-info alert-dismissible fade show" role="alert">
-    <i class="iconsminds-speaker mr-2"></i> <?= esc($banner['texto']) ?>
-    <button type="button" class="close" data-dismiss="alert"><span>&times;</span></button>
-</div>
-<?php endif; ?>
-<?php if (!empty($mensaje['texto'])): ?>
-<div class="alert alert-warning alert-dismissible fade show" role="alert">
-    <i class="iconsminds-information mr-2"></i> <?= esc($mensaje['texto']) ?>
-    <button type="button" class="close" data-dismiss="alert"><span>&times;</span></button>
-</div>
-<?php endif; ?>
+        <?php if (session()->getFlashdata('error')): ?>
+        <div class="alert alert-danger alert-dismissible fade show">
+            <?= session()->getFlashdata('error') ?>
+            <button type="button" class="close" data-dismiss="alert"><span>&times;</span></button>
+        </div>
+        <?php endif; ?>
+        <?php if (session()->getFlashdata('success')): ?>
+        <div class="alert alert-success alert-dismissible fade show">
+            <?= session()->getFlashdata('success') ?>
+            <button type="button" class="close" data-dismiss="alert"><span>&times;</span></button>
+        </div>
+        <?php endif; ?>
 
-<!-- Accesos rápidos -->
-<div class="row mb-4">
-    <div class="col-6 col-md-3 mb-3">
-        <a href="<?= base_url('mostrador/venta') ?>" class="card text-center p-3 d-block text-decoration-none">
-            <div class="card-body">
-                <i class="iconsminds-shopping-cart icon-dual icon-lg mb-2"></i>
-                <p class="font-weight-bold mb-0">Nueva Nota</p>
+        <?php if (!empty($bandera)): ?>
+        <div class="alert alert-danger rounded" role="alert">
+            <i class="iconsminds-danger mr-2"></i>
+            <strong>Tienes un ticket abierto.</strong>
+            Ve a <a href="<?= base_url('mostrador/consulta') ?>" class="alert-link">Consultar Folios</a>
+            para cancelar o completar la nota pendiente, o pide a un admin que libere tu ticket.
+        </div>
+        <?php endif; ?>
+
+        <?php if (!empty($banner['texto'])): ?>
+        <div class="alert alert-info alert-dismissible fade show" role="alert">
+            <i class="iconsminds-speaker mr-2"></i> <?= esc($banner['texto']) ?>
+            <button type="button" class="close" data-dismiss="alert"><span>&times;</span></button>
+        </div>
+        <?php endif; ?>
+
+        <div class="separator mb-5"></div>
+
+        <?php if (!empty($mensaje)): ?>
+        <div class="col-12 mb-4">
+            <div class="card active">
+                <?php if (!empty($mensaje['imagen'])): ?>
+                <div class="position-relative">
+                    <img class="card-img-top"
+                         src="<?= base_url($mensaje['imagen']) ?>"
+                         alt="Banner"
+                         style="max-height:480px; object-fit:cover; width:100%;">
+                </div>
+                <?php endif; ?>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-10">
+                            <?php if (!empty($mensaje['t_mensaje'])): ?>
+                            <p class="list-item-heading mb-4 pt-1"><?= esc($mensaje['t_mensaje']) ?></p>
+                            <?php endif; ?>
+                            <?php if (!empty($mensaje['texto'])): ?>
+                            <footer>
+                                <p class="text-muted text-small mb-0 font-weight-light">
+                                    <?= esc($mensaje['texto']) ?>
+                                </p>
+                            </footer>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+                </div>
             </div>
-        </a>
-    </div>
-    <div class="col-6 col-md-3 mb-3">
-        <a href="<?= base_url('mostrador/consulta') ?>" class="card text-center p-3 d-block text-decoration-none">
-            <div class="card-body">
-                <i class="iconsminds-search-1 icon-dual icon-lg mb-2"></i>
-                <p class="font-weight-bold mb-0">Consultar Folios</p>
-            </div>
-        </a>
-    </div>
-    <div class="col-6 col-md-3 mb-3">
-        <a href="<?= base_url('mostrador/clientes') ?>" class="card text-center p-3 d-block text-decoration-none">
-            <div class="card-body">
-                <i class="iconsminds-business-man-woman icon-dual icon-lg mb-2"></i>
-                <p class="font-weight-bold mb-0">Clientes</p>
-            </div>
-        </a>
-    </div>
-    <div class="col-6 col-md-3 mb-3">
-        <a href="<?= base_url('mostrador/inventario') ?>" class="card text-center p-3 d-block text-decoration-none">
-            <div class="card-body">
-                <i class="iconsminds-box-close icon-dual icon-lg mb-2"></i>
-                <p class="font-weight-bold mb-0">Inventario</p>
-            </div>
-        </a>
+        </div>
+        <?php endif; ?>
+
     </div>
 </div>
 

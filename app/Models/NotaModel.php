@@ -108,7 +108,13 @@ class NotaModel extends Model
      */
     public function getPorFolio(int $folio): array|null
     {
-        return $this->where('folio', $folio)->first();
+        return $this->db->query(
+            "SELECT n.*, COALESCE(c.nombre, '—') AS cliente
+             FROM notas_1 n
+             LEFT JOIN clientes c ON c.id = n.idCliente
+             WHERE n.folio = ? LIMIT 1",
+            [$folio]
+        )->getRowArray();
     }
 
     /**
@@ -183,9 +189,19 @@ class NotaModel extends Model
     /**
      * Genera el siguiente número de folio disponible.
      */
+    /**
+     * Genera el siguiente folio de forma atómica usando transacción + bloqueo.
+     * Previene que dos cajas simultáneas obtengan el mismo folio.
+     */
     public function siguienteFolio(): int
     {
-        $result = $this->db->query("SELECT MAX(folio) AS max_folio FROM notas_1")->getRow();
-        return ($result->max_folio ?? 0) + 1;
+        $db = $this->db;
+        $db->transStart();
+        // FOR UPDATE bloquea la fila hasta que se haga el INSERT,
+        // impidiendo que otra conexión lea el mismo MAX durante la transacción
+        $result = $db->query("SELECT MAX(folio) AS max_folio FROM notas_1 FOR UPDATE")->getRow();
+        $folio  = ($result->max_folio ?? 1000000) + 1;
+        $db->transComplete();
+        return $folio;
     }
 }

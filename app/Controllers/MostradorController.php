@@ -58,10 +58,17 @@ class MostradorController extends BaseController
     // ──────────────────────────────────────────────────────────────
     public function index(): string
     {
+        $userId  = (int) session()->get('user_id');
+        $usuarioDB = \Config\Database::connect()
+            ->query("SELECT bandera FROM usuarios WHERE Id = ? LIMIT 1", [$userId])
+            ->getRowArray();
+        $bandera = (int) ($usuarioDB['bandera'] ?? 0);
+
         return view('mostrador/index', [
             'usuario' => $this->getUsuarioSesion(),
             'banner'  => $this->mensajeModel->getBanner(),
             'mensaje' => $this->mensajeModel->getMensaje(),
+            'bandera' => $bandera,
             'error'   => session()->getFlashdata('error'),
             'success' => session()->getFlashdata('success'),
         ]);
@@ -74,9 +81,8 @@ class MostradorController extends BaseController
     public function ventaStp1(): string
     {
         return view('mostrador/venta_stp_1', [
-            'usuario'  => $this->getUsuarioSesion(),
-            'clientes' => $this->clienteModel->getTodos(),
-            'error'    => session()->getFlashdata('error'),
+            'usuario' => $this->getUsuarioSesion(),
+            'error'   => session()->getFlashdata('error'),
         ]);
     }
 
@@ -107,15 +113,10 @@ class MostradorController extends BaseController
 
         // Insertar nota con status 3 (cancelada) — se activa al confirmar
         $this->notaModel->insert([
-            'idCliente'    => $idCliente,
-            'idVendedor'   => $idVendedor,
-            'folio'        => $folio,
-            'status'       => 3,
-            'NombreCliente'=> $cliente['nombre'] ?? '',
-            'vendedor'     => $vendedor,
-            'telefono'     => $cliente['telefono'] ?? '',
-            'direccion'    => $cliente['direccion'] ?? '',
-            'email'        => $cliente['mail']      ?? '',
+            'idCliente'  => $idCliente,
+            'idVendedor' => $idVendedor,
+            'folio'      => $folio,
+            'status'     => 3,
         ]);
 
         // Marcar al vendedor como con ticket abierto
@@ -170,15 +171,27 @@ class MostradorController extends BaseController
 
         $tipoPagos = $db->query("SELECT * FROM tipopago ORDER BY id ASC")->getResultArray();
 
+        // Pagos ya registrados en montosnotas para esta nota (ej. anticipos previos)
+        $pagosExistentes = $db->query(
+            "SELECT mn.id, mn.idTipoPago, mn.monto, mn.cargos, mn.anticipo,
+                    COALESCE(tp.descripcion, 'Pago') AS descripcion
+             FROM montosnotas mn
+             LEFT JOIN tipopago tp ON tp.id = mn.idTipoPago
+             WHERE mn.idNotas = ?
+             ORDER BY mn.id ASC",
+            [$nota['Id_Notas_1']]
+        )->getResultArray();
+
         return view('mostrador/venta_stp_3', [
-            'usuario'      => $this->getUsuarioSesion(),
-            'nota'         => $nota,
-            'folio'        => $folio,
-            'detalle'      => $carrito['detalle'],
-            'totalPiezas'  => $carrito['totalPiezas'],
-            'sumaImportes' => $carrito['sumaImportes'],
-            'esMayoreo'    => $carrito['esMayoreo'],
-            'tipoPagos'    => $tipoPagos,
+            'usuario'         => $this->getUsuarioSesion(),
+            'nota'            => $nota,
+            'folio'           => $folio,
+            'detalle'         => $carrito['detalle'],
+            'totalPiezas'     => $carrito['totalPiezas'],
+            'sumaImportes'    => $carrito['sumaImportes'],
+            'esMayoreo'       => $carrito['esMayoreo'],
+            'tipoPagos'       => $tipoPagos,
+            'pagosExistentes' => $pagosExistentes,
         ]);
     }
 
@@ -283,14 +296,12 @@ class MostradorController extends BaseController
             "UPDATE notas_1
              SET sumaImportes=?, subTotal=?, cargoTarjeta=?, subTotal2=?,
                  iva=?, total=?, descuento=?, status=?,
-                 factura=?, tipoImpresion=?, cargoPorImpresion=?,
-                 totalPiezas=?, fecha_final=?
+                 factura=?, tipoImpresion=?, totalPiezas=?
              WHERE folio=?",
             [
                 $sumaImportes, $subTotal, $cargoTarjeta, $subTotal2,
                 $iva, $total, $descuento, $idEstatus,
-                $factura, $impresion, $cargoImpresion,
-                $totalPiezas, $fechaHoraActual, $folioN1,
+                $factura, $impresion, $totalPiezas, $folioN1,
             ]
         );
 
@@ -340,16 +351,24 @@ class MostradorController extends BaseController
                         ->setBody(json_encode(['success' => false, 'message' => 'Producto no encontrado.']));
         }
 
-        if ((int)$producto['piezas'] < $cantidad) {
-            return $this->response->setContentType('application/json')
-                        ->setBody(json_encode(['success' => false, 'message' => 'Stock insuficiente.']));
-        }
+        $idN1        = (int)$nota['Id_Notas_1'];
+        $estilo      = $sku;
+        $precio_m    = (float)($producto['pMenudeo']  ?? 0);
+        $precioM     = (float)($producto['pMayoreo']  ?? $precio_m);
+        $descripcion = $producto['Descripcion_Larga'] ?? ($producto['Descripcion_corta'] ?? $sku);
+        $color       = $producto['Color'] ?? '';
 
-        $idN1      = (int)$nota['Id_Notas_1'];
-        $estilo    = $sku;
-        $precio_m  = (float)$producto['precio'];
-        $precioM   = (float)($producto['precioMayoreo'] ?? $producto['precio']);
-        $descripcion = $producto['Descripcion_corta'] ?? $sku;
+        // ── Descuento atómico de stock ──────────────────────────────
+        // Un solo UPDATE que verifica Y descuenta en la misma operación.
+        // Evita la condición de carrera entre dos cajas sobre el mismo SKU.
+        $db->query(
+            "UPDATE productosyazbek SET piezas = piezas - ? WHERE sku = ? AND piezas >= ?",
+            [$cantidad, $sku, $cantidad]
+        );
+        if ($db->affectedRows() === 0) {
+            return $this->response->setContentType('application/json')
+                        ->setBody(json_encode(['success' => false, 'message' => 'Sin stock suficiente para esa cantidad.']));
+        }
 
         // ¿Ya existe la línea en la nota?
         $existente = $db->query(
@@ -365,17 +384,11 @@ class MostradorController extends BaseController
             );
         } else {
             $db->query(
-                "INSERT INTO notas_2 (Id_Notas_1, cantidad, estilo, descripcion, pUnitario, folio, sku, pUnitarioM)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                [$idN1, $cantidad, $estilo, $descripcion, $precio_m, $folio, $sku, $precioM]
+                "INSERT INTO notas_2 (Id_Notas_1, cantidad, estilo, descripcion, pUnitario, folio, sku, pUnitarioM, color)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                [$idN1, $cantidad, $estilo, $descripcion, $precio_m, $folio, $sku, $precioM, $color]
             );
         }
-
-        // Descontar stock
-        $db->query(
-            "UPDATE productosyazbek SET piezas = piezas - ? WHERE sku = ?",
-            [$cantidad, $sku]
-        );
 
         $esMayoreoForzado = session()->get("nota_{$folio}_tipo") === 'mayoreo';
         $carrito = $this->getCarritoData($folio, $db, $esMayoreoForzado);
@@ -607,16 +620,37 @@ class MostradorController extends BaseController
     // ──────────────────────────────────────────────────────────────
     public function buscarProductos(): \CodeIgniter\HTTP\Response
     {
-        $q        = $this->request->getPost('q') ?? '';
-        $db       = \Config\Database::connect();
+        $q   = strtolower(trim($this->request->getPost('q') ?? ''));
+        $db  = \Config\Database::connect();
+
+        // Búsqueda inteligente: cada palabra debe aparecer en algún campo
+        $palabras = array_filter(explode(' ', $q), fn($p) => $p !== '');
+        if (empty($palabras)) {
+            return $this->response->setContentType('application/json')->setBody('[]');
+        }
+
+        $whereParts = [];
+        $bindings   = [];
+        foreach ($palabras as $palabra) {
+            $s = "%{$palabra}%";
+            $whereParts[] = "(LOWER(sku) LIKE ? OR LOWER(estilo) LIKE ?
+                              OR LOWER(Descripcion_corta) LIKE ? OR LOWER(Descripcion_Larga) LIKE ?
+                              OR LOWER(Color) LIKE ?)";
+            array_push($bindings, $s, $s, $s, $s, $s);
+        }
+        $bindings[] = 0; // para piezas > 0
+
+        $where = implode(' AND ', $whereParts);
 
         $rows = $db->query(
-            "SELECT sku, Descripcion_corta AS descripcion, piezas, precio, precioMayoreo
+            "SELECT sku, estilo, Color,
+                    CONCAT(estilo, ' - ', Descripcion_Larga, ' - ', Color) AS descripcion,
+                    piezas, pMenudeo AS precio, pMayoreo AS precioMayoreo
              FROM productosyazbek
-             WHERE (sku LIKE ? OR Descripcion_corta LIKE ?) AND piezas > 0
-             ORDER BY Descripcion_corta ASC
-             LIMIT 30",
-            ["%{$q}%", "%{$q}%"]
+             WHERE {$where} AND piezas > ?
+             ORDER BY estilo, Color ASC
+             LIMIT 40",
+            $bindings
         )->getResultArray();
 
         return $this->response
@@ -1002,21 +1036,34 @@ class MostradorController extends BaseController
      */
     private function getCarritoData(int $folio, $db, bool $forzarMayoreo = false): array
     {
-        $detalle     = $db->query(
-            "SELECT * FROM notas_2 WHERE folio = ? ORDER BY Id_Notas_2 ASC",
+        $detalle = $db->query(
+            "SELECT n2.*,
+                    COALESCE(NULLIF(n2.color,''), p.Color, '')                            AS color,
+                    COALESCE(NULLIF(n2.descripcion,''), p.Descripcion_Larga, n2.estilo)   AS descripcion,
+                    COALESCE(NULLIF(n2.pUnitario, 0),  p.pMenudeo, 0)                     AS pUnitarioFinal,
+                    COALESCE(NULLIF(n2.pUnitarioM, 0), p.pMayoreo, n2.pUnitario, 0)       AS pUnitarioMFinal
+             FROM notas_2 n2
+             LEFT JOIN productosyazbek p ON p.sku = n2.sku
+             WHERE n2.folio = ?
+             ORDER BY n2.Id_Notas_2 ASC",
             [$folio]
         )->getResultArray();
 
-        $totalPiezas  = array_sum(array_column($detalle, 'cantidad'));
-        $esMayoreo    = $forzarMayoreo || $totalPiezas >= 12;
-        $sumaImportes = 0;
+        $totalPiezas     = array_sum(array_column($detalle, 'cantidad'));
+        $esMayoreo       = $forzarMayoreo || $totalPiezas >= 12;
+        $sumaImportes    = 0;
+        $sumaMenudeo     = 0;   // total a precio normal (menudeo), siempre
+        $sumaMayoreo     = 0;   // total a precio mayoreo, siempre
 
         foreach ($detalle as &$linea) {
-            $linea['precio']  = $esMayoreo
-                ? (float)($linea['pUnitarioM'] ?? $linea['pUnitario'] ?? 0)
-                : (float)($linea['pUnitario']  ?? 0);
+            $pMenudeo = (float)($linea['pUnitarioFinal']  ?? 0);
+            $pMayoreo = (float)($linea['pUnitarioMFinal'] ?? 0);
+
+            $linea['precio']  = $esMayoreo ? $pMayoreo : $pMenudeo;
             $linea['importe'] = $linea['cantidad'] * $linea['precio'];
             $sumaImportes    += $linea['importe'];
+            $sumaMenudeo     += $linea['cantidad'] * $pMenudeo;
+            $sumaMayoreo     += $linea['cantidad'] * $pMayoreo;
         }
         unset($linea);
 
@@ -1024,6 +1071,9 @@ class MostradorController extends BaseController
             'detalle'      => $detalle,
             'totalPiezas'  => $totalPiezas,
             'sumaImportes' => $sumaImportes,
+            'sumaMenudeo'  => $sumaMenudeo,
+            'sumaMayoreo'  => $sumaMayoreo,
+            'ahorro'       => $sumaMenudeo - $sumaMayoreo,
             'esMayoreo'    => $esMayoreo,
         ];
     }

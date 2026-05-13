@@ -320,13 +320,7 @@
                     <li class="<?= $mosSeg2 === 'venta' ? 'active' : '' ?>">
                         <a href="<?= base_url('mostrador/venta') ?>">
                             <i class="iconsminds-air-balloon-1"></i>
-                            <span>Venta</span>
-                        </a>
-                    </li>
-                    <li class="<?= $mosSeg2 === 'mayoreo' ? 'active' : '' ?>">
-                        <a href="<?= base_url('mostrador/mayoreo') ?>">
-                            <i class="iconsminds-air-balloon-1"></i>
-                            <span>Venta Mayoreo</span>
+                            <span>Crear Nota</span>
                         </a>
                     </li>
                     <li class="<?= $mosSeg2 === 'consulta' ? 'active' : '' ?>">
@@ -339,18 +333,6 @@
                         <a href="<?= base_url('mostrador/inventario') ?>">
                             <i class="iconsminds-three-arrow-fork"></i>
                             <span>Inventario</span>
-                        </a>
-                    </li>
-                    <li class="<?= $mosSeg2 === 'anticipos' ? 'active' : '' ?>">
-                        <a href="<?= base_url('mostrador/anticipos') ?>">
-                            <i class="iconsminds-dollar"></i>
-                            <span>Anticipos</span>
-                        </a>
-                    </li>
-                    <li class="<?= $mosSeg2 === 'metas' ? 'active' : '' ?>">
-                        <a href="<?= base_url('mostrador/metas') ?>">
-                            <i class="iconsminds-bullseye"></i>
-                            <span>Metas</span>
                         </a>
                     </li>
                 </ul>

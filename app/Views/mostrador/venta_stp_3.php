@@ -109,9 +109,7 @@
                     <table class="table table-sm mb-3">
                         <tr>
                             <th>Subtotal (sin IVA):</th>
-                            <td class="text-right" id="tdSubtotal">
-                                $<?= number_format($sumaImportes, 2) ?>
-                            </td>
+                            <td class="text-right" id="tdSubtotal">—</td>
                         </tr>
                         <tr>
                             <th>IVA (16%):</th>
@@ -126,7 +124,7 @@
                     <input type="hidden" id="hidIva" name="iva" value="">
                     <input type="hidden" id="hidTotal" name="total" value="">
 
-                    <!-- Estatus -->
+                    <!-- Estatus (se ajusta automáticamente según el restante) -->
                     <div class="form-group">
                         <label>Estatus de la nota <span class="text-danger">*</span></label>
                         <select name="estatus" id="selectEstatus" class="form-control">
@@ -134,6 +132,7 @@
                             <option value="4">Anticipo</option>
                             <option value="5" selected>Pagada</option>
                         </select>
+                        <small id="msgEstatus" class="form-text text-muted"></small>
                     </div>
 
                     <!-- Factura -->
@@ -152,11 +151,36 @@
                                 <i class="iconsminds-add"></i> Agregar Pago
                             </button>
                         </div>
+
+                        <?php if (!empty($pagosExistentes)): ?>
+                        <!-- Pagos ya registrados (solo lectura) -->
+                        <p class="small text-muted mb-1">Pagos registrados anteriormente:</p>
+                        <ul class="list-group mb-2" id="listaPagosExistentes">
+                            <?php foreach ($pagosExistentes as $pe): ?>
+                            <li class="list-group-item d-flex justify-content-between align-items-center py-1">
+                                <span class="text-muted">
+                                    <?= esc($pe['descripcion']) ?>
+                                    <?php if ($pe['anticipo']): ?>
+                                    <span class="badge badge-warning">Anticipo</span>
+                                    <?php endif; ?>
+                                </span>
+                                <span class="text-muted">$<?= number_format($pe['monto'], 2) ?></span>
+                            </li>
+                            <?php endforeach; ?>
+                        </ul>
+                        <?php endif; ?>
+
+                        <!-- Nuevos pagos (esta sesión) -->
                         <ul id="listaPagos" class="list-group">
-                            <li class="list-group-item text-muted text-center" id="liSinPagos">Sin pagos registrados aún.</li>
+                            <li class="list-group-item text-muted text-center" id="liSinPagos">Sin pagos nuevos aún.</li>
                         </ul>
                         <div class="mt-2 text-right">
-                            <strong>Monto pagado: <span id="spMontoPagado" class="text-success">$0.00</span></strong><br>
+                            <?php if (!empty($pagosExistentes)): ?>
+                            <strong>Ya pagado: <span id="spYaPagado" class="text-muted">
+                                $<?= number_format(array_sum(array_column($pagosExistentes, 'monto')), 2) ?>
+                            </span></strong><br>
+                            <?php endif; ?>
+                            <strong>Nuevo pago: <span id="spMontoPagado" class="text-success">$0.00</span></strong><br>
                             <strong>Restante: <span id="spRestante" class="text-danger">$0.00</span></strong>
                         </div>
                     </div>
@@ -220,23 +244,26 @@
 <input type="hidden" id="hidCsrfHash" value="<?= csrf_hash() ?>">
 <input type="hidden" id="hidSumaImportes" value="<?= $sumaImportes ?>">
 <input type="hidden" id="hidFolio" value="<?= (int)$nota['folio'] ?>">
+<!-- Total ya pagado en sesiones anteriores (anticipos, etc.) -->
+<input type="hidden" id="hidYaPagado" value="<?= number_format(array_sum(array_column($pagosExistentes, 'monto')), 2, '.', '') ?>">
 
 <?= $this->endSection() ?>
 
 <?= $this->section('page_scripts') ?>
 <script>
-var pagos = [];
+var pagos = [];   // solo pagos NUEVOS de esta sesión
 var sumaImportes = parseFloat($('#hidSumaImportes').val()) || 0;
-var descuento = 0;
+var yaPagado     = parseFloat($('#hidYaPagado').val()) || 0;
+var descuento    = 0;
 
 function recalcular() {
-    var desc = parseFloat($('#inputDescuento').val()) || 0;
-    descuento = desc;
+    var desc     = parseFloat($('#inputDescuento').val()) || 0;
+    descuento    = desc;
     var subtotal = sumaImportes * (1 - desc / 100);
-    var iva = subtotal * 0.16;
-    var total = subtotal + iva;
+    var iva      = subtotal * 0.16;
+    var total    = subtotal + iva;
 
-    // Cargos de TC/TD
+    // Cargos de tarjeta de los pagos nuevos
     var cargos = 0;
     pagos.forEach(function(p) { cargos += parseFloat(p.cargo || 0); });
     total += cargos;
@@ -248,23 +275,36 @@ function recalcular() {
     $('#hidIva').val(iva.toFixed(2));
     $('#hidTotal').val(total.toFixed(2));
 
-    // Pagos registrados
-    var montoPagado = pagos.reduce(function(acc, p) { return acc + parseFloat(p.monto); }, 0);
-    var restante = total - montoPagado;
-    $('#spMontoPagado').text('$' + montoPagado.toFixed(2));
-    $('#spRestante').text('$' + restante.toFixed(2));
-    $('#spRestante').toggleClass('text-danger text-success', restante > 0);
+    // Monto de los pagos nuevos en esta sesión
+    var montoNuevo = pagos.reduce(function(acc, p) { return acc + parseFloat(p.monto); }, 0);
+    // Restante = total - ya pagado antes - nuevos pagos ahora
+    var restante = total - yaPagado - montoNuevo;
+
+    $('#spMontoPagado').text('$' + montoNuevo.toFixed(2));
+    $('#spRestante').text('$' + Math.max(0, restante).toFixed(2));
+
+    if (restante <= 0.009) {
+        // Liquidado: poner Pagada automáticamente
+        $('#spRestante').removeClass('text-danger').addClass('text-success');
+        $('#selectEstatus').val('5');
+        $('#msgEstatus').text('✔ Nota liquidada — se marcará como Pagada.');
+    } else {
+        // Hay saldo pendiente: poner Abierta automáticamente
+        $('#spRestante').removeClass('text-success').addClass('text-danger');
+        $('#selectEstatus').val('1');
+        $('#msgEstatus').text('⚠ Hay saldo pendiente — se guardará como Abierta. Cambia a Anticipo si aplica.');
+    }
 }
 
 $('#inputDescuento').on('input', recalcular);
 
 $('#btnAgregarPago').on('click', function() {
-    var tipo = $('#modalTipoPago').val();
-    var desc = $('#modalTipoPago option:selected').data('desc');
-    var monto = parseFloat($('#modalMonto').val()) || 0;
+    var tipo     = $('#modalTipoPago').val();
+    var desc     = $('#modalTipoPago option:selected').data('desc');
+    var monto    = parseFloat($('#modalMonto').val()) || 0;
     var anticipo = $('#modalAnticipo').is(':checked') ? 1 : 0;
     var cargoPct = parseFloat($('#modalTipoPago option:selected').data('cargo')) || 0;
-    var cargo = monto * cargoPct / 100;
+    var cargo    = monto * cargoPct / 100;
 
     if (!tipo || monto <= 0) {
         alert('Selecciona tipo de pago y monto válido.');
@@ -282,7 +322,7 @@ $('#btnAgregarPago').on('click', function() {
 
 function renderPagos() {
     if (pagos.length === 0) {
-        $('#listaPagos').html('<li class="list-group-item text-muted text-center" id="liSinPagos">Sin pagos registrados aún.</li>');
+        $('#listaPagos').html('<li class="list-group-item text-muted text-center" id="liSinPagos">Sin pagos nuevos aún.</li>');
         return;
     }
     var html = '';
@@ -304,8 +344,11 @@ $(document).on('click', '.btn-del-pago', function() {
 });
 
 $('#btnGuardar').on('click', function() {
-    if (pagos.length === 0 && parseFloat($('#hidTotal').val()) > 0) {
-        alert('Agrega al menos una forma de pago.');
+    // Si no hay pagos nuevos pero ya estaba cubierto con anticipo, se permite cerrar
+    var total    = parseFloat($('#hidTotal').val()) || 0;
+    var montoNuevo = pagos.reduce(function(acc, p) { return acc + parseFloat(p.monto); }, 0);
+    if (pagos.length === 0 && total > 0 && yaPagado < total) {
+        alert('Agrega al menos una forma de pago para el monto restante.');
         return;
     }
 
@@ -313,15 +356,15 @@ $('#btnGuardar').on('click', function() {
     csrf[$('#hidCsrfName').val()] = $('#hidCsrfHash').val();
 
     var payload = $.extend({
-        folio: $('#hidFolio').val(),
-        Id_Notas_1: $('#hidIdNotas1').val(),
-        descuento: $('#inputDescuento').val() || 0,
-        subtotal: $('#hidSubtotal').val(),
-        iva: $('#hidIva').val(),
-        total: $('#hidTotal').val(),
-        estatus: $('#selectEstatus').val(),
-        factura: $('#chkFactura').is(':checked') ? 1 : 0,
-        pagos: JSON.stringify(pagos)
+        folio:       $('#hidFolio').val(),
+        Id_Notas_1:  $('#hidIdNotas1').val(),
+        descuento:   $('#inputDescuento').val() || 0,
+        subtotal:    $('#hidSubtotal').val(),
+        iva:         $('#hidIva').val(),
+        total:       $('#hidTotal').val(),
+        estatus:     $('#selectEstatus').val(),
+        factura:     $('#chkFactura').is(':checked') ? 1 : 0,
+        pagos:       JSON.stringify(pagos)   // solo los pagos NUEVOS
     }, csrf);
 
     $('#btnGuardar').prop('disabled', true).text('Guardando...');

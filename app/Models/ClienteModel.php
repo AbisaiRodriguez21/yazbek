@@ -37,13 +37,15 @@ class ClienteModel extends Model
      */
     public function buscar(string $termino): array
     {
-        return $this->groupStart()
-                        ->like('nombre', $termino)
-                        ->orLike('NombreEmpresa', $termino)
-                        ->orLike('RFC', $termino)
-                    ->groupEnd()
-                    ->orderBy('nombre', 'ASC')
-                    ->findAll(50);
+        $db = \Config\Database::connect();
+        $s  = $db->escape('%' . strtolower(trim($termino)) . '%');
+        return $this->where(
+                    "(LOWER(nombre) LIKE {$s}
+                      OR LOWER(NombreEmpresa) LIKE {$s}
+                      OR LOWER(RFC) LIKE {$s})"
+                )
+                ->orderBy('nombre', 'ASC')
+                ->findAll(50);
     }
 
     /**
