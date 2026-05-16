@@ -49,6 +49,12 @@ $routes->group('admin', ['filter' => 'role:1'], function ($routes) {
     $routes->post('clientes/actualizar/(:num)', 'AdminController::actualizarCliente/$1');
     $routes->post('clientes/eliminar', 'AdminController::eliminarCliente');
     $routes->post('clientes/datos', 'AdminController::obtieneDatosCliente');
+    $routes->get('clientes/eliminados', 'AdminController::clientesEliminados');
+    $routes->get('clientes/eliminados/datatable', 'AdminController::clientesEliminadosDatatable');
+    $routes->get('clientes/eliminados/(:num)/historial', 'AdminController::historialClienteEliminado/$1');
+    $routes->post('clientes/restaurar/(:num)', 'AdminController::restaurarCliente/$1');
+    $routes->post('clientes/eliminar-nota', 'AdminController::eliminarNotaCliente');
+    $routes->post('clientes/eliminar-definitivo/(:num)', 'AdminController::eliminarClienteDefinitivo/$1');
 
     // Reporte diario — GET muestra form, POST exporta XLS con rango de fechas
     $routes->get('reportediario', 'AdminController::reporteDiarioPage');

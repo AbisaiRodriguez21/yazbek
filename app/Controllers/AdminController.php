@@ -778,9 +778,117 @@ class AdminController extends BaseController
         $id = (int) $this->request->getPost('clienteDelete');
         if ($id) {
             $clienteModel = new \App\Models\ClienteModel();
-            $clienteModel->delete($id);
+            $clienteModel->softDelete($id);
         }
         return redirect()->to('/admin/clientes')->with('success', 'Cliente eliminado.');
+    }
+
+    // ──────────────────────────────────────────────────────────────
+    // GET /admin/clientes/eliminados  —  Lista de clientes soft-deleted
+    // ──────────────────────────────────────────────────────────────
+    public function clientesEliminados(): string
+    {
+        return view('admin/clientes_eliminados', [
+            'usuario' => $this->getUsuarioSesion(),
+        ]);
+    }
+
+    // GET /admin/clientes/eliminados/datatable
+    public function clientesEliminadosDatatable(): \CodeIgniter\HTTP\Response
+    {
+        $clienteModel = new \App\Models\ClienteModel();
+        $draw     = (int) $this->request->getGet('draw');
+        $start    = (int) $this->request->getGet('start');
+        $length   = (int) $this->request->getGet('length');
+        $search   = $this->request->getGet('search')['value'] ?? '';
+        $orderDir = $this->request->getGet('order')[0]['dir'] ?? 'asc';
+
+        $result = $clienteModel->getDatatableEliminados($start, $length, $search, $orderDir);
+
+        return $this->response->setJSON([
+            'draw'            => $draw,
+            'recordsTotal'    => $result['total'],
+            'recordsFiltered' => $result['filtered'],
+            'data'            => $result['data'],
+        ]);
+    }
+
+    // GET /admin/clientes/eliminados/(:num)/historial  —  Notas de un cliente eliminado
+    public function historialClienteEliminado(int $id): \CodeIgniter\HTTP\Response
+    {
+        $clienteModel = new \App\Models\ClienteModel();
+        $cliente = $clienteModel->find($id);
+        if (! $cliente || ! $cliente['eliminado']) {
+            return $this->response->setJSON(['ok' => false, 'error' => 'Cliente no encontrado.']);
+        }
+
+        $db = \Config\Database::connect();
+        $notas = $db->query(
+            "SELECT n.folio, n.fecha_inicial, n.total, n.subTotal, s.nombre AS status
+             FROM notas_1 n
+             LEFT JOIN status s ON s.id = n.status
+             WHERE n.idCliente = ?
+             ORDER BY n.folio DESC",
+            [$id]
+        )->getResultArray();
+
+        return $this->response->setJSON([
+            'ok'      => true,
+            'cliente' => $cliente,
+            'notas'   => $notas,
+        ]);
+    }
+
+    // POST /admin/clientes/restaurar/(:num)  —  Revive un cliente eliminado
+    public function restaurarCliente(int $id): \CodeIgniter\HTTP\RedirectResponse
+    {
+        $clienteModel = new \App\Models\ClienteModel();
+        $clienteModel->restaurar($id);
+        return redirect()->to('/admin/clientes/eliminados')->with('success', 'Cliente restaurado correctamente.');
+    }
+
+    // POST /admin/clientes/eliminar-nota  —  Elimina permanentemente una nota de un cliente eliminado
+    public function eliminarNotaCliente(): \CodeIgniter\HTTP\Response
+    {
+        $folio = (int) $this->request->getPost('folio');
+        if (! $folio) {
+            return $this->response->setJSON(['ok' => false, 'error' => 'Folio inválido.']);
+        }
+        $db = \Config\Database::connect();
+        try {
+            $nota = $db->query("SELECT Id_Notas_1 FROM notas_1 WHERE folio = ? LIMIT 1", [$folio])->getRowArray();
+            if ($nota) {
+                $db->query("DELETE FROM notas_2 WHERE folio = ?", [$folio]);
+                $db->query("DELETE FROM montosnotas WHERE idNotas = ?", [$nota['Id_Notas_1']]);
+                $db->query("DELETE FROM notas_1 WHERE folio = ?", [$folio]);
+            }
+            return $this->response->setJSON(['ok' => true]);
+        } catch (\Exception $e) {
+            return $this->response->setJSON(['ok' => false, 'error' => $e->getMessage()]);
+        }
+    }
+
+    // POST /admin/clientes/eliminar-definitivo/(:num)  —  Elimina permanentemente el cliente (solo si no tiene notas)
+    public function eliminarClienteDefinitivo(int $id): \CodeIgniter\HTTP\Response
+    {
+        $db = \Config\Database::connect();
+        $totalNotas = (int) $db->query(
+            "SELECT COUNT(*) AS total FROM notas_1 WHERE idCliente = ?", [$id]
+        )->getRow()->total;
+
+        if ($totalNotas > 0) {
+            return $this->response->setJSON([
+                'ok'    => false,
+                'error' => "El cliente aún tiene {$totalNotas} nota(s). Elimínalas primero.",
+            ]);
+        }
+
+        try {
+            $db->query("DELETE FROM clientes WHERE id = ?", [$id]);
+            return $this->response->setJSON(['ok' => true]);
+        } catch (\Exception $e) {
+            return $this->response->setJSON(['ok' => false, 'error' => $e->getMessage()]);
+        }
     }
 
     // POST /admin/clientes/datos  —  AJAX: datos de un cliente

@@ -810,7 +810,7 @@ class MostradorController extends BaseController
     {
         $id = (int) $this->request->getPost('clienteDelete');
         if ($id) {
-            $this->clienteModel->delete($id);
+            $this->clienteModel->softDelete($id);
         }
         return redirect()->to('/mostrador/clientes')->with('success', 'Cliente eliminado.');
     }

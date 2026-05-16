@@ -26,6 +26,7 @@ class ClienteModel extends Model
         'comoNosConoce',
         'NombreEmpresa',
         'razonSocial',
+        'eliminado',
     ];
 
     // ──────────────────────────────────────────────
@@ -33,13 +34,14 @@ class ClienteModel extends Model
     // ──────────────────────────────────────────────
 
     /**
-     * Busca clientes por nombre o empresa (búsqueda parcial).
+     * Busca clientes activos por nombre o empresa (búsqueda parcial).
      */
     public function buscar(string $termino): array
     {
         $db = \Config\Database::connect();
         $s  = $db->escape('%' . strtolower(trim($termino)) . '%');
-        return $this->where(
+        return $this->where('eliminado', 0)
+                ->where(
                     "(LOWER(nombre) LIKE {$s}
                       OR LOWER(NombreEmpresa) LIKE {$s}
                       OR LOWER(RFC) LIKE {$s})"
@@ -49,11 +51,11 @@ class ClienteModel extends Model
     }
 
     /**
-     * Devuelve todos los clientes ordenados por nombre.
+     * Devuelve todos los clientes activos ordenados por nombre.
      */
     public function getTodos(): array
     {
-        return $this->orderBy('nombre', 'ASC')->findAll();
+        return $this->where('eliminado', 0)->orderBy('nombre', 'ASC')->findAll();
     }
 
     /**
@@ -65,7 +67,25 @@ class ClienteModel extends Model
     }
 
     /**
-     * Server-side DataTables: devuelve registros paginados + total.
+     * Soft-delete: marca el cliente como eliminado.
+     */
+    public function softDelete(int $id): void
+    {
+        \Config\Database::connect()
+            ->query("UPDATE clientes SET eliminado = 1 WHERE id = ?", [$id]);
+    }
+
+    /**
+     * Restaura un cliente eliminado.
+     */
+    public function restaurar(int $id): void
+    {
+        \Config\Database::connect()
+            ->query("UPDATE clientes SET eliminado = 0 WHERE id = ?", [$id]);
+    }
+
+    /**
+     * Server-side DataTables para clientes ACTIVOS.
      */
     public function getDatatable(int $start, int $length, string $search, string $orderCol, string $orderDir): array
     {
@@ -75,21 +95,49 @@ class ClienteModel extends Model
 
         $db = \Config\Database::connect();
 
-        // Total sin filtro
-        $total = $db->table($this->table)->countAllResults();
+        $total = (int) $db->table($this->table)->where('eliminado', 0)->countAllResults();
 
-        // Query con filtro
         $builder = $db->table($this->table)
-                      ->select('id, nombre, RFC, celular, telefono, mail, NombreEmpresa, razonSocial, direccion, CP, estado, ciudad');
+                      ->select('id, nombre, RFC, celular, telefono, mail, NombreEmpresa, razonSocial, direccion, CP, estado, ciudad')
+                      ->where('eliminado', 0);
 
         if ($search !== '') {
-            // Búsqueda case-insensitive con LOWER() para que funcione en mayúsculas y minúsculas
             $s = $db->escape('%' . strtolower(trim($search)) . '%');
             $builder->where("(LOWER(nombre) LIKE {$s} OR LOWER(RFC) LIKE {$s} OR LOWER(NombreEmpresa) LIKE {$s} OR LOWER(mail) LIKE {$s})");
         }
 
         $filtered = $builder->countAllResults(false);
         $data     = $builder->orderBy($orderCol, $orderDir)
+                            ->limit($length, $start)
+                            ->get()->getResultArray();
+
+        return [
+            'total'    => $total,
+            'filtered' => $filtered,
+            'data'     => $data,
+        ];
+    }
+
+    /**
+     * Server-side DataTables para clientes ELIMINADOS (soft-deleted).
+     */
+    public function getDatatableEliminados(int $start, int $length, string $search, string $orderDir): array
+    {
+        $db = \Config\Database::connect();
+
+        $total = (int) $db->table($this->table)->where('eliminado', 1)->countAllResults();
+
+        $builder = $db->table($this->table)
+                      ->select('id, nombre, RFC, celular, telefono, mail, NombreEmpresa')
+                      ->where('eliminado', 1);
+
+        if ($search !== '') {
+            $s = $db->escape('%' . strtolower(trim($search)) . '%');
+            $builder->where("(LOWER(nombre) LIKE {$s} OR LOWER(RFC) LIKE {$s} OR LOWER(NombreEmpresa) LIKE {$s})");
+        }
+
+        $filtered = $builder->countAllResults(false);
+        $data     = $builder->orderBy('nombre', $orderDir)
                             ->limit($length, $start)
                             ->get()->getResultArray();
 

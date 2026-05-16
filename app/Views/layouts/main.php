@@ -128,6 +128,7 @@
         elseif (($seg1 === 'mostrador' || $seg1 === 'admin') && $seg2 === 'consulta') $subActivo = 'consultafolios';
         elseif ($seg2 === 'mensajes') $subActivo = 'mensajes';
         elseif ($seg2 === 'usuarios') $subActivo = 'usuarios';
+        elseif ($seg2 === 'clientes' && $seg3 === 'eliminados') $subActivo = 'clientes-eliminados';
         elseif ($seg2 === 'clientes' || ($seg1 === 'mostrador' && $seg2 === 'clientes')) $subActivo = 'clientes';
         elseif ($seg2 === 'importar') $subActivo = 'importar';
     ?>
@@ -227,6 +228,12 @@
                         <a href="<?= base_url('admin/clientes') ?>">
                             <i class="iconsminds-digital-drawing"></i>
                             <span class="d-inline-block">Clientes</span>
+                        </a>
+                    </li>
+                    <li class="<?= $subActivo === 'clientes-eliminados' ? 'active' : '' ?>" data-submenu="clientes-eliminados">
+                        <a href="<?= base_url('admin/clientes/eliminados') ?>">
+                            <i class="simple-icon-trash"></i>
+                            <span class="d-inline-block">Clientes Eliminados</span>
                         </a>
                     </li>
                 </ul>
@@ -390,7 +397,7 @@
                             '/importar/subir', '/caja/ajax', '/ajax', '/confirmar',
                             '/admin/consulta', 'admin/caja', 'admin/venta',
                             'admin/clientes', 'mostrador/clientes', 'caja/clientes',
-                            'admin/inventario'];
+                            'admin/inventario', 'admin/clientes/eliminados'];
 
         function shouldSkip(url) {
             if (!url || url.charAt(0) === '#') return true;

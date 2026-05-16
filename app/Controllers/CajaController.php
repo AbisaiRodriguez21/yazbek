@@ -657,7 +657,7 @@ class CajaController extends BaseController
         $id = (int) $this->request->getPost('clienteDelete');
         if ($id) {
             $clienteModel = new \App\Models\ClienteModel();
-            $clienteModel->delete($id);
+            $clienteModel->softDelete($id);
         }
         return redirect()->to('/caja/clientes')->with('success', 'Cliente eliminado.');
     }
