@@ -99,9 +99,9 @@
                         <tr>
                             <td><?= esc($d['sku']) ?></td>
                             <td><?= esc($d['estilo']) ?></td>
-                            <td class="text-right">$<?= number_format($d['precio'], 2) ?></td>
+                            <td class="text-right">$<?= number_format($d['pUnitario'] ?? $d['pUnitarioM'] ?? 0, 2) ?></td>
                             <td class="text-right"><?= (int)$d['cantidad'] ?></td>
-                            <td class="text-right">$<?= number_format($d['importe'], 2) ?></td>
+                            <td class="text-right">$<?= number_format($d['importe'] ?? ($d['pUnitario'] * $d['cantidad']), 2) ?></td>
                         </tr>
                         <?php endforeach; ?>
                     </tbody>

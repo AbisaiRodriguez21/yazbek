@@ -8,7 +8,7 @@
     <link rel="stylesheet" href="<?= base_url('assets/vendor/bootstrap.min.css') ?>">
     <link rel="stylesheet" href="<?= base_url('assets/vendor/bootstrap.rtl.only.min.css') ?>">
     <link rel="stylesheet" href="<?= base_url('assets/main.css') ?>">
-    <link rel="stylesheet" href="<?= base_url('assets/dore.light.bluenavy.min.css') ?>">
+    <link rel="stylesheet" id="themeLink" href="<?= base_url('assets/dore.light.bluenavy.min.css') ?>">
     <link rel="stylesheet" href="<?= base_url('assets/font/iconsmind-s/css/iconsminds.css') ?>">
     <link rel="stylesheet" href="<?= base_url('assets/font/simple-line-icons/css/simple-line-icons.css') ?>">
     <link rel="stylesheet" href="<?= base_url('assets/vendor/component-custom-switch.min.css') ?>">
@@ -59,7 +59,7 @@
 
             <?php $acceso = (int)($usuario['acceso'] ?? 0); ?>
             <?php if ($acceso === 1): ?>
-            <div class="search" data-search-path="<?= base_url('mostrador/consulta?f=') ?>">
+            <div class="search" data-search-path="<?= base_url('admin/consulta?f=') ?>">
                 <input placeholder="Buscar folio...">
                 <span class="search-icon">
                     <i class="simple-icon-magnifier"></i>
@@ -114,7 +114,7 @@
         $menuActivo = 'dashboards';
         if ($seg2 === 'inventario') $menuActivo = 'productos';
         elseif (in_array($seg2, ['caja', 'reportediario'])) $menuActivo = 'contabilidad';
-        elseif (($seg1 === 'admin' && $seg2 === 'venta') || ($seg1 === 'mostrador' && in_array($seg2, ['venta','mayoreo','consulta'])) || $seg1 === 'reportes') $menuActivo = 'ventas';
+        elseif (($seg1 === 'admin' && in_array($seg2, ['venta','consulta'])) || ($seg1 === 'mostrador' && in_array($seg2, ['venta','mayoreo','consulta'])) || $seg1 === 'reportes') $menuActivo = 'ventas';
         elseif (in_array($seg2, ['usuarios', 'mensajes', 'importar', 'exportar', 'clientes']) || ($seg1 === 'mostrador' && $seg2 === 'clientes')) $menuActivo = 'admon';
 
         // Ítem activo del sub-menu
@@ -124,7 +124,8 @@
         elseif ($seg2 === 'reportediario') $subActivo = 'reportediario';
         elseif ($seg1 === 'mostrador' && $seg2 === 'venta') $subActivo = 'venta';
         elseif ($seg1 === 'mostrador' && $seg2 === 'mayoreo') $subActivo = 'ventamayoreo';
-        elseif ($seg1 === 'mostrador' && $seg2 === 'consulta') $subActivo = 'consultafolios';
+        elseif ($seg1 === 'admin' && $seg2 === 'consulta' && service('request')->getGet('tipo') === 'mayoreo') $subActivo = 'ventamayoreo';
+        elseif (($seg1 === 'mostrador' || $seg1 === 'admin') && $seg2 === 'consulta') $subActivo = 'consultafolios';
         elseif ($seg2 === 'mensajes') $subActivo = 'mensajes';
         elseif ($seg2 === 'usuarios') $subActivo = 'usuarios';
         elseif ($seg2 === 'clientes' || ($seg1 === 'mostrador' && $seg2 === 'clientes')) $subActivo = 'clientes';
@@ -195,19 +196,13 @@
                 <!-- Ventas -->
                 <ul class="list-unstyled" data-link="ventas">
                     <li class="<?= $subActivo === 'venta' ? 'active' : '' ?>" data-submenu="venta">
-                        <a href="<?= base_url('mostrador/venta') ?>">
+                        <a href="<?= base_url('admin/venta') ?>">
                             <i class="simple-icon-picture"></i>
                             <span class="d-inline-block">Venta</span>
                         </a>
                     </li>
-                    <li class="<?= $subActivo === 'ventamayoreo' ? 'active' : '' ?>" data-submenu="ventamayoreo">
-                        <a href="<?= base_url('mostrador/mayoreo') ?>">
-                            <i class="simple-icon-picture"></i>
-                            <span class="d-inline-block">Venta Mayoreo</span>
-                        </a>
-                    </li>
                     <li class="<?= $subActivo === 'consultafolios' ? 'active' : '' ?>" data-submenu="consultafolios">
-                        <a href="<?= base_url('mostrador/consulta') ?>">
+                        <a href="<?= base_url('admin/consulta') ?>">
                             <i class="simple-icon-check"></i>
                             <span class="d-inline-block">Consultar folios</span>
                         </a>
@@ -368,12 +363,15 @@
     <script src="<?= base_url('assets/js/vendor/mousetrap.min.js') ?>"></script>
     <script>
         var BASE_URL = '<?= base_url() ?>';
-        if (typeof Storage !== 'undefined') {
-            var saved = localStorage.getItem('dore-theme-color');
-            if (!saved || saved.indexOf('dark') !== -1) {
-                localStorage.setItem('dore-theme-color', 'dore.light.bluenavy.min.css');
-            }
-        }
+        var BASE_ASSETS = '<?= base_url('assets/') ?>';
+        (function () {
+            var saved = localStorage.getItem('dore-theme-color') || 'dore.light.bluenavy.min.css';
+            var link = document.getElementById('themeLink');
+            if (link) link.href = BASE_ASSETS + saved;
+            // Ajustar checkbox según tema guardado
+            var sw = document.getElementById('switchDark');
+            if (sw) sw.checked = (saved.indexOf('dark') !== -1);
+        })();
     </script>
     <script src="<?= base_url('assets/js/vendor/datatables.min.js') ?>"></script>
     <script src="<?= base_url('assets/js/dore.script.js') ?>"></script>
@@ -387,8 +385,12 @@
         var BASE = BASE_URL; // definido en el layout
 
         // URLs que NO deben interceptarse (descargas, logout, POST-only)
+        // /confirmar siempre carga completo para que el POST de pago no quede en HTTP 0
         var skipPatterns = ['/exportar', '/reportediario/dia', '/logout',
-                            '/importar/subir', '/caja/ajax', '/ajax'];
+                            '/importar/subir', '/caja/ajax', '/ajax', '/confirmar',
+                            '/admin/consulta', 'admin/caja', 'admin/venta',
+                            'admin/clientes', 'mostrador/clientes', 'caja/clientes',
+                            'admin/inventario'];
 
         function shouldSkip(url) {
             if (!url || url.charAt(0) === '#') return true;
@@ -414,7 +416,7 @@
             var menu = 'dashboards';
             if (seg2 === 'inventario') menu = 'productos';
             else if (seg2 === 'caja' || seg2 === 'reportediario') menu = 'contabilidad';
-            else if ((seg1 === 'admin' && seg2 === 'venta') || (seg1 === 'mostrador' && ['venta','mayoreo','consulta'].indexOf(seg2) !== -1) || seg1 === 'reportes') menu = 'ventas';
+            else if ((seg1 === 'admin' && ['venta','consulta'].indexOf(seg2) !== -1) || (seg1 === 'mostrador' && ['venta','mayoreo','consulta'].indexOf(seg2) !== -1) || seg1 === 'reportes') menu = 'ventas';
             else if (['usuarios','mensajes','importar','exportar','clientes'].indexOf(seg2) !== -1 || (seg1 === 'mostrador' && seg2 === 'clientes')) menu = 'admon';
 
             // subActivo
@@ -424,7 +426,8 @@
             else if (seg2 === 'reportediario') sub = 'reportediario';
             else if (seg1 === 'mostrador' && seg2 === 'venta') sub = 'venta';
             else if (seg1 === 'mostrador' && seg2 === 'mayoreo') sub = 'ventamayoreo';
-            else if (seg1 === 'mostrador' && seg2 === 'consulta') sub = 'consultafolios';
+            else if (seg1 === 'admin' && seg2 === 'consulta' && window.location.search.indexOf('tipo=mayoreo') !== -1) sub = 'ventamayoreo';
+            else if ((seg1 === 'mostrador' || seg1 === 'admin') && seg2 === 'consulta') sub = 'consultafolios';
             else if (seg2 === 'mensajes') sub = 'mensajes';
             else if (seg2 === 'usuarios') sub = 'usuarios';
             else if (seg2 === 'clientes' || (seg1 === 'mostrador' && seg2 === 'clientes')) sub = 'clientes';
@@ -581,6 +584,33 @@
             loadPage(window.location.href);
         });
 
+    })();
+    </script>
+
+    <script>
+    /* ── Dark mode toggle ── */
+    (function () {
+        var LIGHT = 'dore.light.bluenavy.min.css';
+        var DARK  = 'dore.dark.bluenavy.min.css';
+
+        function applyTheme(isDark) {
+            var link = document.getElementById('themeLink');
+            if (link) link.href = BASE_ASSETS + (isDark ? DARK : LIGHT);
+            localStorage.setItem('dore-theme-color', isDark ? DARK : LIGHT);
+            var sw = document.getElementById('switchDark');
+            if (sw) sw.checked = isDark;
+        }
+
+        // Aplicar preferencia guardada al cargar
+        var saved = localStorage.getItem('dore-theme-color') || LIGHT;
+        applyTheme(saved === DARK);
+
+        // Listener en el toggle
+        document.addEventListener('change', function (e) {
+            if (e.target && e.target.id === 'switchDark') {
+                applyTheme(e.target.checked);
+            }
+        });
     })();
     </script>
 </body>

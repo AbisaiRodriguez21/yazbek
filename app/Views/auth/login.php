@@ -1,170 +1,105 @@
 <!DOCTYPE html>
-<html>
+<html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Yazbek - Iniciar Sesión</title>
+    <title>Yazbek — Sistema de Gestión</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 
-    <!-- Bootstrap CSS -->
-    <link rel="stylesheet" href="<?= base_url('assets/vendor/bootstrap.min.css') ?>">
-
-    <!-- Dore CSS -->
-    <link rel="stylesheet" href="<?= base_url('assets/main.css') ?>">
-    <link rel="stylesheet" href="<?= base_url('assets/dore.dark.bluenavy.min.css') ?>">
-
-    <!-- Icon fonts -->
+    <link rel="stylesheet" href="<?= base_url('assets/font/iconsmind-s/css/iconsminds.css') ?>">
     <link rel="stylesheet" href="<?= base_url('assets/font/simple-line-icons/css/simple-line-icons.css') ?>">
+    <link rel="stylesheet" href="<?= base_url('assets/vendor/bootstrap.min.css') ?>">
+    <link rel="stylesheet" href="<?= base_url('assets/vendor/bootstrap-float-label.min.css') ?>">
+    <link rel="stylesheet" href="<?= base_url('assets/dore.light.bluenavy.min.css') ?>">
+    <link rel="stylesheet" href="<?= base_url('assets/main.css') ?>">
 
     <style>
-        body {
-            background: linear-gradient(135deg, #1a2a4a 0%, #0f1623 100%);
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+        /* Fondo global — corrige ruta relativa del CSS del tema */
+        .fixed-background {
+            background-image: url('<?= base_url('assets/img/login/balloon-lg.jpg') ?>') !important;
         }
-
-        .login-container {
-            width: 100%;
-            max-width: 400px;
-            padding: 2rem;
+        /* Lado izquierdo: foto modelo Yazbek */
+        .auth-card .image-side {
+            background-image: url('<?= base_url('assets/img/login/balloon.jpg') ?>') !important;
+            background-position: center top !important;
+            background-size: cover !important;
         }
-
-        .login-card {
-            background: #1e2d47;
-            border-radius: 8px;
-            padding: 3rem 2rem;
-            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
-        }
-
-        .login-logo {
-            text-align: center;
-            margin-bottom: 2rem;
-        }
-
-        .login-logo img {
-            height: 60px;
-            margin-bottom: 1rem;
-        }
-
-        .login-logo h1 {
-            font-size: 1.8rem;
-            color: #fff;
-            font-weight: 600;
-            margin: 0;
-        }
-
-        .login-form {
-            margin-top: 2rem;
-        }
-
-        .form-group {
-            margin-bottom: 1.5rem;
-        }
-
-        .form-group label {
-            color: #aaa;
-            font-size: 0.9rem;
-            font-weight: 500;
-            margin-bottom: 0.5rem;
-            display: block;
-        }
-
-        .form-group input {
-            background: #2d3e52;
-            border: 1px solid #3d4e62;
-            color: #fff;
-            padding: 0.75rem 1rem;
-            border-radius: 4px;
-            width: 100%;
-            font-size: 1rem;
-            transition: all 0.3s ease;
-        }
-
-        .form-group input:focus {
-            background: #354555;
-            border-color: #5a7a9e;
-            outline: none;
-            color: #fff;
-        }
-
-        .form-group input::placeholder {
-            color: #888;
-        }
-
-        .login-button {
-            background: linear-gradient(90deg, #5a7a9e 0%, #4a6a8e 100%);
-            color: #fff;
-            border: none;
-            padding: 0.75rem 1.5rem;
-            border-radius: 4px;
-            font-size: 1rem;
-            font-weight: 600;
-            width: 100%;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            margin-top: 1rem;
-        }
-
-        .login-button:hover {
-            background: linear-gradient(90deg, #6a8aae 0%, #5a7a9e 100%);
-            transform: translateY(-2px);
-        }
-
-        .login-button:active {
-            transform: translateY(0);
-        }
-
-        .alert {
-            margin-bottom: 1.5rem;
-            padding: 1rem;
-            border-radius: 4px;
-            border: 1px solid #d4a574;
-            background: #3a2f25;
-            color: #f4b896;
-        }
-
-        .alert-danger {
-            border-color: #c75757;
-            background: #3a2525;
-            color: #f08080;
+        /* Lado derecho: blanco (igual al original) */
+        .auth-card .form-side {
+            background: #fff !important;
         }
     </style>
 </head>
-<body>
-    <div class="login-container">
-        <div class="login-card">
-            <div class="login-logo">
-                <h1>Yazbek</h1>
-                <p style="color: #888; margin: 0; font-size: 0.9rem;">Sistema de Gestión</p>
+
+<body class="background no-footer">
+    <div class="fixed-background"></div>
+
+    <main>
+        <div class="container">
+            <div class="row h-100">
+                <div class="col-12 col-md-10 mx-auto my-auto">
+                    <div class="card auth-card">
+
+                        <!-- Lado izquierdo: imagen + texto -->
+                        <div class="position-relative image-side">
+                            <p class="text-white h2">Yazbek</p>
+                            <p class="white mb-0">
+                                Bienvenido. Llena tus datos para acceder al sistema.
+                            </p>
+                            <?php if (isset($error)): ?>
+                            <div class="alert alert-danger alert-dismissible mt-3" role="alert">
+                                <button type="button" class="close" data-dismiss="alert" aria-hidden="true">&times;</button>
+                                <?= esc($error) ?>
+                            </div>
+                            <?php endif; ?>
+                        </div>
+
+                        <!-- Lado derecho: formulario -->
+                        <div class="form-side">
+                            <a href="<?= base_url('/') ?>">
+                                <span class="logo-single"></span>
+                            </a>
+                            <h6 class="mb-4">Login</h6>
+
+                            <form action="<?= base_url('login') ?>" method="POST">
+                                <?= csrf_field() ?>
+
+                                <label class="form-group has-float-label mb-4">
+                                    <input class="form-control"
+                                           type="email"
+                                           id="email"
+                                           name="email"
+                                           value="<?= old('email') ?>"
+                                           required
+                                           autocomplete="email" />
+                                    <span>E-mail</span>
+                                </label>
+
+                                <label class="form-group has-float-label mb-4">
+                                    <input class="form-control"
+                                           type="password"
+                                           id="pass"
+                                           name="pass"
+                                           required
+                                           autocomplete="current-password" />
+                                    <span>Password</span>
+                                </label>
+
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <button class="btn btn-primary btn-lg btn-shadow" type="submit">
+                                        LOGIN
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+
+                    </div>
+                </div>
             </div>
-
-            <?php if (isset($error)): ?>
-                <div class="alert alert-danger">
-                    <?= esc($error) ?>
-                </div>
-            <?php endif; ?>
-
-            <form class="login-form" method="POST" action="<?= base_url('login') ?>">
-                <?= csrf_field() ?>
-                <div class="form-group">
-                    <label for="email">Correo Electrónico</label>
-                    <input type="email" id="email" name="email" placeholder="tu@email.com" required
-                           value="<?= old('email') ?>">
-                </div>
-
-                <div class="form-group">
-                    <label for="pass">Contraseña</label>
-                    <input type="password" id="pass" name="pass" placeholder="Contraseña" required>
-                </div>
-
-                <button type="submit" class="login-button">Iniciar Sesión</button>
-            </form>
         </div>
-    </div>
+    </main>
 
     <script src="<?= base_url('assets/js/vendor/jquery-3.3.1.min.js') ?>"></script>
     <script src="<?= base_url('assets/js/vendor/bootstrap.bundle.min.js') ?>"></script>
+    <script src="<?= base_url('assets/js/dore.script.js') ?>"></script>
 </body>
 </html>

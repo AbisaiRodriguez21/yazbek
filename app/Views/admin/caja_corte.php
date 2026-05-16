@@ -1,6 +1,48 @@
 <?= $this->extend('layouts/main') ?>
 
+<?= $this->section('page_css') ?>
+<style>
+#exportOverlayCj {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,.5);
+    z-index: 9999;
+    align-items: center;
+    justify-content: center;
+}
+#exportOverlayCj.active { display: flex; }
+#exportOverlayCj .export-card {
+    background: #fff;
+    border-radius: 10px;
+    padding: 2.2rem 3rem;
+    text-align: center;
+    box-shadow: 0 10px 40px rgba(0,0,0,.25);
+    min-width: 240px;
+}
+#exportOverlayCj .exp-spinner {
+    display: inline-block;
+    width: 3.5rem; height: 3.5rem;
+    border: 4px solid #d9e4f0;
+    border-top-color: #145388;
+    border-radius: 50%;
+    animation: spinCj .8s linear infinite;
+}
+@keyframes spinCj { to { transform: rotate(360deg); } }
+#exportOverlayCj .exp-title { margin-top: 1.1rem; margin-bottom: .2rem; font-weight: 700; color: #145388; font-size: 1rem; }
+#exportOverlayCj .exp-sub   { color: #888; font-size: .82rem; }
+</style>
+<?= $this->endSection() ?>
+
 <?= $this->section('content') ?>
+
+<div id="exportOverlayCj" style="display:none;">
+    <div class="export-card">
+        <div class="exp-spinner"></div>
+        <p class="exp-title">Generando reporte…</p>
+        <p class="exp-sub">Por favor espera, esto puede tardar unos segundos.</p>
+    </div>
+</div>
 
 <div class="row">
     <div class="col-12">
@@ -59,10 +101,9 @@
                     </div>
                     <div class="col-md-2">
                         <label>&nbsp;</label><br>
-                        <a href="<?= base_url('admin/reportediario/exportar-corte?fecha=' . urlencode($fecha ?? '') . '&estatus=' . (int)($estatus ?? 0) . '&tipopago=' . (int)($tipopago ?? 0)) ?>"
-                           class="btn btn-success">
+                        <button type="button" class="btn btn-success" id="btnExportarCorte">
                             Exportar
-                        </a>
+                        </button>
                     </div>
                 </div>
             </form>
@@ -133,6 +174,37 @@ $(document).ready(function () {
         language: {
             url: '<?= base_url('assets/js/vendor/datatables.spanish.json') ?>'
         }
+    });
+
+    // Exportar corte con fetch (misma lógica que Reporte Diario)
+    document.getElementById('btnExportarCorte').addEventListener('click', function () {
+        var overlay = document.getElementById('exportOverlayCj');
+        overlay.classList.add('active');
+
+        var fecha    = document.getElementById('fecha').value;
+        var estatus  = document.getElementById('estatus').value;
+        var tipopago = document.getElementById('tipopago').value;
+        var url = '<?= base_url('admin/caja/corte/exportar') ?>?fecha=' + encodeURIComponent(fecha)
+                + '&estatus=' + estatus + '&tipopago=' + tipopago;
+
+        fetch(url, { method: 'GET', credentials: 'same-origin' })
+            .then(function (r) {
+                if (!r.ok) throw new Error('Error ' + r.status);
+                return r.blob();
+            })
+            .then(function (blob) {
+                var a = document.createElement('a');
+                a.href = URL.createObjectURL(blob);
+                a.download = 'corte_caja.xls';
+                document.body.appendChild(a);
+                a.click();
+                setTimeout(function () {
+                    URL.revokeObjectURL(a.href);
+                    document.body.removeChild(a);
+                }, 1000);
+                overlay.classList.remove('active');
+            })
+            .catch(function () { overlay.classList.remove('active'); });
     });
 
 });

@@ -128,9 +128,9 @@
                     <div class="form-group">
                         <label>Estatus de la nota <span class="text-danger">*</span></label>
                         <select name="estatus" id="selectEstatus" class="form-control">
-                            <option value="1">Abierta</option>
+                            <option value="1" selected>Abierta</option>
                             <option value="4">Anticipo</option>
-                            <option value="5" selected>Pagada</option>
+                            <option value="5">Pagada</option>
                         </select>
                         <small id="msgEstatus" class="form-text text-muted"></small>
                     </div>
@@ -369,16 +369,34 @@ $('#btnGuardar').on('click', function() {
 
     $('#btnGuardar').prop('disabled', true).text('Guardando...');
 
-    $.post('<?= base_url('mostrador/venta/' . (int)$nota['folio'] . '/confirmar') ?>', payload, function(resp) {
-        if (resp.success) {
-            window.location.href = '<?= base_url('mostrador/consulta') ?>';
-        } else {
-            alert(resp.message || 'Error al cerrar la nota.');
+    $.ajax({
+        type: 'POST',
+        url: '<?= base_url('mostrador/venta/' . (int)$nota['folio'] . '/confirmar') ?>',
+        data: payload,
+        complete: function(xhr) {
+            var resp = null;
+            try { resp = JSON.parse(xhr.responseText); } catch(e) {}
+
+            if (resp && resp.success) {
+                window.location.href = '<?= base_url('mostrador/consulta') ?>';
+                return;
+            }
+
+            // Mostrar el error real (JSON message, o texto plano del HTML)
+            var msg;
+            if (resp && resp.message) {
+                msg = resp.message;
+            } else {
+                msg = 'HTTP ' + xhr.status + '\n'
+                    + (xhr.responseText || '(sin respuesta)')
+                          .replace(/<[^>]+>/g, ' ')
+                          .replace(/\s+/g, ' ')
+                          .trim()
+                          .substring(0, 500);
+            }
+            alert('Error al guardar:\n' + msg);
             $('#btnGuardar').prop('disabled', false).text('Cerrar Nota');
         }
-    }, 'json').fail(function() {
-        alert('Error de comunicación.');
-        $('#btnGuardar').prop('disabled', false).text('Cerrar Nota');
     });
 });
 

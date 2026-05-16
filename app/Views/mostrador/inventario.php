@@ -26,7 +26,7 @@
                     <tr>
                         <th>SKU</th>
                         <th>Descripción</th>
-                        <th>Categoría</th>
+                        <th>Color</th>
                         <th class="text-right">P. Menudeo</th>
                         <th class="text-right">P. Mayoreo</th>
                         <th class="text-right">Stock</th>
@@ -36,10 +36,10 @@
                     <?php foreach ($productos as $p): ?>
                     <tr>
                         <td><?= esc($p['sku']) ?></td>
-                        <td><?= esc($p['Descripcion_corta']) ?></td>
-                        <td><?= esc($p['categoria'] ?? '') ?></td>
-                        <td class="text-right">$<?= number_format($p['precio_menudeo'] ?? $p['precio'] ?? 0, 2) ?></td>
-                        <td class="text-right">$<?= number_format($p['precio_mayoreo'] ?? $p['precioMayoreo'] ?? 0, 2) ?></td>
+                        <td><?= esc($p['Descripcion_corta'] ?? $p['Descripcion_Larga'] ?? '') ?></td>
+                        <td><?= esc($p['Color'] ?? '') ?></td>
+                        <td class="text-right">$<?= number_format($p['pMenudeo'] ?? 0, 2) ?></td>
+                        <td class="text-right">$<?= number_format($p['pMayoreo'] ?? 0, 2) ?></td>
                         <td class="text-right">
                             <?php $stock = (int)$p['piezas']; ?>
                             <span class="badge badge-<?= $stock > 10 ? 'success' : ($stock > 0 ? 'warning' : 'danger') ?>">

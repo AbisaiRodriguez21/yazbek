@@ -63,33 +63,43 @@ class CajaController extends BaseController
     // Muestra las notas unidas con pagos, clientes, vendedores y tipo de pago.
     // La consulta original tenía una query muy compleja con múltiples JOINs.
     // ──────────────────────────────────────────────────────────────
+// ──────────────────────────────────────────────────────────────
+    // GET /caja/cobrar  —  Lista de notas pendientes de cobro
+    // ──────────────────────────────────────────────────────────────
     public function caja(): string
     {
         $db   = \Config\Database::connect();
         $hoy  = date('Y-m-d');
 
-        // Notas del día con joins (migrado del query original de caja/caja.php)
-        $notas = $db->query(
-            "SELECT n.folio,
-                    DATE_FORMAT(mn.fecha, '%d/%m/%Y') AS fecha,
-                    c.nombre AS cliente,
-                    u.usuario AS vendedor,
-                    tp.descripcion AS tipopago,
-                    (mn.monto + mn.cargos) AS total,
-                    s.nombre AS status,
-                    n.status AS idstatus,
-                    n.Id_Notas_1,
-                    n.verificado
-             FROM montosnotas mn
-             INNER JOIN notas_1 n  ON mn.idNotas = n.Id_Notas_1
-             INNER JOIN clientes c ON c.id = n.idCliente
-             INNER JOIN usuarios u ON u.Id = n.idVendedor
-             INNER JOIN tipopago tp ON mn.idTipoPago = tp.id
-             LEFT JOIN  status s   ON n.status = s.id
-             WHERE mn.fecha LIKE ?
-             ORDER BY n.Id_Notas_1 DESC",
-            ["{$hoy}%"]
-        )->getResultArray();
+        $queryStr = "SELECT n.folio,
+                            DATE_FORMAT(mn.fecha, '%d/%m/%Y') AS fecha,
+                            c.nombre AS cliente,
+                            u.usuario AS vendedor,
+                            tp.descripcion AS tipopago,
+                            (mn.monto + mn.cargos) AS total,
+                            s.nombre AS status,
+                            n.status AS idstatus,
+                            n.Id_Notas_1,
+                            n.verificado
+                     FROM montosnotas mn
+                     INNER JOIN notas_1 n  ON mn.idNotas = n.Id_Notas_1
+                     INNER JOIN clientes c ON c.id = n.idCliente
+                     INNER JOIN usuarios u ON u.Id = n.idVendedor
+                     INNER JOIN tipopago tp ON mn.idTipoPago = tp.id
+                     LEFT JOIN  status s   ON n.status = s.id
+                     WHERE mn.fecha LIKE ?";
+        
+        $params = ["{$hoy}%"];
+
+        // CANDADO DE SEGURIDAD: Solo nivel 1 (Admin) ve todo. Los demás ven solo lo suyo.
+        if ((int) session()->get('user_acceso') !== 1) {
+            $queryStr .= " AND n.idVendedor = ?";
+            $params[] = (int) session()->get('user_id');
+        }
+
+        $queryStr .= " ORDER BY n.Id_Notas_1 DESC";
+
+        $notas = $db->query($queryStr, $params)->getResultArray();
 
         return view('caja/caja', [
             'usuario' => $this->getUsuarioSesion(),
@@ -169,8 +179,19 @@ class CajaController extends BaseController
             [$nota['Id_Notas_1'], $tipoPago, $monto, $cargos, date('Y-m-d H:i:s')]
         );
 
-        // Marcar la nota como pagada
-        $this->notaModel->marcarPagada($nota['Id_Notas_1']);
+        // Verificar si la suma de pagos cubre el total de la nota
+        $totalPagado = (float) $db->query(
+            "SELECT COALESCE(SUM(monto), 0) AS pagado FROM montosnotas WHERE idNotas = ?",
+            [$nota['Id_Notas_1']]
+        )->getRow()->pagado;
+
+        $totalNota = (float) ($nota['total'] ?? 0);
+
+        if ($totalPagado >= $totalNota) {
+            // Totalmente liquidada → Pagada (status 5)
+            $this->notaModel->marcarPagada($nota['Id_Notas_1']);
+        }
+        // Si no alcanza → dejar el status actual (Abierta/Parcial), no tocar
 
         return redirect()->to('/caja/consulta')->with('success', "Pago del folio #{$folio} registrado correctamente.");
     }
@@ -181,6 +202,9 @@ class CajaController extends BaseController
     //
     // Fecha en formato dd/mm/yyyy — misma lógica que el original PHP.
     // Agrupa múltiples pagos del mismo folio en una sola fila.
+    // ──────────────────────────────────────────────────────────────
+// ──────────────────────────────────────────────────────────────
+    // GET|POST /caja/corte  —  Corte de caja
     // ──────────────────────────────────────────────────────────────
     public function corte(): string
     {
@@ -201,7 +225,7 @@ class CajaController extends BaseController
         $statusList   = $db->query("SELECT * FROM status ORDER BY Id ASC")->getResultArray();
         $tipoPagoList = $db->query("SELECT * FROM tipopago ORDER BY id ASC")->getResultArray();
 
-        // ── Query principal — idéntico a AdminController::cajaCorte ──
+        // ── Query principal ──
         $where = "WHERE 1=1";
         if ($fecha !== '') {
             $where .= " AND DATE_FORMAT(n.fecha_inicial, '%d/%m/%Y') = " . $db->escape($fecha);
@@ -211,6 +235,11 @@ class CajaController extends BaseController
         }
         if ($tipopago > 0) {
             $where .= " AND tp.id = " . (int) $tipopago;
+        }
+
+        // CANDADO DE SEGURIDAD
+        if (!in_array((int) session()->get('user_acceso'), [1, 2])) {
+            $where .= " AND n.idVendedor = " . (int) session()->get('user_id');
         }
 
         $filas = $db->query(
@@ -233,7 +262,7 @@ class CajaController extends BaseController
              ORDER BY DATE_FORMAT(n.fecha_inicial, '%d/%m/%Y'), n.folio"
         )->getResultArray();
 
-        // ── Agrupar pagos por folio (igual que AdminController::cajaCorte) ──
+        // ── Agrupar pagos por folio ──
         $agrupadas = [];
         foreach ($filas as $row) {
             $f = $row['folio'];
@@ -258,8 +287,6 @@ class CajaController extends BaseController
             }
         }
 
-        // Convertir dd/mm/yyyy → Y-m-d para el link de Exportar
-        // (ReportesController::corteCaja usa formato Y-m-d en sus queries)
         $fechaYmd = '';
         $dt = \DateTime::createFromFormat('d/m/Y', $fecha);
         if ($dt) {
@@ -282,7 +309,8 @@ class CajaController extends BaseController
     // GET /caja/corte/exportar  —  Descarga directa Excel del corte
     // Migrado desde: reportes/ReporteCorteCaja.php
     //
-    // Misma query que corte() — salida HTML con headers Excel (igual que original).
+// ──────────────────────────────────────────────────────────────
+    // GET /caja/corte/exportar  —  Descarga directa Excel del corte
     // ──────────────────────────────────────────────────────────────
     public function exportarCorte(): \CodeIgniter\HTTP\ResponseInterface
     {
@@ -296,7 +324,6 @@ class CajaController extends BaseController
             $fecha = date('d/m/Y');
         }
 
-        // Misma query que corte() / ReporteCorteCaja.php original
         $where = "WHERE 1=1";
         if ($fecha !== '') {
             $where .= " AND DATE_FORMAT(n.fecha_inicial, '%d/%m/%Y') = " . $db->escape($fecha);
@@ -306,6 +333,11 @@ class CajaController extends BaseController
         }
         if ($tipopago > 0) {
             $where .= " AND tp.id = " . (int) $tipopago;
+        }
+
+        // CANDADO DE SEGURIDAD
+        if (!in_array((int) session()->get('user_acceso'), [1, 2])) {
+            $where .= " AND n.idVendedor = " . (int) session()->get('user_id');
         }
 
         $filas = $db->query(
@@ -328,7 +360,6 @@ class CajaController extends BaseController
              ORDER BY DATE_FORMAT(n.fecha_inicial, '%d/%m/%Y'), n.folio"
         )->getResultArray();
 
-        // Agrupar pagos por folio (igual que corte())
         $agrupadas = [];
         foreach ($filas as $row) {
             $f = $row['folio'];
@@ -357,7 +388,6 @@ class CajaController extends BaseController
         $filenameDate = date('dmY');
         $filename     = 'ReporteCaja' . $filenameDate . '.xls';
 
-        // Construir tabla HTML (Excel la abre directamente — mismo método que original)
         $html  = '<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body>';
         $html .= '<table border="1">';
         $html .= '<tr>';
@@ -368,14 +398,14 @@ class CajaController extends BaseController
 
         foreach (array_values($agrupadas) as $n) {
             $html .= '<tr>';
-            $html .= '<td>' . htmlspecialchars($n['folio'])      . '</td>';
-            $html .= '<td>' . htmlspecialchars($n['referencia'])  . '</td>';
-            $html .= '<td>' . htmlspecialchars($n['fecha'])       . '</td>';
-            $html .= '<td>' . htmlspecialchars($n['cliente'])     . '</td>';
-            $html .= '<td>' . htmlspecialchars($n['vendedor'])    . '</td>';
-            $html .= '<td>' . htmlspecialchars($n['tipopago'])    . '</td>';
-            $html .= '<td>' . htmlspecialchars($n['status'])      . '</td>';
-            $html .= '<td>' . htmlspecialchars($n['verificado'])  . '</td>';
+            $html .= '<td>' . htmlspecialchars((string) $n['folio'])      . '</td>';
+            $html .= '<td>' . htmlspecialchars((string) $n['referencia'])  . '</td>';
+            $html .= '<td>' . htmlspecialchars((string) $n['fecha'])       . '</td>';
+            $html .= '<td>' . htmlspecialchars((string) $n['cliente'])     . '</td>';
+            $html .= '<td>' . htmlspecialchars((string) $n['vendedor'])    . '</td>';
+            $html .= '<td>' . htmlspecialchars((string) $n['tipopago'])    . '</td>';
+            $html .= '<td>' . htmlspecialchars((string) $n['status'])      . '</td>';
+            $html .= '<td>' . htmlspecialchars((string) $n['verificado'])  . '</td>';
             $html .= '</tr>';
         }
 
@@ -668,12 +698,19 @@ class CajaController extends BaseController
         $whereClauses = [];
         $params       = [];
 
+        $session = session();
+        if (!in_array((int) $session->get('user_acceso'), [1, 2])) {
+            $whereClauses[] = "n.idVendedor = ?";
+            $params[]       = (int) $session->get('user_id');
+        }
+
         if ($search !== '') {
             $s = '%' . $search . '%';
             $whereClauses[] = "(n.folio LIKE ? OR c.nombre LIKE ? OR u.usuario LIKE ?)";
-            $params = [$s, $s, $s];
+            $params[] = $s; 
+            $params[] = $s; 
+            $params[] = $s;
         }
-
         $where = $whereClauses ? "WHERE " . implode(" AND ", $whereClauses) : "";
 
         $filtered = (int) $db->query("SELECT COUNT(*) AS cnt {$baseSql} {$where}", $params)->getRow()->cnt;

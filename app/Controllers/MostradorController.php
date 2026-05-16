@@ -113,10 +113,11 @@ class MostradorController extends BaseController
 
         // Insertar nota con status 3 (cancelada) — se activa al confirmar
         $this->notaModel->insert([
-            'idCliente'  => $idCliente,
-            'idVendedor' => $idVendedor,
-            'folio'      => $folio,
-            'status'     => 3,
+            'idCliente'    => $idCliente,
+            'idVendedor'   => $idVendedor,
+            'folio'        => $folio,
+            'status'       => 3,
+            'precioMayoreo'=> 0,
         ]);
 
         // Marcar al vendedor como con ticket abierto
@@ -206,6 +207,9 @@ class MostradorController extends BaseController
     // ──────────────────────────────────────────────────────────────
     public function ventaStp3Post(int $folio): \CodeIgniter\HTTP\Response
     {
+        // Captura cualquier excepción y la devuelve como JSON
+        // para que el frontend siempre reciba JSON (nunca HTML de error)
+        try {
         $db = \Config\Database::connect();
 
         // ── Detectar formato: JSON legacy (campo 'data') vs nuevo (campos individuales) ──
@@ -311,6 +315,16 @@ class MostradorController extends BaseController
         return $this->response
                     ->setContentType('application/json')
                     ->setBody(json_encode(['success' => true]));
+
+        } catch (\Throwable $e) {
+            log_message('error', 'ventaStp3Post folio=' . $folio . ' → ' . $e->getMessage());
+            return $this->response
+                        ->setContentType('application/json')
+                        ->setBody(json_encode([
+                            'success' => false,
+                            'message' => $e->getMessage(),
+                        ]));
+        }
     }
 
     // ──────────────────────────────────────────────────────────────
@@ -531,17 +545,25 @@ class MostradorController extends BaseController
         $nuevoFolio = $this->notaModel->siguienteFolio();
         $idVendedor = (int) session()->get('user_id');
 
-        // Crear nueva cabecera
+        // Crear nueva cabecera — copia toda la info del original, nuevo folio, sin pagos
         $this->notaModel->insert([
-            'idCliente'    => $notaOrigen['idCliente'],
-            'idVendedor'   => $idVendedor,
-            'folio'        => $nuevoFolio,
-            'status'       => 3,
-            'NombreCliente'=> $notaOrigen['NombreCliente'],
-            'vendedor'     => session()->get('user_nombre'),
-            'telefono'     => $notaOrigen['telefono'],
-            'direccion'    => $notaOrigen['direccion'],
-            'email'        => $notaOrigen['email'],
+            'idCliente'        => $notaOrigen['idCliente'],
+            'idVendedor'       => $idVendedor,
+            'folio'            => $nuevoFolio,
+            'status'           => 1,  // Abierta — sin pagos registrados
+            'precioMayoreo'    => $notaOrigen['precioMayoreo']    ?? 0,
+            'factura'          => $notaOrigen['factura']          ?? 0,
+            'descuento'        => $notaOrigen['descuento']        ?? 0,
+            'tipoPago'         => $notaOrigen['tipoPago']         ?? '',
+            'tipoImpresion'    => $notaOrigen['tipoImpresion']    ?? 0,
+            'cargoPorImpresion'=> $notaOrigen['cargoPorImpresion'] ?? 0,
+            'sumaImportes'     => $notaOrigen['sumaImportes']     ?? 0,
+            'subTotal'         => $notaOrigen['subTotal']         ?? 0,
+            'subTotal2'        => $notaOrigen['subTotal2']        ?? 0,
+            'iva'              => $notaOrigen['iva']              ?? 0,
+            'total'            => $notaOrigen['total']            ?? 0,
+            'totalPiezas'      => $notaOrigen['totalPiezas']      ?? 0,
+            // verificado y montosnotas NO se copian — empieza sin pagos
         ]);
 
         $nuevaNota = $this->notaModel->getPorFolio($nuevoFolio);
@@ -875,11 +897,7 @@ class MostradorController extends BaseController
             'idVendedor'   => $idVendedor,
             'folio'        => $folio,
             'status'       => 3,
-            'NombreCliente'=> $cliente['nombre'] ?? '',
-            'vendedor'     => $vendedor,
-            'telefono'     => $cliente['telefono'] ?? '',
-            'direccion'    => $cliente['direccion'] ?? '',
-            'email'        => $cliente['mail']      ?? '',
+            'precioMayoreo'=> 1,
         ]);
 
         $this->usuarioModel->activarBandera($idVendedor);
@@ -928,10 +946,11 @@ class MostradorController extends BaseController
         $orderCol = $cols[$orderColIdx] ?? 'n.folio';
         $orderDir = $orderDir === 'asc' ? 'ASC' : 'DESC';
 
-        $db = \Config\Database::connect();
+        $db      = \Config\Database::connect();
+        $userId  = (int) session()->get('user_id');
 
-        // Total sin filtro
-        $total = $db->query("SELECT COUNT(*) AS total FROM notas_1")->getRow()->total;
+        // Total solo del vendedor logueado
+        $total = $db->query("SELECT COUNT(*) AS total FROM notas_1 WHERE idVendedor = ?", [$userId])->getRow()->total;
 
         // Base query
         $baseSql = "FROM notas_1 n
@@ -939,8 +958,9 @@ class MostradorController extends BaseController
                     LEFT JOIN usuarios u ON u.Id = n.idVendedor
                     LEFT JOIN status s ON s.id = n.status";
 
-        $whereClauses = [];
-        $params = [];
+        // Siempre filtrar por el vendedor logueado
+        $whereClauses = ["n.idVendedor = ?"];
+        $params       = [$userId];
 
         if ($search !== '') {
             $s = '%' . $search . '%';
@@ -948,7 +968,7 @@ class MostradorController extends BaseController
             $params = array_merge($params, [$s, $s, $s]);
         }
 
-        $where = $whereClauses ? "WHERE " . implode(" AND ", $whereClauses) : "";
+        $where = "WHERE " . implode(" AND ", $whereClauses);
 
         $countResult = $db->query("SELECT COUNT(*) AS cnt {$baseSql} {$where}", $params)->getRow();
         $filtered = $countResult->cnt ?? 0;

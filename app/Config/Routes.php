@@ -31,6 +31,10 @@ $routes->group('admin', ['filter' => 'role:1'], function ($routes) {
     // Inventario de productos
     $routes->get('inventario', 'AdminController::inventario');
     $routes->post('inventario/ajax', 'AdminController::ajaxInventario');
+    $routes->get('inventario/exportar', 'AdminController::exportarInventario');
+    $routes->get('inventario/buscar-sku', 'AdminController::buscarProductoSku');
+    $routes->post('inventario/actualizar-producto', 'AdminController::actualizarProducto');
+    $routes->post('inventario/eliminar', 'AdminController::eliminarProducto');
 
     // Mensajes / avisos de admin
     $routes->get('mensajes', 'AdminController::mensajes');
@@ -62,10 +66,14 @@ $routes->group('admin', ['filter' => 'role:1'], function ($routes) {
     $routes->post('caja/cancelar', 'AdminController::cajaCancelar');
     $routes->get('caja/corte', 'AdminController::cajaCorte');
     $routes->post('caja/corte', 'AdminController::cajaCorte');
+    $routes->get('caja/corte/exportar', 'AdminController::exportarCorteXls');
 
     // Importar productos CSV
     $routes->get('importar', 'AdminController::importar');
     $routes->post('importar/procesar', 'AdminController::procesarImportacion');
+    $routes->post('inventario/importar/producto', 'AdminController::importarProducto');
+    $routes->post('inventario/importar/precios',  'AdminController::importarPrecios');
+    $routes->post('inventario/importar/stock',    'AdminController::importarStock');
 
     // Ajax usuarios (edición inline de contraseña)
     $routes->post('ajax/usuarios', 'AdminController::ajaxUsuarios');
@@ -78,6 +86,10 @@ $routes->group('admin', ['filter' => 'role:1'], function ($routes) {
 
     // Importar CSV desde vista de inventario
     $routes->post('importar/subir', 'AdminController::procesarImportacion');
+
+    // Consultar folios (admin ve todos, con filtro mayoreo/menudeo)
+    $routes->get('consulta', 'AdminController::consulta');
+    $routes->get('consulta/datatable', 'AdminController::consultaDatatable');
 });
 
 // =============================================================

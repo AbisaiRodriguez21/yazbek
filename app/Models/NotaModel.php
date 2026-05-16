@@ -48,12 +48,8 @@ class NotaModel extends Model
         'iva',
         'total',
         'tipoImpresion',
+        'cargoPorImpresion',
         'totalPiezas',
-        'NombreCliente',
-        'vendedor',
-        'direccion',
-        'telefono',
-        'email',
     ];
 
     // ──────────────────────────────────────────────
@@ -63,19 +59,31 @@ class NotaModel extends Model
     /**
      * Notas del día de hoy con datos del cliente.
      */
+/**
+     * Notas del día de hoy con datos del cliente (Filtrado por vendedor).
+     */
     public function getDeHoy(): array
     {
         $hoy = date('Y-m-d');
-        return $this->db->query(
-            "SELECT n.*, c.nombre AS nombreCliente
-             FROM notas_1 n
-             LEFT JOIN clientes c ON n.idCliente = c.id
-             WHERE n.fecha_inicial LIKE ?
-             ORDER BY n.Id_Notas_1 DESC",
-            ["{$hoy}%"]
-        )->getResultArray();
-    }
+        $session = session();
+        
+        $sql = "SELECT n.*, c.nombre AS nombreCliente
+                FROM notas_1 n
+                LEFT JOIN clientes c ON n.idCliente = c.id
+                WHERE n.fecha_inicial LIKE ?";
+        
+        $params = ["{$hoy}%"];
 
+        // SI NO ES NIVEL 1 (Admin), SOLO VE SUS PROPIOS FOLIOS
+        if ($session->has('user_acceso') && (int) $session->get('user_acceso') !== 1) {
+            $sql .= " AND n.idVendedor = ?";
+            $params[] = (int) $session->get('user_id');
+        }
+
+        $sql .= " ORDER BY n.Id_Notas_1 DESC";
+
+        return $this->db->query($sql, $params)->getResultArray();
+    }
     /**
      * Cuenta notas de hoy por status.
      */
@@ -87,22 +95,32 @@ class NotaModel extends Model
                     ->countAllResults();
     }
 
-    /**
-     * Notas recientes de hoy con join a clientes.
+
+/**
+     * Notas recientes de hoy con join a clientes (Filtrado por vendedor).
      */
     public function getRecientesDeHoy(): array
     {
         $hoy = date('Y-m-d');
-        return $this->db->query(
-            "SELECT n.*, c.nombre
-             FROM notas_1 n
-             INNER JOIN clientes c ON n.idCliente = c.id
-             WHERE n.fecha_inicial LIKE ?
-             ORDER BY n.Id_Notas_1 DESC",
-            ["{$hoy}%"]
-        )->getResultArray();
-    }
+        $session = session();
 
+        $sql = "SELECT n.*, c.nombre
+                FROM notas_1 n
+                INNER JOIN clientes c ON n.idCliente = c.id
+                WHERE n.fecha_inicial LIKE ?";
+        
+        $params = ["{$hoy}%"];
+
+        // SI NO ES NIVEL 1, SOLO VE SUS PROPIOS FOLIOS
+        if ($session->has('user_acceso') && (int) $session->get('user_acceso') !== 1) {
+            $sql .= " AND n.idVendedor = ?";
+            $params[] = (int) $session->get('user_id');
+        }
+
+        $sql .= " ORDER BY n.Id_Notas_1 DESC";
+
+        return $this->db->query($sql, $params)->getResultArray();
+    }
     /**
      * Obtiene una nota por folio.
      */
@@ -131,16 +149,28 @@ class NotaModel extends Model
                 LEFT JOIN status s ON n.status = s.id";
 
         $params = [];
+        $whereClauses = []; 
+
+        //Filtro por vendedor logueado si no es nivel 1
+        $session = session();
+        if ($session->has('user_acceso') && (int) $session->get('user_acceso') !== 1) {
+            $whereClauses[] = "n.idVendedor = ?";
+            $params[]       = (int) $session->get('user_id');
+        }
 
         if (! empty($folio)) {
-            $sql    .= " WHERE n.folio LIKE ?";
+            $whereClauses[] = "n.folio LIKE ?";
             $params[] = "{$folio}%";
         }
 
         if ($statusPago !== null && $statusPago > 0) {
-            $sql    .= empty($params) ? " WHERE" : " AND";
-            $sql    .= " s.id = ?";
+            $whereClauses[] = "s.id = ?";
             $params[] = $statusPago;
+        }
+
+        // Si hay condiciones, armamos el WHERE
+        if (!empty($whereClauses)) {
+            $sql .= " WHERE " . implode(" AND ", $whereClauses);
         }
 
         $sql .= " ORDER BY n.Id_Notas_1 DESC";

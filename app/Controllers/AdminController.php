@@ -59,10 +59,29 @@ class AdminController extends BaseController
         // Contadores de notas del día (equivalente a los queries del index.php original)
         $db = \Config\Database::connect();
 
-        $totalHoy       = $db->query("SELECT COUNT(*) AS total FROM notas_1 WHERE fecha_inicial LIKE ?", ["{$hoy}%"])->getRow()->total;
-        $totalAnticipo  = $db->query("SELECT COUNT(*) AS total FROM notas_1 WHERE status = 4 AND fecha_inicial LIKE ?", ["{$hoy}%"])->getRow()->total;
-        $totalCancelado = $db->query("SELECT COUNT(*) AS total FROM notas_1 WHERE status = 3 AND fecha_inicial LIKE ?", ["{$hoy}%"])->getRow()->total;
-        $totalPagado    = $db->query("SELECT COUNT(*) AS total FROM notas_1 WHERE verificado = 'Pagado' AND fecha_inicial LIKE ?", ["{$hoy}%"])->getRow()->total;
+        // Órdenes del día: TODAS (abiertas + en proceso + canceladas + anticipo + pagadas)
+        $totalHoy       = $db->query(
+            "SELECT COUNT(*) AS total FROM notas_1 WHERE fecha_inicial LIKE ?",
+            ["{$hoy}%"]
+        )->getRow()->total;
+
+        // Anticipo: status = 4
+        $totalAnticipo  = $db->query(
+            "SELECT COUNT(*) AS total FROM notas_1 WHERE status = 4 AND fecha_inicial LIKE ?",
+            ["{$hoy}%"]
+        )->getRow()->total;
+
+        // Canceladas: status = 3
+        $totalCancelado = $db->query(
+            "SELECT COUNT(*) AS total FROM notas_1 WHERE status = 3 AND fecha_inicial LIKE ?",
+            ["{$hoy}%"]
+        )->getRow()->total;
+
+        // Confirmadas/Pagadas: status = 5
+        $totalPagado    = $db->query(
+            "SELECT COUNT(*) AS total FROM notas_1 WHERE status = 5 AND fecha_inicial LIKE ?",
+            ["{$hoy}%"]
+        )->getRow()->total;
 
         // Órdenes recientes del día con datos del cliente
         $recientes = $db->query(
@@ -195,6 +214,368 @@ class AdminController extends BaseController
             'usuario'   => $this->getUsuarioSesion(),
             'productos' => $this->productoModel->getInventario(),
         ]);
+    }
+
+    // ──────────────────────────────────────────────────────────────
+    // GET /admin/inventario/exportar  —  Descarga inventario completo en XLS
+    // ──────────────────────────────────────────────────────────────
+    public function exportarInventario(): \CodeIgniter\HTTP\Response
+    {
+        $productos = $this->productoModel->getInventario();
+
+        $html  = '<html><head><meta charset="utf-8"></head><body>';
+        $html .= '<table border="1">';
+        $html .= '<tr>'
+               . '<td><strong>SKU</strong></td>'
+               . '<td><strong>Estilo / Descripción / Color / Talla</strong></td>'
+               . '<td><strong>P. Mayoreo</strong></td>'
+               . '<td><strong>P. Menudeo</strong></td>'
+               . '<td><strong>Piezas</strong></td>'
+               . '</tr>';
+
+        foreach ($productos as $p) {
+            $desc = trim(
+                htmlspecialchars($p['estilo']           ?? '') . ' - ' .
+                htmlspecialchars($p['Descripcion_Larga'] ?? '') . ' - ' .
+                htmlspecialchars($p['Color']            ?? '') . ' - ' .
+                htmlspecialchars($p['Talla']            ?? '')
+            );
+            $html .= '<tr>'
+                   . '<td>' . htmlspecialchars($p['sku']     ?? '') . '</td>'
+                   . '<td>' . $desc . '</td>'
+                   . '<td>' . number_format((float)($p['pMayoreo'] ?? 0), 2) . '</td>'
+                   . '<td>' . number_format((float)($p['pMenudeo'] ?? 0), 2) . '</td>'
+                   . '<td>' . (int)($p['piezas'] ?? 0) . '</td>'
+                   . '</tr>';
+        }
+
+        $html .= '</table></body></html>';
+
+        $fecha = date('Y-m-d');
+        return $this->response
+            ->setHeader('Last-Modified',       gmdate('D,d M Y H:i:s') . ' GMT')
+            ->setHeader('Cache-Control',       'no-cache, must-revalidate')
+            ->setHeader('Pragma',              'no-cache')
+            ->setHeader('Content-Type',        'application/vnd.ms-excel')
+            ->setHeader('Content-Disposition', 'attachment; filename=inventario_' . $fecha . '.xls')
+            ->setBody($html);
+    }
+
+    // ──────────────────────────────────────────────────────────────
+    // GET /admin/inventario/buscar-sku?sku=XXX  —  Devuelve JSON del producto
+    // ──────────────────────────────────────────────────────────────
+    public function buscarProductoSku(): \CodeIgniter\HTTP\Response
+    {
+        $sku = trim($this->request->getGet('sku') ?? '');
+        if ($sku === '') {
+            return $this->response->setJSON(['ok' => false, 'error' => 'SKU vacío.']);
+        }
+
+        $db = \Config\Database::connect();
+        $p  = $db->query(
+            "SELECT id, sku, estilo, Descripcion_corta, Descripcion_Larga, Color, Talla, pMayoreo, pMenudeo, piezas
+             FROM productosyazbek WHERE sku = ? LIMIT 1",
+            [$sku]
+        )->getRowArray();
+
+        if (! $p) {
+            return $this->response->setJSON(['ok' => false, 'error' => 'SKU no encontrado: ' . esc($sku)]);
+        }
+
+        return $this->response->setJSON(['ok' => true, 'producto' => $p]);
+    }
+
+    // ──────────────────────────────────────────────────────────────
+    // POST /admin/inventario/actualizar-producto  —  Actualiza un producto por id
+    // ──────────────────────────────────────────────────────────────
+    public function actualizarProducto(): \CodeIgniter\HTTP\Response
+    {
+        $id = (int) $this->request->getPost('id');
+        if (! $id) {
+            return $this->response->setJSON(['ok' => false, 'error' => 'ID inválido.']);
+        }
+
+        $db = \Config\Database::connect();
+        try {
+            $db->query(
+                "UPDATE productosyazbek
+                 SET estilo = ?, Descripcion_corta = ?, Descripcion_Larga = ?,
+                     Color = ?, Talla = ?, pMayoreo = ?, pMenudeo = ?, piezas = ?
+                 WHERE id = ?",
+                [
+                    trim($this->request->getPost('estilo')            ?? ''),
+                    trim($this->request->getPost('Descripcion_corta') ?? ''),
+                    trim($this->request->getPost('Descripcion_Larga') ?? ''),
+                    trim($this->request->getPost('Color')             ?? ''),
+                    trim($this->request->getPost('Talla')             ?? ''),
+                    (float) $this->request->getPost('pMayoreo'),
+                    (float) $this->request->getPost('pMenudeo'),
+                    (int)   $this->request->getPost('piezas'),
+                    $id,
+                ]
+            );
+            return $this->response->setJSON(['ok' => true, 'msg' => 'Producto actualizado correctamente.']);
+        } catch (\Exception $e) {
+            return $this->response->setJSON(['ok' => false, 'error' => $e->getMessage()]);
+        }
+    }
+
+    // POST /admin/inventario/eliminar  —  Elimina un producto por id
+    // ──────────────────────────────────────────────────────────────
+    public function eliminarProducto(): \CodeIgniter\HTTP\Response
+    {
+        $id = (int) $this->request->getPost('id');
+        if (! $id) {
+            return $this->response->setJSON(['ok' => false, 'error' => 'ID inválido.']);
+        }
+
+        $db = \Config\Database::connect();
+        try {
+            $db->query("DELETE FROM productosyazbek WHERE id = ?", [$id]);
+            return $this->response->setJSON(['ok' => true]);
+        } catch (\Exception $e) {
+            return $this->response->setJSON(['ok' => false, 'error' => $e->getMessage()]);
+        }
+    }
+
+    // ──────────────────────────────────────────────────────────────
+    // Helpers privados para importación CSV
+    // ──────────────────────────────────────────────────────────────
+
+    /**
+     * Lee el archivo CSV subido, valida extensión y estructura de columnas.
+     * Devuelve ['ok'=>true, 'handle'=>resource, 'ruta'=>string, 'headers'=>array]
+     * o        ['ok'=>false, 'error'=>string]
+     */
+    private function abrirCsv(string $campo, array $requeridas): array
+    {
+        $archivo = $this->request->getFile($campo);
+
+        if (! $archivo || ! $archivo->isValid()) {
+            return ['ok' => false, 'error' => 'No se recibió ningún archivo válido.'];
+        }
+
+        $ext = strtolower($archivo->getClientExtension());
+        if (! in_array($ext, ['csv', 'txt'])) {
+            return ['ok' => false, 'error' => 'El archivo debe ser CSV (.csv). Recibido: .' . $ext];
+        }
+
+        $nuevoNombre = $archivo->getRandomName();
+        $archivo->move(WRITEPATH . 'uploads', $nuevoNombre);
+        $ruta = WRITEPATH . 'uploads/' . $nuevoNombre;
+
+        // Abrir eliminando BOM de UTF-8 que agrega WPS Office / Excel
+        $contenido = file_get_contents($ruta);
+        if ($contenido === false) {
+            return ['ok' => false, 'error' => 'No se pudo leer el archivo.'];
+        }
+        // Quitar BOM UTF-8 (\xEF\xBB\xBF) si existe al inicio
+        $contenido = ltrim($contenido, "\xEF\xBB\xBF");
+        file_put_contents($ruta, $contenido);
+
+        $handle = fopen($ruta, 'r');
+        if (! $handle) {
+            return ['ok' => false, 'error' => 'No se pudo abrir el archivo.'];
+        }
+
+        // Auto-detectar separador: leer primera línea y contar comas vs punto y coma
+        $primeraLinea = fgets($handle);
+        rewind($handle);
+        $separador = (substr_count($primeraLinea, ';') > substr_count($primeraLinea, ',')) ? ';' : ',';
+
+        // Leer encabezados (primera fila)
+        $rawHeaders = fgetcsv($handle, 0, $separador);
+        if (! $rawHeaders) {
+            fclose($handle); unlink($ruta);
+            return ['ok' => false, 'error' => 'El archivo está vacío o no tiene encabezados.'];
+        }
+
+        // Limpiar cada encabezado: trim + quitar caracteres invisibles / comillas
+        $headers = array_map(function ($h) {
+            $h = trim($h);
+            $h = trim($h, '"\'');          // quitar comillas si las hay
+            $h = preg_replace('/[^\x20-\x7E]/', '', $h); // quitar no-ASCII residual
+            return $h;
+        }, $rawHeaders);
+
+        $headersLower = array_map('strtolower', $headers);
+
+        $faltantes = [];
+        foreach ($requeridas as $col) {
+            if (! in_array(strtolower($col), $headersLower)) {
+                $faltantes[] = $col;
+            }
+        }
+
+        if (! empty($faltantes)) {
+            fclose($handle); unlink($ruta);
+            return [
+                'ok'    => false,
+                'error' => 'Columnas faltantes en el CSV: ' . implode(', ', $faltantes)
+                         . '. Columnas encontradas: ' . implode(', ', $headers),
+            ];
+        }
+
+        return ['ok' => true, 'handle' => $handle, 'ruta' => $ruta, 'headers' => $headers, 'sep' => $separador];
+    }
+
+    // ──────────────────────────────────────────────────────────────
+    // POST /admin/inventario/importar/producto  —  Insertar nuevos productos
+    // Formato CSV: Estilo,SKU,Descripcion Corta,Descripcion Larga,Talla,Color,Precio Menudeo,Precio Mayoreo,Piezas
+    // (mismo formato que exporta BaseCompleta / EBD)
+    // ──────────────────────────────────────────────────────────────
+    public function importarProducto(): \CodeIgniter\HTTP\RedirectResponse
+    {
+        $requeridas = ['SKU', 'Estilo', 'Descripcion Larga', 'Talla', 'Color', 'Precio Menudeo', 'Precio Mayoreo', 'Piezas'];
+        $csv = $this->abrirCsv('archivo_csv', $requeridas);
+
+        if (! $csv['ok']) {
+            return redirect()->to('/admin/inventario')->with('error', $csv['error']);
+        }
+
+        $handle  = $csv['handle'];
+        $ruta    = $csv['ruta'];
+        $headers = $csv['headers'];
+        $sep     = $csv['sep'];
+        $headLow = array_map('strtolower', $headers);
+
+        $db         = \Config\Database::connect();
+        $insertados = 0;
+        $omitidos   = 0;
+        $errores    = 0;
+
+        while (($fila = fgetcsv($handle, 0, $sep)) !== false) {
+            if (count($fila) < count($headers)) continue;
+            $di = array_combine($headLow, $fila);
+
+            $sku = trim($di['sku'] ?? '');
+            if ($sku === '') { $omitidos++; continue; }
+
+            // No insertar si el SKU ya existe
+            $existe = $db->query("SELECT id FROM productosyazbek WHERE sku = ? LIMIT 1", [$sku])->getRow();
+            if ($existe) { $omitidos++; continue; }
+
+            try {
+                $db->query(
+                    "INSERT INTO productosyazbek
+                        (estilo, sku, Descripcion_corta, Descripcion_Larga, Talla, Color, pMenudeo, pMayoreo, piezas)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    [
+                        trim($di['estilo']            ?? ''),
+                        $sku,
+                        trim($di['descripcion corta'] ?? $di['descripcion_corta'] ?? ''),
+                        trim($di['descripcion larga'] ?? $di['descripcion_larga'] ?? ''),
+                        trim($di['talla']             ?? ''),
+                        trim($di['color']             ?? ''),
+                        (float)($di['precio menudeo'] ?? $di['pmenudeo'] ?? 0),
+                        (float)($di['precio mayoreo'] ?? $di['pmayoreo'] ?? 0),
+                        (int)($di['piezas']           ?? 0),
+                    ]
+                );
+                $insertados++;
+            } catch (\Exception $e) {
+                $errores++;
+            }
+        }
+
+        fclose($handle);
+        unlink($ruta);
+
+        return redirect()->to('/admin/inventario')
+            ->with('success', "Productos nuevos insertados: {$insertados}. Omitidos (SKU ya existe): {$omitidos}. Errores: {$errores}.");
+    }
+
+    // ──────────────────────────────────────────────────────────────
+    // POST /admin/inventario/importar/precios  —  Actualizar solo precios
+    // Formato CSV: SKU,pMayoreo,pMenudeo
+    // ──────────────────────────────────────────────────────────────
+    public function importarPrecios(): \CodeIgniter\HTTP\RedirectResponse
+    {
+        $requeridas = ['SKU', 'pMayoreo', 'pMenudeo'];
+        $csv = $this->abrirCsv('archivo_csv', $requeridas);
+
+        if (! $csv['ok']) {
+            return redirect()->to('/admin/inventario')->with('error', $csv['error']);
+        }
+
+        $handle  = $csv['handle'];
+        $ruta    = $csv['ruta'];
+        $headers = $csv['headers'];
+        $sep     = $csv['sep'];
+        $headLow = array_map('strtolower', $headers);
+
+        $db          = \Config\Database::connect();
+        $actualizados = 0;
+        $noEncontrados = 0;
+
+        while (($fila = fgetcsv($handle, 0, $sep)) !== false) {
+            if (count($fila) < count($headers)) continue;
+            $di = array_combine($headLow, $fila);
+
+            $sku = trim($di['sku'] ?? '');
+            if ($sku === '') continue;
+
+            $filas = $db->query(
+                "UPDATE productosyazbek SET pMayoreo = ?, pMenudeo = ? WHERE sku = ?",
+                [(float)($di['pmayoreo'] ?? 0), (float)($di['pmenudeo'] ?? 0), $sku]
+            )->resultID;
+
+            $afectadas = $db->affectedRows();
+            if ($afectadas > 0) { $actualizados++; }
+            else                { $noEncontrados++; }
+        }
+
+        fclose($handle);
+        unlink($ruta);
+
+        return redirect()->to('/admin/inventario')
+            ->with('success', "Precios actualizados: {$actualizados}. SKUs no encontrados: {$noEncontrados}.");
+    }
+
+    // ──────────────────────────────────────────────────────────────
+    // POST /admin/inventario/importar/stock  —  Actualizar solo piezas
+    // Formato CSV: SKU,piezas
+    // ──────────────────────────────────────────────────────────────
+    public function importarStock(): \CodeIgniter\HTTP\RedirectResponse
+    {
+        $requeridas = ['SKU', 'piezas'];
+        $csv = $this->abrirCsv('archivo_csv', $requeridas);
+
+        if (! $csv['ok']) {
+            return redirect()->to('/admin/inventario')->with('error', $csv['error']);
+        }
+
+        $handle  = $csv['handle'];
+        $ruta    = $csv['ruta'];
+        $headers = $csv['headers'];
+        $sep     = $csv['sep'];
+        $headLow = array_map('strtolower', $headers);
+
+        $db          = \Config\Database::connect();
+        $actualizados = 0;
+        $noEncontrados = 0;
+
+        while (($fila = fgetcsv($handle, 0, $sep)) !== false) {
+            if (count($fila) < count($headers)) continue;
+            $di = array_combine($headLow, $fila);
+
+            $sku = trim($di['sku'] ?? '');
+            if ($sku === '') continue;
+
+            $db->query(
+                "UPDATE productosyazbek SET piezas = ? WHERE sku = ?",
+                [(int)($di['piezas'] ?? 0), $sku]
+            );
+
+            if ($db->affectedRows() > 0) { $actualizados++; }
+            else                         { $noEncontrados++; }
+        }
+
+        fclose($handle);
+        unlink($ruta);
+
+        return redirect()->to('/admin/inventario')
+            ->with('success', "Stock actualizado: {$actualizados} productos. SKUs no encontrados: {$noEncontrados}.");
     }
 
     // ──────────────────────────────────────────────────────────────
@@ -444,28 +825,40 @@ class AdminController extends BaseController
         $hasta  = "{$fecha2} {$h2}:{$m2}:{$s2}";
 
         $filas = $db->query(
-            "SELECT n1.fecha_inicial, n1.folio, n2.sku AS estilo, p.Descripcion_corta,
-                    n2.cantidad AS totalPiezas, n2.cantidad
+            "SELECT n1.fecha_inicial, n1.folio,
+                    SUM(n2.cantidad) AS totalPiezas,
+                    SUM(COALESCE(NULLIF(n2.importe, 0), n2.cantidad * n2.pUnitario, 0)) AS totalImporte,
+                    COALESCE(u.usuario, '—') AS vendedor
              FROM notas_1 n1
              INNER JOIN notas_2 n2 ON n1.folio = n2.folio
-             LEFT JOIN productosyazbek p ON p.sku = n2.sku
+             LEFT JOIN usuarios u ON u.Id = n1.idVendedor
              WHERE n1.fecha_inicial >= ? AND n1.fecha_inicial <= ? AND n1.status != 3
+             GROUP BY n1.Id_Notas_1, n1.fecha_inicial, n1.folio, u.usuario
              ORDER BY n1.folio ASC",
             [$desde, $hasta]
         )->getResultArray();
 
+        $tdH = 'style="background:#145388;color:#fff;font-family:Calibri,Arial,sans-serif;font-size:11pt;padding:4px 8px;font-weight:bold;"';
+        $tdS = 'style="font-family:Calibri,Arial,sans-serif;font-size:10pt;padding:3px 7px;"';
+        $tdT = 'style="font-family:Calibri,Arial,sans-serif;font-size:9pt;padding:3px 7px;color:#555;"';
+
         $html  = '<html><head><meta charset="utf-8"></head><body>';
-        $html .= '<table border="1">';
-        $html .= '<tr><td colspan="6">Resultado de la fecha: ' . $desde . ' hasta: ' . $hasta . '</td></tr>';
-        $html .= '<tr><td>Fecha</td><td>Folio</td><td>SKU</td><td>Descripcion Corta</td><td>Total Piezas</td><td>Cantidad</td></tr>';
+        $html .= '<table border="1" cellspacing="0" cellpadding="0">';
+        $html .= '<tr><td colspan="5" ' . $tdT . '>Reporte del ' . $desde . ' al ' . $hasta . '</td></tr>';
+        $html .= '<tr>';
+        $html .= '<td ' . $tdH . '>Fecha</td>';
+        $html .= '<td ' . $tdH . '>Folio</td>';
+        $html .= '<td ' . $tdH . '>Piezas</td>';
+        $html .= '<td ' . $tdH . '>Importe</td>';
+        $html .= '<td ' . $tdH . '>Vendedor</td>';
+        $html .= '</tr>';
         foreach ($filas as $f) {
             $html .= '<tr>';
-            $html .= '<td>' . htmlspecialchars($f['fecha_inicial']) . '</td>';
-            $html .= '<td>' . htmlspecialchars($f['folio']) . '</td>';
-            $html .= '<td>' . htmlspecialchars($f['estilo']) . '</td>';
-            $html .= '<td>' . htmlspecialchars($f['Descripcion_corta'] ?? '') . '</td>';
-            $html .= '<td>' . htmlspecialchars($f['totalPiezas']) . '</td>';
-            $html .= '<td>' . htmlspecialchars($f['cantidad']) . '</td>';
+            $html .= '<td ' . $tdS . '>' . htmlspecialchars($f['fecha_inicial']) . '</td>';
+            $html .= '<td ' . $tdS . '>' . htmlspecialchars($f['folio']) . '</td>';
+            $html .= '<td ' . $tdS . ' align="center">' . (int)$f['totalPiezas'] . '</td>';
+            $html .= '<td ' . $tdS . ' align="right">$ ' . number_format((float)($f['totalImporte'] ?? 0), 2) . '</td>';
+            $html .= '<td ' . $tdS . '>' . htmlspecialchars($f['vendedor']) . '</td>';
             $html .= '</tr>';
         }
         $html .= '</table></body></html>';
@@ -474,7 +867,7 @@ class AdminController extends BaseController
             ->setHeader('Last-Modified', gmdate('D,d M Y H:i:s') . ' GMT')
             ->setHeader('Cache-Control', 'no-cache, must-revalidate')
             ->setHeader('Pragma', 'no-cache')
-            ->setHeader('Content-Type', 'application/x-msexcel')
+            ->setHeader('Content-Type', 'application/vnd.ms-excel')
             ->setHeader('Content-Disposition', 'attachment; filename=reportediario.xls')
             ->setBody($html);
     }
@@ -670,8 +1063,16 @@ class AdminController extends BaseController
 
         $statusId   = (int)($nota['statusId']  ?? 0);
         $verificado = $nota['verificado'] ?? '';
+
+        // Si tiene pagos con anticipo y el monto pagado es menor al total → mostrar "Abierta"
+        $sumPagado   = array_sum(array_column($pagos, 'monto'));
+        $hayAnticipo = !empty(array_filter($pagos, fn($p) => ($p['anticipo'] ?? 0) == 1));
+        $displayStatus = ($hayAnticipo && $sumPagado < $nota['total'])
+            ? 'Abierta'
+            : esc($nota['status']);
+
         $html .= '<tr><td colspan="2" class="text-right no-border" align="left"><strong>Estatus:</strong></td>';
-        $html .= '<td colspan="2" align="left" id="estatusPago">' . esc($nota['status']) . '</td></tr>';
+        $html .= '<td colspan="2" align="left" id="estatusPago">' . $displayStatus . '</td></tr>';
         $html .= '<tr><td colspan="2" class="text-right no-border" align="left"><strong>Factura:</strong></td>';
         $html .= '<td colspan="2" align="left">' . (($nota['factura'] ?? 0) == 1 ? 'Si requiere' : 'No requiere') . '</td></tr>';
 
@@ -837,6 +1238,87 @@ class AdminController extends BaseController
     }
 
     // ──────────────────────────────────────────────────────────────
+    // GET /admin/caja/corte/exportar  —  Exporta XLS del corte de caja con los mismos filtros
+    // ──────────────────────────────────────────────────────────────
+    public function exportarCorteXls(): \CodeIgniter\HTTP\Response
+    {
+        $db       = \Config\Database::connect();
+        $fecha    = $this->request->getGet('fecha')    ?? date('d/m/Y');
+        $estatus  = (int)($this->request->getGet('estatus')  ?? 0);
+        $tipopago = (int)($this->request->getGet('tipopago') ?? 0);
+
+        $where  = "WHERE 1=1";
+        $params = [];
+
+        if ($fecha !== '') {
+            $where .= " AND DATE_FORMAT(n.fecha_inicial, '%d/%m/%Y') = ?";
+            $params[] = $fecha;
+        }
+        if ($estatus > 0) {
+            $where .= " AND n.status = ?";
+            $params[] = $estatus;
+        }
+        if ($tipopago > 0) {
+            $where .= " AND EXISTS (SELECT 1 FROM montosnotas mn WHERE mn.idNotas = n.Id_Notas_1 AND mn.idTipoPago = ?)";
+            $params[] = $tipopago;
+        }
+
+        $filas = $db->query(
+            "SELECT n.folio,
+                    n.fecha_inicial,
+                    COALESCE(NULLIF(c.nombre,''), 'PUBLICO GENERAL') AS cliente,
+                    COALESCE(u.usuario, '—') AS vendedor,
+                    GROUP_CONCAT(DISTINCT tp.descripcion ORDER BY tp.id SEPARATOR ' / ') AS tipoPago,
+                    COALESCE(s.nombre, '—') AS estatus
+             FROM notas_1 n
+             LEFT JOIN clientes   c  ON c.id          = n.idCliente
+             LEFT JOIN usuarios   u  ON u.Id           = n.idVendedor
+             LEFT JOIN montosnotas mn ON mn.idNotas    = n.Id_Notas_1
+             LEFT JOIN tipopago   tp ON tp.id          = mn.idTipoPago
+             LEFT JOIN status     s  ON s.id           = n.status
+             {$where}
+             GROUP BY n.Id_Notas_1, n.folio, n.fecha_inicial, c.nombre, u.usuario, s.nombre
+             ORDER BY n.folio ASC",
+            $params
+        )->getResultArray();
+
+        $tdH = 'style="background:#145388;color:#fff;font-family:Calibri,Arial,sans-serif;font-size:11pt;padding:4px 8px;font-weight:bold;"';
+        $tdS = 'style="font-family:Calibri,Arial,sans-serif;font-size:10pt;padding:3px 7px;"';
+        $tdT = 'style="font-family:Calibri,Arial,sans-serif;font-size:9pt;padding:3px 7px;color:#555;"';
+
+        $html  = '<html><head><meta charset="utf-8"></head><body>';
+        $html .= '<table border="1" cellspacing="0" cellpadding="0">';
+        $html .= '<tr><td colspan="6" ' . $tdT . '>Corte de Caja — Fecha: ' . htmlspecialchars($fecha) . '</td></tr>';
+        $html .= '<tr>';
+        $html .= '<td ' . $tdH . '>Folio</td>';
+        $html .= '<td ' . $tdH . '>Fecha y Hora</td>';
+        $html .= '<td ' . $tdH . '>Cliente</td>';
+        $html .= '<td ' . $tdH . '>Vendedor</td>';
+        $html .= '<td ' . $tdH . '>Tipo de Pago</td>';
+        $html .= '<td ' . $tdH . '>Estatus</td>';
+        $html .= '</tr>';
+        foreach ($filas as $f) {
+            $html .= '<tr>';
+            $html .= '<td ' . $tdS . '>' . htmlspecialchars($f['folio']) . '</td>';
+            $html .= '<td ' . $tdS . '>' . htmlspecialchars($f['fecha_inicial']) . '</td>';
+            $html .= '<td ' . $tdS . '>' . htmlspecialchars($f['cliente']) . '</td>';
+            $html .= '<td ' . $tdS . '>' . htmlspecialchars($f['vendedor']) . '</td>';
+            $html .= '<td ' . $tdS . '>' . htmlspecialchars($f['tipoPago'] ?? '—') . '</td>';
+            $html .= '<td ' . $tdS . '>' . htmlspecialchars($f['estatus']) . '</td>';
+            $html .= '</tr>';
+        }
+        $html .= '</table></body></html>';
+
+        return $this->response
+            ->setHeader('Last-Modified', gmdate('D,d M Y H:i:s') . ' GMT')
+            ->setHeader('Cache-Control', 'no-cache, must-revalidate')
+            ->setHeader('Pragma', 'no-cache')
+            ->setHeader('Content-Type', 'application/vnd.ms-excel')
+            ->setHeader('Content-Disposition', 'attachment; filename=corte_caja.xls')
+            ->setBody($html);
+    }
+
+    // ──────────────────────────────────────────────────────────────
     // GET /admin/importar  —  Vista importar CSV
     // Migrado desde: admin/importar.php (y variantes)
     // ──────────────────────────────────────────────────────────────
@@ -973,6 +1455,104 @@ class AdminController extends BaseController
             ->setHeader('Content-Type', 'application/x-msexcel')
             ->setHeader('Content-Disposition', 'attachment; filename=BaseCompleta.xls')
             ->setBody($html);
+    }
+
+    // ──────────────────────────────────────────────────────────────
+    // GET /admin/consulta  —  Vista: consultar todos los folios (admin)
+    // Soporta filtro ?tipo=mayoreo|menudeo
+    // ──────────────────────────────────────────────────────────────
+    public function consulta(): string
+    {
+        $tipo = $this->request->getGet('tipo') ?? 'todos';
+
+        return view('admin/consulta', [
+            'usuario' => $this->getUsuarioSesion(),
+            'tipo'    => $tipo,
+        ]);
+    }
+
+    // ──────────────────────────────────────────────────────────────
+    // GET /admin/consulta/datatable  —  AJAX server-side DataTables
+    // Copia exacta de CajaController::consultaDatatable() + filtro tipo
+    // ──────────────────────────────────────────────────────────────
+    public function consultaDatatable(): \CodeIgniter\HTTP\ResponseInterface
+    {
+        $draw        = (int) $this->request->getGet('draw');
+        $start       = (int) $this->request->getGet('start');
+        $length      = (int) $this->request->getGet('length');
+        $search      = $this->request->getGet('search')['value'] ?? '';
+        $orderColIdx = (int) ($this->request->getGet('order')[0]['column'] ?? 0);
+        $orderDir    = $this->request->getGet('order')[0]['dir'] ?? 'desc';
+        $tipo        = $this->request->getGet('tipo') ?? '';
+
+        $cols     = ['n.folio', 'n.fecha_inicial', 'c.nombre', 'u.usuario', 'n.tipoPago', 'n.total', 'n.status'];
+        $orderCol = $cols[$orderColIdx] ?? 'n.folio';
+        $orderDir = $orderDir === 'asc' ? 'ASC' : 'DESC';
+
+        try {
+            $db = \Config\Database::connect();
+
+            $total = (int) $db->query("SELECT COUNT(*) AS total FROM notas_1")->getRow()->total;
+
+            $baseSql = "FROM notas_1 n
+                        LEFT JOIN clientes c ON c.id = n.idCliente
+                        LEFT JOIN usuarios u ON u.Id = n.idVendedor
+                        LEFT JOIN status s ON s.id = n.status";
+
+            $whereClauses = [];
+            $params       = [];
+
+            // Filtro mayoreo/menudeo con placeholder ? igual que el resto de params
+            if ($tipo === 'mayoreo') {
+                $whereClauses[] = "n.precioMayoreo = ?";
+                $params[]       = 1;
+            } elseif ($tipo === 'menudeo') {
+                $whereClauses[] = "COALESCE(n.precioMayoreo, 0) = ?";
+                $params[]       = 0;
+            }
+
+            if ($search !== '') {
+                $s = '%' . $search . '%';
+                $whereClauses[] = "(n.folio LIKE ? OR c.nombre LIKE ? OR u.usuario LIKE ?)";
+                $params[]       = $s;
+                $params[]       = $s;
+                $params[]       = $s;
+            }
+
+            $where    = $whereClauses ? "WHERE " . implode(" AND ", $whereClauses) : "";
+            $filtered = (int) $db->query("SELECT COUNT(*) AS cnt {$baseSql} {$where}", $params)->getRow()->cnt;
+
+            $data = $db->query(
+                "SELECT n.folio, n.fecha_inicial,
+                        COALESCE(c.nombre, '—')   AS cliente,
+                        COALESCE(u.usuario, '—')  AS vendedor,
+                        COALESCE(n.tipoPago, '—') AS tipopago,
+                        n.total, n.status AS idstatus,
+                        COALESCE(s.nombre, '')    AS status_nombre,
+                        n.verificado
+                 {$baseSql} {$where}
+                 ORDER BY {$orderCol} {$orderDir}
+                 LIMIT ? OFFSET ?",
+                array_merge($params, [$length, $start])
+            )->getResultArray();
+
+            return $this->response->setJSON([
+                'draw'            => $draw,
+                'recordsTotal'    => $total,
+                'recordsFiltered' => $filtered,
+                'data'            => $data,
+            ]);
+
+        } catch (\Exception $e) {
+            log_message('error', 'AdminController::consultaDatatable — ' . $e->getMessage());
+            return $this->response->setJSON([
+                'draw'            => $draw,
+                'recordsTotal'    => 0,
+                'recordsFiltered' => 0,
+                'data'            => [],
+                'error'           => 'Error al consultar los folios: ' . $e->getMessage(),
+            ]);
+        }
     }
 
     // ──────────────────────────────────────────────────────────────

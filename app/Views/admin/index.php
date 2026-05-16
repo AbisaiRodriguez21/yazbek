@@ -1,7 +1,6 @@
 <?= $this->extend('layouts/main') ?>
 
 <?= $this->section('page_css') ?>
-<link rel="stylesheet" href="<?= base_url('assets/vendor/glide.core.min.css') ?>">
 <link rel="stylesheet" href="<?= base_url('assets/vendor/dataTables.bootstrap4.min.css') ?>">
 <link rel="stylesheet" href="<?= base_url('assets/vendor/datatables.responsive.bootstrap4.min.css') ?>">
 <?= $this->endSection() ?>
@@ -19,49 +18,43 @@
         <div class="separator mb-5"></div>
     </div>
 
-    <!-- Tarjetas de contadores — estilo Glide carrusel igual al original -->
+    <!-- Tarjetas de contadores — 4 fichas fijas del día -->
     <div class="col-lg-12 col-xl-6 mb-4">
-        <div class="icon-cards-row">
-            <div class="glide dashboard-numbers">
-                <div class="glide__track" data-glide-el="track">
-                    <ul class="glide__slides">
-                        <li class="glide__slide">
-                            <a href="#" class="card">
-                                <div class="card-body text-center">
-                                    <i class="iconsminds-basket-coins"></i>
-                                    <p class="card-text mb-0">Órdenes del día</p>
-                                    <p class="lead text-center"><?= (int)($totalHoy ?? 0) ?></p>
-                                </div>
-                            </a>
-                        </li>
-                        <li class="glide__slide">
-                            <a href="#" class="card">
-                                <div class="card-body text-center">
-                                    <i class="iconsminds-clock"></i>
-                                    <p class="card-text mb-0">Órdenes en Anticipo</p>
-                                    <p class="lead text-center"><?= (int)($totalAnticipo ?? 0) ?></p>
-                                </div>
-                            </a>
-                        </li>
-                        <li class="glide__slide">
-                            <a href="#" class="card">
-                                <div class="card-body text-center">
-                                    <i class="iconsminds-arrow-refresh"></i>
-                                    <p class="card-text mb-0">Órdenes canceladas</p>
-                                    <p class="lead text-center"><?= (int)($totalCancelado ?? 0) ?></p>
-                                </div>
-                            </a>
-                        </li>
-                        <li class="glide__slide">
-                            <a href="#" class="card">
-                                <div class="card-body text-center">
-                                    <i class="iconsminds-mail-read"></i>
-                                    <p class="card-text mb-0">Órdenes confirmadas</p>
-                                    <p class="lead text-center"><?= (int)($totalPagado ?? 0) ?></p>
-                                </div>
-                            </a>
-                        </li>
-                    </ul>
+        <div class="row">
+            <div class="col-6 col-xl-3 mb-3">
+                <div class="card text-center h-100">
+                    <div class="card-body">
+                        <i class="iconsminds-basket-coins" style="font-size:2.5rem; color:#145388;"></i>
+                        <p class="card-text mb-0 mt-2 text-muted small">Órdenes del día</p>
+                        <p class="lead mb-0 font-weight-bold"><?= (int)($totalHoy ?? 0) ?></p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-6 col-xl-3 mb-3">
+                <div class="card text-center h-100">
+                    <div class="card-body">
+                        <i class="iconsminds-clock" style="font-size:2.5rem; color:#145388;"></i>
+                        <p class="card-text mb-0 mt-2 text-muted small">Órdenes en Anticipo</p>
+                        <p class="lead mb-0 font-weight-bold"><?= (int)($totalAnticipo ?? 0) ?></p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-6 col-xl-3 mb-3">
+                <div class="card text-center h-100">
+                    <div class="card-body">
+                        <i class="iconsminds-arrow-refresh" style="font-size:2.5rem; color:#145388;"></i>
+                        <p class="card-text mb-0 mt-2 text-muted small">Órdenes canceladas</p>
+                        <p class="lead mb-0 font-weight-bold"><?= (int)($totalCancelado ?? 0) ?></p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-6 col-xl-3 mb-3">
+                <div class="card text-center h-100">
+                    <div class="card-body">
+                        <i class="iconsminds-mail-read" style="font-size:2.5rem; color:#145388;"></i>
+                        <p class="card-text mb-0 mt-2 text-muted small">Órdenes confirmadas</p>
+                        <p class="lead mb-0 font-weight-bold"><?= (int)($totalPagado ?? 0) ?></p>
+                    </div>
                 </div>
             </div>
         </div>
@@ -142,24 +135,7 @@
 <?= $this->endSection() ?>
 
 <?= $this->section('page_scripts') ?>
-<script src="<?= base_url('assets/js/vendor/glide.min.js') ?>"></script>
 <script>
-$(document).ready(function() {
-    // Glide carousel para las tarjetas de contadores
-    if (typeof Glide !== 'undefined' && document.querySelector('.dashboard-numbers')) {
-        new Glide('.dashboard-numbers', {
-            type: 'carousel',
-            startAt: 0,
-            perView: 4,
-            breakpoints: {
-                1400: { perView: 4 },
-                992:  { perView: 3 },
-                768:  { perView: 2 },
-                576:  { perView: 1 }
-            }
-        }).mount();
-    }
-    // DataTable lo inicializa dore.script.js via clase .data-table-standard
-});
+// DataTable lo inicializa dore.script.js via clase .data-table-standard
 </script>
 <?= $this->endSection() ?>

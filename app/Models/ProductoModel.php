@@ -35,7 +35,7 @@ class ProductoModel extends Model
      */
     public function getInventario(): array
     {
-        return $this->select('id, sku, estilo, Descripcion_Larga, Color, Talla, pMayoreo, pMenudeo, piezas')
+        return $this->select('id, sku, estilo, Descripcion_corta, Descripcion_Larga, Color, Talla, pMayoreo, pMenudeo, piezas')
                     ->orderBy('id', 'ASC')
                     ->findAll();
     }
