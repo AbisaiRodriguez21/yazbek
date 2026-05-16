@@ -60,6 +60,20 @@ class Session extends BaseConfig
      */
     public string $savePath = WRITEPATH . 'session';
 
+    public function __construct()
+    {
+        parent::__construct();
+        // En Windows, WRITEPATH puede no tener permisos de escritura (ej. OneDrive).
+        // Si la carpeta no es escribible, usar el directorio temporal del sistema.
+        if (! is_writable($this->savePath)) {
+            $tempPath = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'ci4_sessions';
+            if (! is_dir($tempPath)) {
+                mkdir($tempPath, 0700, true);
+            }
+            $this->savePath = $tempPath;
+        }
+    }
+
     /**
      * --------------------------------------------------------------------------
      * Session Match IP

@@ -11,7 +11,7 @@
 .stats-ticker {
     display: flex;
     width: max-content;
-    animation: statsScroll 18s linear infinite;
+    animation: statsScroll 40s linear infinite;
 }
 .stats-ticker:hover {
     animation-play-state: paused;
@@ -133,60 +133,55 @@
                             </tr>
                         </thead>
                         <tbody>
-                            <?php if (!empty($notas)): ?>
-                                <?php foreach ($notas as $n):
-                                    $status = (int)($n['idstatus'] ?? 0);
-                                    $badges = [
-                                        1 => ['Abierta',    'warning'],
-                                        2 => ['En proceso', 'info'],
-                                        3 => ['Cancelada',  'danger'],
-                                        4 => ['Anticipo',   'secondary'],
-                                        5 => ['Pagada',     'success'],
-                                    ];
-                                    [$label, $color] = $badges[$status] ?? ['—', 'light'];
-                                    $folio = (int)$n['folio'];
-                                ?>
-                                <tr>
-                                    <td><strong><?= $folio ?></strong></td>
-                                    <td><?= esc($n['fecha_inicial']) ?></td>
-                                    <td><?= esc($n['nombreCliente'] ?? '—') ?></td>
-                                    <td class="text-right">$<?= number_format($n['subTotal'] ?? 0, 2) ?></td>
-                                    <td class="text-right font-weight-bold">$<?= number_format($n['total'] ?? 0, 2) ?></td>
-                                    <td><span class="badge badge-<?= $color ?>"><?= $label ?></span></td>
-                                    <td>
-                                        <?php if ($status !== 3): ?>
-                                        <a href="#" class="btn btn-xs btn-outline-primary mr-1"
-                                           onclick="adminVerFolioVenta(<?= $folio ?>); return false;">
-                                            <i class="simple-icon-eye"></i> Ver
-                                        </a>
-                                        <?php endif; ?>
-                                        <?php if ($status !== 5 && $status !== 3): ?>
-                                        <a href="#" class="btn btn-xs btn-outline-danger"
-                                           onclick="adminCancelarFolioVenta(<?= $folio ?>); return false;">
-                                            Cancelar
-                                        </a>
-                                        <?php endif; ?>
-                                    </td>
-                                </tr>
-                                <?php endforeach; ?>
-                            <?php else: ?>
-                                <tr>
-                                    <td colspan="7" class="text-center text-muted py-5">
-                                        <i class="iconsminds-receipt-4 icon-dual icon-lg d-block mb-2"></i>
-                                        No hay notas registradas hoy.
-                                    </td>
-                                </tr>
-                            <?php endif; ?>
+                            <?php foreach ($notas as $n):
+                                $status = (int)($n['idstatus'] ?? 0);
+                                $badges = [
+                                    1 => ['Abierta',    'warning'],
+                                    2 => ['En proceso', 'info'],
+                                    3 => ['Cancelada',  'danger'],
+                                    4 => ['Anticipo',   'secondary'],
+                                    5 => ['Pagada',     'success'],
+                                ];
+                                $badge = isset($badges[$status]) ? $badges[$status] : ['—', 'light'];
+                                $label = $badge[0];
+                                $color = $badge[1];
+                                $folio = (int)$n['folio'];
+                            ?>
+                            <tr>
+                                <td><strong><?= $folio ?></strong></td>
+                                <td><?= esc($n['fecha_inicial']) ?></td>
+                                <td><?= esc($n['nombreCliente'] ?? '—') ?></td>
+                                <td class="text-right">$<?= number_format($n['subTotal'] ?? 0, 2) ?></td>
+                                <td class="text-right font-weight-bold">$<?= number_format($n['total'] ?? 0, 2) ?></td>
+                                <td><span class="badge badge-<?= $color ?>"><?= $label ?></span></td>
+                                <td>
+                                    <?php if ($status !== 3): ?>
+                                    <a href="#" class="btn btn-xs btn-outline-primary mr-1"
+                                       onclick="adminVerFolioVenta(<?= $folio ?>); return false;">
+                                        <i class="simple-icon-eye"></i> Ver
+                                    </a>
+                                    <?php endif; ?>
+                                    <?php if ($status !== 5 && $status !== 3): ?>
+                                    <a href="#" class="btn btn-xs btn-outline-danger"
+                                       onclick="adminCancelarFolioVenta(<?= $folio ?>); return false;">
+                                        Cancelar
+                                    </a>
+                                    <?php endif; ?>
+                                </td>
+                            </tr>
+                            <?php endforeach; ?>
                         </tbody>
-                        <?php if (!empty($notas)): ?>
                         <tfoot>
                             <tr class="font-weight-bold bg-light">
-                                <td colspan="4" class="text-right">Total General:</td>
+                                <td class="text-right">Total:</td>
+                                <td></td>
+                                <td></td>
+                                <td></td>
                                 <td class="text-right text-success">$<?= number_format($totalVentas, 2) ?></td>
-                                <td colspan="2"></td>
+                                <td></td>
+                                <td></td>
                             </tr>
                         </tfoot>
-                        <?php endif; ?>
                     </table>
                 </div>
             </div>
