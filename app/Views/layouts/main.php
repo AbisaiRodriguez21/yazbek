@@ -137,7 +137,7 @@
             <div class="scroll">
                 <ul class="list-unstyled">
                     <li class="<?= $menuActivo === 'dashboards' ? 'active' : '' ?>" data-menu="dashboards">
-                        <a href="<?= base_url('admin') ?>">
+                        <a href="<?= base_url('admin/dashboard') ?>">
                             <i class="iconsminds-shop-4"></i>
                             <span>Dashboards</span>
                         </a>
@@ -397,7 +397,8 @@
                             '/importar/subir', '/caja/ajax', '/ajax', '/confirmar',
                             '/admin/consulta', 'admin/caja', 'admin/venta',
                             'admin/clientes', 'mostrador/clientes', 'caja/clientes',
-                            'admin/inventario', 'admin/clientes/eliminados'];
+                            'admin/inventario', 'admin/clientes/eliminados',
+                            'admin/dashboard'];
 
         function shouldSkip(url) {
             if (!url || url.charAt(0) === '#') return true;

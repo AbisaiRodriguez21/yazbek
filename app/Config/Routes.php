@@ -21,6 +21,7 @@ $routes->group('admin', ['filter' => 'role:1'], function ($routes) {
     // Dashboard
     $routes->get('/', 'AdminController::index');
     $routes->get('dashboard', 'AdminController::index');
+    $routes->get('dashboard/datos', 'AdminController::dashboardDatos');
 
     // Usuarios
     $routes->get('usuarios', 'AdminController::usuarios');

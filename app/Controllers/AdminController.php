@@ -54,62 +54,194 @@ class AdminController extends BaseController
     // ──────────────────────────────────────────────────────────────
     public function index(): string
     {
-        $hoy = date('Y-m-d');
+        $hoy        = date('Y-m-d');
+        $anio       = (int) date('Y');
+        $anioInicio = "{$anio}-01-01 00:00:00";
+        $anioFin    = ($anio + 1) . "-01-01 00:00:00";
+        $mesInicio  = date('Y-m-01 00:00:00');
+        $db         = \Config\Database::connect();
 
-        // Contadores de notas del día (equivalente a los queries del index.php original)
-        $db = \Config\Database::connect();
+        // ── KPIs del día (1 sola query en vez de 5) ───────────────
+        $statsHoy = $db->query(
+            "SELECT
+                COUNT(*) AS total,
+                SUM(status=3) AS cancelado,
+                SUM(status=4) AS anticipo,
+                SUM(status=5) AS pagado,
+                COALESCE(SUM(CASE WHEN status IN (4,5) THEN total ELSE 0 END),0) AS ingresos
+             FROM notas_1
+             WHERE fecha_inicial >= ? AND fecha_inicial < ?",
+            ["{$hoy} 00:00:00", "{$hoy} 23:59:59"]
+        )->getRow();
 
-        // Órdenes del día: TODAS (abiertas + en proceso + canceladas + anticipo + pagadas)
-        $totalHoy       = $db->query(
-            "SELECT COUNT(*) AS total FROM notas_1 WHERE fecha_inicial LIKE ?",
-            ["{$hoy}%"]
-        )->getRow()->total;
+        $totalHoy       = (int)($statsHoy->total    ?? 0);
+        $totalAnticipo  = (int)($statsHoy->anticipo ?? 0);
+        $totalCancelado = (int)($statsHoy->cancelado?? 0);
+        $totalPagado    = (int)($statsHoy->pagado   ?? 0);
+        $ingresosHoy    = (float)($statsHoy->ingresos ?? 0);
 
-        // Anticipo: status = 4
-        $totalAnticipo  = $db->query(
-            "SELECT COUNT(*) AS total FROM notas_1 WHERE status = 4 AND fecha_inicial LIKE ?",
-            ["{$hoy}%"]
-        )->getRow()->total;
+        // ── KPIs de mes y año (1 query) ───────────────────────────
+        $statsPeriodo = $db->query(
+            "SELECT
+                COALESCE(SUM(CASE WHEN fecha_inicial >= ? THEN total ELSE 0 END),0) AS mes,
+                COALESCE(SUM(CASE WHEN fecha_inicial >= ? THEN total ELSE 0 END),0) AS anio
+             FROM notas_1
+             WHERE status IN (4,5) AND fecha_inicial >= ? AND fecha_inicial < ?",
+            [$mesInicio, $anioInicio, $anioInicio, $anioFin]
+        )->getRow();
 
-        // Canceladas: status = 3
-        $totalCancelado = $db->query(
-            "SELECT COUNT(*) AS total FROM notas_1 WHERE status = 3 AND fecha_inicial LIKE ?",
-            ["{$hoy}%"]
-        )->getRow()->total;
+        $ingresosMes  = (float)($statsPeriodo->mes  ?? 0);
+        $ingresosAnio = (float)($statsPeriodo->anio ?? 0);
 
-        // Confirmadas/Pagadas: status = 5
-        $totalPagado    = $db->query(
-            "SELECT COUNT(*) AS total FROM notas_1 WHERE status = 5 AND fecha_inicial LIKE ?",
-            ["{$hoy}%"]
-        )->getRow()->total;
+        $clientesActivos = (int) $db->query("SELECT COUNT(*) AS t FROM clientes WHERE eliminado=0")->getRow()->t;
 
-        // Órdenes recientes del día con datos del cliente
-        $recientes = $db->query(
-            "SELECT n.Id_Notas_1, n.folio, n.fecha_inicial, n.total,
-                    n.status AS idstatus, n.idCliente,
-                    COALESCE(c.nombre, '—') AS nombre
-             FROM notas_1 n
-             LEFT JOIN clientes c ON n.idCliente = c.id
-             WHERE n.fecha_inicial LIKE ?
-             ORDER BY n.Id_Notas_1 DESC
-             LIMIT 20",
-            ["{$hoy}%"]
+        // ── Ventas mensuales del año (rangos de fecha = usa índice) ─
+        $ventasMensualesRaw = $db->query(
+            "SELECT MONTH(fecha_inicial) AS mes,
+                    COALESCE(SUM(total),0) AS total,
+                    COUNT(*) AS notas
+             FROM notas_1
+             WHERE status IN (4,5)
+               AND fecha_inicial >= ? AND fecha_inicial < ?
+             GROUP BY MONTH(fecha_inicial)
+             ORDER BY mes ASC",
+            [$anioInicio, $anioFin]
         )->getResultArray();
 
-        // Lo más vendido
-        $masVendidos = $this->notaDetalleModel->getMasVendidos(30);
+        $mesesLabels     = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+        $ventasMensuales = array_fill(0, 12, 0);
+        $notasMensuales  = array_fill(0, 12, 0);
+        foreach ($ventasMensualesRaw as $row) {
+            $idx = (int)$row['mes'] - 1;
+            $ventasMensuales[$idx] = round((float)$row['total'], 2);
+            $notasMensuales[$idx]  = (int)$row['notas'];
+        }
+
+        // ── Histórico anual: todos los años con cualquier actividad ──
+        $ventasAnualesRaw = $db->query(
+            "SELECT
+                YEAR(fecha_inicial) AS anio,
+                COALESCE(SUM(CASE WHEN status IN (4,5) THEN total ELSE 0 END),0) AS total,
+                COUNT(*) AS notas,
+                SUM(CASE WHEN status IN (4,5) THEN 1 ELSE 0 END) AS notas_pagadas
+             FROM notas_1
+             WHERE fecha_inicial IS NOT NULL
+               AND YEAR(fecha_inicial) >= 2000
+             GROUP BY YEAR(fecha_inicial)
+             ORDER BY anio ASC"
+        )->getResultArray();
+
+        $aniosLabels   = array_column($ventasAnualesRaw, 'anio');
+        $aniosTotales  = array_map(fn($r) => round((float)$r['total'], 2), $ventasAnualesRaw);
+        $aniosNotas    = array_map(fn($r) => (int)$r['notas'], $ventasAnualesRaw);
+        $aniosPagadas  = array_map(fn($r) => (int)$r['notas_pagadas'], $ventasAnualesRaw);
+
+        // ── Productos con stock bajo (< 10 piezas) ───────────────
+        $stockProductos = $db->query(
+            "SELECT sku, Descripcion_Larga AS nombre, Color, Talla, piezas
+             FROM productosyazbek WHERE piezas < 10
+             ORDER BY piezas ASC LIMIT 60"
+        )->getResultArray();
+
+        // ── Últimas 15 notas del día ──────────────────────────────
+        $recientes = $db->query(
+            "SELECT n.folio, n.fecha_inicial, n.total, n.status AS idstatus,
+                    COALESCE(c.nombre,'—') AS nombre
+             FROM notas_1 n LEFT JOIN clientes c ON n.idCliente = c.id
+             WHERE n.fecha_inicial >= ? AND n.fecha_inicial < ?
+             ORDER BY n.Id_Notas_1 DESC LIMIT 15",
+            ["{$hoy} 00:00:00", "{$hoy} 23:59:59"]
+        )->getResultArray();
 
         return view('admin/index', [
-            'usuario'        => $this->getUsuarioSesion(),
-            'totalHoy'       => $totalHoy,
-            'totalAnticipo'  => $totalAnticipo,
-            'totalCancelado' => $totalCancelado,
-            'totalPagado'    => $totalPagado,
-            'recientes'      => $recientes,
-            'masVendidos'    => $masVendidos,
-            'error'          => session()->getFlashdata('error'),
-            'success'        => session()->getFlashdata('success'),
+            'usuario'         => $this->getUsuarioSesion(),
+            'totalHoy'        => $totalHoy,
+            'totalAnticipo'   => $totalAnticipo,
+            'totalCancelado'  => $totalCancelado,
+            'totalPagado'     => $totalPagado,
+            'ingresosHoy'     => $ingresosHoy,
+            'ingresosMes'     => $ingresosMes,
+            'ingresosAnio'    => $ingresosAnio,
+            'clientesActivos' => $clientesActivos,
+            'mesesLabels'     => $mesesLabels,
+            'ventasMensuales' => $ventasMensuales,
+            'notasMensuales'  => $notasMensuales,
+            'aniosLabels'     => $aniosLabels,
+            'aniosTotales'    => $aniosTotales,
+            'aniosNotas'      => $aniosNotas,
+            'aniosPagadas'    => $aniosPagadas,
+            'stockProductos'  => $stockProductos,
+            'recientes'       => $recientes,
+            'anio'            => $anio,
+            'error'           => session()->getFlashdata('error'),
+            'success'         => session()->getFlashdata('success'),
         ]);
+    }
+
+    // ──────────────────────────────────────────────────────────────
+    // GET /admin/dashboard/datos  —  AJAX: datos pesados para gráficas
+    // ──────────────────────────────────────────────────────────────
+    public function dashboardDatos(): \CodeIgniter\HTTP\Response
+    {
+        $anio       = (int) date('Y');
+        $anioInicio = "{$anio}-01-01 00:00:00";
+        $anioFin    = ($anio + 1) . "-01-01 00:00:00";
+        $db         = \Config\Database::connect();
+
+        // Top 10 productos más vendidos (año en curso, por piezas)
+        // Filtramos notas_1 primero con rango de fecha para usar índice
+        $topProductos = $db->query(
+            "SELECT nd.estilo AS sku,
+                    COALESCE(MAX(p.Descripcion_Larga), nd.estilo) AS nombre,
+                    SUM(nd.cantidad) AS piezas,
+                    SUM(nd.importe)  AS importe
+             FROM notas_1 n
+             INNER JOIN notas_2 nd ON nd.folio = n.folio
+             LEFT  JOIN productosyazbek p ON p.sku = nd.estilo
+             WHERE n.status IN (4,5)
+               AND n.fecha_inicial >= ? AND n.fecha_inicial < ?
+             GROUP BY nd.estilo
+             ORDER BY piezas DESC
+             LIMIT 10",
+            [$anioInicio, $anioFin]
+        )->getResultArray();
+
+        // Ingresos por vendedor (año)
+        $ventasVendedor = $db->query(
+            "SELECT u.usuario AS vendedor,
+                    COALESCE(SUM(n.total),0) AS total,
+                    COUNT(*) AS notas
+             FROM notas_1 n
+             INNER JOIN usuarios u ON u.Id = n.idVendedor
+             WHERE n.status IN (4,5)
+               AND n.fecha_inicial >= ? AND n.fecha_inicial < ?
+             GROUP BY n.idVendedor
+             ORDER BY total DESC
+             LIMIT 8",
+            [$anioInicio, $anioFin]
+        )->getResultArray();
+
+        // Distribución por tipo de pago (año)
+        $tipoPago = $db->query(
+            "SELECT tp.descripcion AS tipo,
+                    COALESCE(SUM(mn.monto),0) AS total
+             FROM notas_1 n
+             INNER JOIN montosnotas mn ON mn.idNotas = n.Id_Notas_1
+             INNER JOIN tipopago tp    ON tp.id = mn.idTipoPago
+             WHERE n.status IN (4,5)
+               AND n.fecha_inicial >= ? AND n.fecha_inicial < ?
+             GROUP BY mn.idTipoPago
+             ORDER BY total DESC",
+            [$anioInicio, $anioFin]
+        )->getResultArray();
+
+        return $this->response
+            ->setContentType('application/json')
+            ->setJSON([
+                'topProductos'   => $topProductos,
+                'ventasVendedor' => $ventasVendedor,
+                'tipoPago'       => $tipoPago,
+            ]);
     }
 
     // ──────────────────────────────────────────────────────────────
