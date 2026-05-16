@@ -548,8 +548,8 @@ class CajaController extends BaseController
         $detalle = $db->query(
             "SELECT nd.cantidad, nd.pUnitario, nd.importe,
                     CONCAT(COALESCE(p.estilo,''), ' - ', COALESCE(p.Descripcion_Larga,''), ' - ', COALESCE(p.Talla,''), ' - ', COALESCE(p.Color,'')) AS descripcion
-             FROM Notas_2 nd
-             LEFT JOIN productosYazbek p ON nd.estilo = p.sku
+             FROM notas_2 nd
+             LEFT JOIN productosyazbek p ON nd.estilo = p.sku
              WHERE nd.folio = ?",
             [$folio]
         )->getResultArray();
