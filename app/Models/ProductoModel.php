@@ -12,6 +12,9 @@ class ProductoModel extends Model
     protected $useSoftDeletes = false;
     protected $useTimestamps  = false;
 
+    // Corrige encoding automáticamente en cada consulta vía modelo
+    protected $afterFind = ['fixEncoding'];
+
     protected $allowedFields = [
         'estilo',
         'sku',
@@ -89,5 +92,23 @@ class ProductoModel extends Model
         }
 
         return $this->update($id, [$campo => $valor]);
+    }
+
+    // ──────────────────────────────────────────────
+    // afterFind: corrección automática de encoding
+    // ──────────────────────────────────────────────
+    protected function fixEncoding(array $data): array
+    {
+        if (! isset($data['data'])) return $data;
+        if ($data['singleton']) {
+            if (is_array($data['data'])) {
+                $data['data'] = fix_enc_row($data['data']);
+            }
+        } else {
+            if (is_array($data['data'])) {
+                $data['data'] = fix_enc_rows($data['data']);
+            }
+        }
+        return $data;
     }
 }

@@ -32,14 +32,36 @@ abstract class BaseController extends Controller
      */
     public function initController(RequestInterface $request, ResponseInterface $response, LoggerInterface $logger)
     {
-        // Load here all helpers you want to be available in your controllers that extend BaseController.
-        // Caution: Do not put the this below the parent::initController() call below.
-        // $this->helpers = ['form', 'url'];
-
-        // Caution: Do not edit this line.
         parent::initController($request, $response, $logger);
+    }
 
-        // Preload any models, libraries, etc, here.
-        // $this->session = service('session');
+    // ──────────────────────────────────────────────────────────────
+    // CORRECCIÓN DE ENCODING
+    // Corrige doble-codificación UTF-8/latin1 en resultados de BD.
+    // Úsalos en cualquier controlador antes de pasar datos a la vista.
+    // ──────────────────────────────────────────────────────────────
+
+    /**
+     * Corrige encoding en un solo string.
+     */
+    protected function fixEnc(?string $str): string
+    {
+        return fix_enc($str ?? '');
+    }
+
+    /**
+     * Corrige encoding en una sola fila (array asociativo).
+     */
+    protected function fixRow(array $row): array
+    {
+        return fix_enc_row($row);
+    }
+
+    /**
+     * Corrige encoding en un array de filas (resultado de getResultArray()).
+     */
+    protected function fixRows(array $rows): array
+    {
+        return fix_enc_rows($rows);
     }
 }

@@ -136,6 +136,37 @@ class AdminController extends BaseController
         $aniosNotas    = array_map(fn($r) => (int)$r['notas'], $ventasAnualesRaw);
         $aniosPagadas  = array_map(fn($r) => (int)$r['notas_pagadas'], $ventasAnualesRaw);
 
+        // ── Comparativa mes actual vs mes anterior ────────────────
+        $mesActualInicio   = date('Y-m-01 00:00:00');
+        $mesActualFin      = date('Y-m-01 00:00:00', strtotime('+1 month'));
+        $mesAnteriorInicio = date('Y-m-01 00:00:00', strtotime('-1 month'));
+        $mesAnteriorFin    = $mesActualInicio;
+
+        $statusLabels = [1=>'Abierta', 2=>'En proceso', 3=>'Cancelada', 4=>'Anticipo', 5=>'Pagada'];
+
+        $rawActual   = $db->query(
+            "SELECT status, COUNT(*) AS notas, COALESCE(SUM(total),0) AS total
+             FROM notas_1 WHERE fecha_inicial >= ? AND fecha_inicial < ?
+             GROUP BY status",
+            [$mesActualInicio, $mesActualFin]
+        )->getResultArray();
+
+        $rawAnterior = $db->query(
+            "SELECT status, COUNT(*) AS notas, COALESCE(SUM(total),0) AS total
+             FROM notas_1 WHERE fecha_inicial >= ? AND fecha_inicial < ?
+             GROUP BY status",
+            [$mesAnteriorInicio, $mesAnteriorFin]
+        )->getResultArray();
+
+        $comp = [];
+        foreach ([1,2,3,4,5] as $s) {
+            $comp[$s] = ['label'=>$statusLabels[$s], 'actual_n'=>0, 'actual_t'=>0.0, 'anterior_n'=>0, 'anterior_t'=>0.0];
+        }
+        foreach ($rawActual   as $r) { $s=(int)$r['status']; if(isset($comp[$s])){ $comp[$s]['actual_n']=(int)$r['notas']; $comp[$s]['actual_t']=round((float)$r['total'],2); } }
+        foreach ($rawAnterior as $r) { $s=(int)$r['status']; if(isset($comp[$s])){ $comp[$s]['anterior_n']=(int)$r['notas']; $comp[$s]['anterior_t']=round((float)$r['total'],2); } }
+
+        $comparativa = array_values($comp);
+
         // ── Productos con stock bajo (< 10 piezas) ───────────────
         $stockProductos = $db->query(
             "SELECT sku, Descripcion_Larga AS nombre, Color, Talla, piezas
@@ -144,14 +175,14 @@ class AdminController extends BaseController
         )->getResultArray();
 
         // ── Últimas 15 notas del día ──────────────────────────────
-        $recientes = $db->query(
+        $recientes = $this->fixRows($db->query(
             "SELECT n.folio, n.fecha_inicial, n.total, n.status AS idstatus,
                     COALESCE(c.nombre,'—') AS nombre
              FROM notas_1 n LEFT JOIN clientes c ON n.idCliente = c.id
              WHERE n.fecha_inicial >= ? AND n.fecha_inicial < ?
              ORDER BY n.Id_Notas_1 DESC LIMIT 15",
             ["{$hoy} 00:00:00", "{$hoy} 23:59:59"]
-        )->getResultArray();
+        )->getResultArray());
 
         return view('admin/index', [
             'usuario'         => $this->getUsuarioSesion(),
@@ -166,6 +197,19 @@ class AdminController extends BaseController
             'mesesLabels'     => $mesesLabels,
             'ventasMensuales' => $ventasMensuales,
             'notasMensuales'  => $notasMensuales,
+            'comparativa'     => $comparativa,
+            'mesNombreActual'   => (function() use ($anio) {
+                $nm = ['','Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+                $m  = (int)date('n');
+                return $nm[$m] . ' ' . $anio;
+            })(),
+            'mesNombreAnterior' => (function() use ($anio) {
+                $nm = ['','Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+                $m  = (int)date('n');
+                $ma = $m === 1 ? 12 : $m - 1;
+                $ya = $m === 1 ? $anio - 1 : $anio;
+                return $nm[$ma] . ' ' . $ya;
+            })(),
             'aniosLabels'     => $aniosLabels,
             'aniosTotales'    => $aniosTotales,
             'aniosNotas'      => $aniosNotas,
@@ -179,17 +223,37 @@ class AdminController extends BaseController
     }
 
     // ──────────────────────────────────────────────────────────────
-    // GET /admin/dashboard/datos  —  AJAX: datos pesados para gráficas
+    // GET /admin/dashboard/datos  —  AJAX: todos los datos de gráficas
+    // Params GET: mes (1-12), anio (4 dígitos)
     // ──────────────────────────────────────────────────────────────
     public function dashboardDatos(): \CodeIgniter\HTTP\Response
     {
-        $anio       = (int) date('Y');
+        $mes  = (int)($this->request->getGet('mes')  ?: date('n'));
+        $anio = (int)($this->request->getGet('anio') ?: date('Y'));
+
+        // Validaciones básicas
+        if ($mes < 1 || $mes > 12)     $mes  = (int)date('n');
+        if ($anio < 2000 || $anio > 2100) $anio = (int)date('Y');
+
+        $db = \Config\Database::connect();
+
+        // ── Rangos de fecha ───────────────────────────────────────
         $anioInicio = "{$anio}-01-01 00:00:00";
         $anioFin    = ($anio + 1) . "-01-01 00:00:00";
-        $db         = \Config\Database::connect();
 
-        // Top 10 productos más vendidos (año en curso, por piezas)
-        // Filtramos notas_1 primero con rango de fecha para usar índice
+        $mesActualInicio   = sprintf('%04d-%02d-01 00:00:00', $anio, $mes);
+        $mesActualFin      = date('Y-m-d 00:00:00', strtotime($mesActualInicio . ' +1 month'));
+        $mesAnteriorInicio = date('Y-m-d 00:00:00', strtotime($mesActualInicio . ' -1 month'));
+        $mesAnteriorFin    = $mesActualInicio;
+
+        // ── Nombres de mes en español ─────────────────────────────
+        $nm               = ['','Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+        $mesNombreActual  = $nm[$mes] . ' ' . $anio;
+        $ma               = $mes === 1 ? 12 : $mes - 1;
+        $ya               = $mes === 1 ? $anio - 1 : $anio;
+        $mesNombreAnterior = $nm[$ma] . ' ' . $ya;
+
+        // ── Top 10 productos del año ──────────────────────────────
         $topProductos = $db->query(
             "SELECT nd.estilo AS sku,
                     COALESCE(MAX(p.Descripcion_Larga), nd.estilo) AS nombre,
@@ -206,7 +270,7 @@ class AdminController extends BaseController
             [$anioInicio, $anioFin]
         )->getResultArray();
 
-        // Ingresos por vendedor (año)
+        // ── Ingresos por vendedor (año) ───────────────────────────
         $ventasVendedor = $db->query(
             "SELECT u.usuario AS vendedor,
                     COALESCE(SUM(n.total),0) AS total,
@@ -221,7 +285,7 @@ class AdminController extends BaseController
             [$anioInicio, $anioFin]
         )->getResultArray();
 
-        // Distribución por tipo de pago (año)
+        // ── Forma de pago (año) ───────────────────────────────────
         $tipoPago = $db->query(
             "SELECT tp.descripcion AS tipo,
                     COALESCE(SUM(mn.monto),0) AS total
@@ -235,12 +299,108 @@ class AdminController extends BaseController
             [$anioInicio, $anioFin]
         )->getResultArray();
 
+        // ── Top productos por mes (actual y anterior) ─────────────
+        $topMes = function($ini, $fin) use ($db) {
+            return $db->query(
+                "SELECT nd.estilo AS sku,
+                        COALESCE(MAX(p.Descripcion_Larga), nd.estilo) AS nombre,
+                        SUM(nd.cantidad) AS piezas,
+                        SUM(nd.importe)  AS importe
+                 FROM notas_1 n
+                 INNER JOIN notas_2 nd ON nd.folio = n.folio
+                 LEFT  JOIN productosyazbek p ON p.sku = nd.estilo
+                 WHERE n.status IN (4,5)
+                   AND n.fecha_inicial >= ? AND n.fecha_inicial < ?
+                 GROUP BY nd.estilo
+                 ORDER BY piezas DESC LIMIT 8",
+                [$ini, $fin]
+            )->getResultArray();
+        };
+
+        $topMesActual   = $topMes($mesActualInicio, $mesActualFin);
+        $topMesAnterior = $topMes($mesAnteriorInicio, $mesAnteriorFin);
+
+        // ── Comparativa mensual por estatus ───────────────────────
+        $statusLabels = [1=>'Abierta', 2=>'En proceso', 3=>'Cancelada', 4=>'Anticipo', 5=>'Pagada'];
+        $rawActual   = $db->query(
+            "SELECT status, COUNT(*) AS notas, COALESCE(SUM(total),0) AS total
+             FROM notas_1 WHERE fecha_inicial >= ? AND fecha_inicial < ? GROUP BY status",
+            [$mesActualInicio, $mesActualFin]
+        )->getResultArray();
+        $rawAnterior = $db->query(
+            "SELECT status, COUNT(*) AS notas, COALESCE(SUM(total),0) AS total
+             FROM notas_1 WHERE fecha_inicial >= ? AND fecha_inicial < ? GROUP BY status",
+            [$mesAnteriorInicio, $mesAnteriorFin]
+        )->getResultArray();
+        $comp = [];
+        foreach ([1,2,3,4,5] as $s) {
+            $comp[$s] = ['label'=>$statusLabels[$s], 'actual_n'=>0, 'actual_t'=>0.0, 'anterior_n'=>0, 'anterior_t'=>0.0];
+        }
+        foreach ($rawActual   as $r) { $s=(int)$r['status']; if(isset($comp[$s])){ $comp[$s]['actual_n']=(int)$r['notas'];   $comp[$s]['actual_t']=round((float)$r['total'],2); } }
+        foreach ($rawAnterior as $r) { $s=(int)$r['status']; if(isset($comp[$s])){ $comp[$s]['anterior_n']=(int)$r['notas']; $comp[$s]['anterior_t']=round((float)$r['total'],2); } }
+        $comparativa = array_values($comp);
+
+        // ── Ventas mensuales del año ──────────────────────────────
+        $ventasMensualesRaw = $db->query(
+            "SELECT MONTH(fecha_inicial) AS mes,
+                    COALESCE(SUM(total),0) AS total,
+                    COUNT(*) AS notas
+             FROM notas_1
+             WHERE status IN (4,5)
+               AND fecha_inicial >= ? AND fecha_inicial < ?
+             GROUP BY MONTH(fecha_inicial)
+             ORDER BY mes ASC",
+            [$anioInicio, $anioFin]
+        )->getResultArray();
+        $mesesLabels     = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+        $ventasMensuales = array_fill(0, 12, 0);
+        $notasMensuales  = array_fill(0, 12, 0);
+        foreach ($ventasMensualesRaw as $row) {
+            $idx = (int)$row['mes'] - 1;
+            $ventasMensuales[$idx] = round((float)$row['total'], 2);
+            $notasMensuales[$idx]  = (int)$row['notas'];
+        }
+
+        // ── Histórico anual (todos los años, siempre completo) ────
+        $ventasAnualesRaw = $db->query(
+            "SELECT
+                YEAR(fecha_inicial) AS anio,
+                COALESCE(SUM(CASE WHEN status IN (4,5) THEN total ELSE 0 END),0) AS total,
+                COUNT(*) AS notas,
+                SUM(CASE WHEN status IN (4,5) THEN 1 ELSE 0 END) AS notas_pagadas
+             FROM notas_1
+             WHERE fecha_inicial IS NOT NULL
+               AND YEAR(fecha_inicial) >= 2000
+             GROUP BY YEAR(fecha_inicial)
+             ORDER BY anio ASC"
+        )->getResultArray();
+
+        // ── Corregir encoding en textos con caracteres especiales ──
+        $topProductos   = $this->fixRows($topProductos);
+        $ventasVendedor = $this->fixRows($ventasVendedor);
+        $tipoPago       = $this->fixRows($tipoPago);
+        $topMesActual   = $this->fixRows($topMesActual);
+        $topMesAnterior = $this->fixRows($topMesAnterior);
+
         return $this->response
             ->setContentType('application/json')
             ->setJSON([
                 'topProductos'   => $topProductos,
                 'ventasVendedor' => $ventasVendedor,
                 'tipoPago'       => $tipoPago,
+                'topMesActual'   => $topMesActual,
+                'topMesAnterior' => $topMesAnterior,
+                'comparativa'    => $comparativa,
+                'ventasMensuales'=> $ventasMensuales,
+                'notasMensuales' => $notasMensuales,
+                'mesesLabels'    => $mesesLabels,
+                'mesActual'      => $mesNombreActual,
+                'mesAnterior'    => $mesNombreAnterior,
+                'anio'           => $anio,
+                'aniosLabels'    => array_column($ventasAnualesRaw, 'anio'),
+                'aniosTotales'   => array_map(fn($r) => round((float)$r['total'], 2), $ventasAnualesRaw),
+                'aniosNotas'     => array_map(fn($r) => (int)$r['notas'], $ventasAnualesRaw),
+                'aniosPagadas'   => array_map(fn($r) => (int)$r['notas_pagadas'], $ventasAnualesRaw),
             ]);
     }
 

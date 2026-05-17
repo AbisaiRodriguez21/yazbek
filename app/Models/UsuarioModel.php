@@ -11,6 +11,9 @@ class UsuarioModel extends Model
     protected $returnType    = 'array';
     protected $useSoftDeletes = false;
 
+    // Corrige encoding automáticamente en cada consulta vía modelo
+    protected $afterFind = ['fixEncoding'];
+
     protected $allowedFields = [
         'nombre',
         'usuario',
@@ -72,5 +75,23 @@ class UsuarioModel extends Model
     public function cambiarPass(int $id, string $pass): bool
     {
         return $this->update($id, ['pass' => $pass]);
+    }
+
+    // ──────────────────────────────────────────────
+    // afterFind: corrección automática de encoding
+    // ──────────────────────────────────────────────
+    protected function fixEncoding(array $data): array
+    {
+        if (! isset($data['data'])) return $data;
+        if ($data['singleton']) {
+            if (is_array($data['data'])) {
+                $data['data'] = fix_enc_row($data['data']);
+            }
+        } else {
+            if (is_array($data['data'])) {
+                $data['data'] = fix_enc_rows($data['data']);
+            }
+        }
+        return $data;
     }
 }
