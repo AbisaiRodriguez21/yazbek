@@ -6,12 +6,13 @@
 <style>
 .carrito-table td, .carrito-table th { vertical-align: middle; }
 .btn-quitar { padding: 2px 8px; }
-#panelResumen { position: sticky; top: 80px; }
+/* #panelResumen sin sticky — el layout scrollea completo */
 .precio-tachado { text-decoration: line-through; color: #888; }
 </style>
 <?= $this->endSection() ?>
 
 <?= $this->section('content') ?>
+<?php $basePrefix = $base ?? 'mostrador'; ?>
 
 <div class="page-title-container">
     <div class="page-title d-flex justify-content-between w-100">
@@ -19,18 +20,18 @@
             <h1>Nota #<?= (int)$nota['folio'] ?> — Paso 2: Productos</h1>
             <nav aria-label="breadcrumb">
                 <ol class="breadcrumb">
-                    <li class="breadcrumb-item"><a href="<?= base_url('mostrador') ?>">Mostrador</a></li>
+                    <li class="breadcrumb-item"><a href="<?= base_url($basePrefix) ?>"><?= $basePrefix === 'admin' ? 'Admin' : 'Mostrador' ?></a></li>
                     <li class="breadcrumb-item active">Agregar Productos</li>
                 </ol>
             </nav>
         </div>
         <div class="pt-2">
-            <a href="<?= base_url('mostrador/venta/' . (int)$nota['folio'] . '/cancelar') ?>"
+            <a href="<?= base_url($basePrefix . '/venta/' . (int)$nota['folio'] . '/cancelar') ?>"
                class="btn btn-outline-danger mr-2"
                onclick="return confirm('¿Cancelar esta nota?')">
                 <i class="iconsminds-close"></i> Cancelar Nota
             </a>
-            <a href="<?= base_url('mostrador/venta/' . (int)$nota['folio'] . '/confirmar') ?>"
+            <a href="<?= base_url($basePrefix . '/venta/' . (int)$nota['folio'] . '/confirmar') ?>"
                class="btn btn-success">
                 <i class="iconsminds-arrow-right"></i> Confirmar
             </a>
@@ -132,7 +133,7 @@
                 </div>
             </div>
             <div class="card-footer text-right">
-                <a href="<?= base_url('mostrador/venta/' . (int)$nota['folio'] . '/confirmar') ?>"
+                <a href="<?= base_url($basePrefix . '/venta/' . (int)$nota['folio'] . '/confirmar') ?>"
                    class="btn btn-success">
                     Siguiente: Confirmar <i class="iconsminds-arrow-right ml-1"></i>
                 </a>
@@ -153,6 +154,7 @@
 <script src="<?= base_url('assets/js/vendor/select2.full.js') ?>"></script>
 <script>
 var BURL = '<?= base_url() ?>';
+var BASE_PREFIX = '<?= $basePrefix ?>';
 
 (function initStp2() {
     if (typeof $.fn.select2 === 'undefined') { setTimeout(initStp2, 100); return; }
@@ -168,7 +170,7 @@ $('#selectProducto').select2({
         noResults: function() { return 'No se encontraron productos.'; }
     },
     ajax: {
-        url: BURL + 'mostrador/productos/buscar',
+        url: BURL + BASE_PREFIX + '/productos/buscar',
         type: 'POST',
         dataType: 'json',
         delay: 300,
@@ -254,7 +256,7 @@ $('#btnAgregar').on('click', function() {
     var csrf = {};
     csrf[$('#hidCsrfName').val()] = $('#hidCsrfHash').val();
 
-    $.post(BURL + 'mostrador/nota/agregarProducto', $.extend({
+    $.post(BURL + BASE_PREFIX + '/nota/agregarProducto', $.extend({
         sku: sku,
         cantidad: cantidad,
         folio: folio
@@ -280,7 +282,7 @@ $(document).on('click', '.btn-quitar', function() {
     var csrf = {};
     csrf[$('#hidCsrfName').val()] = $('#hidCsrfHash').val();
 
-    $.post(BURL + 'mostrador/nota/eliminarProducto', $.extend({
+    $.post(BURL + BASE_PREFIX + '/nota/eliminarProducto', $.extend({
         idLinea: idLinea,
         folio: folio
     }, csrf), function(resp) {

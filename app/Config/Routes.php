@@ -109,6 +109,28 @@ $routes->group('admin', ['filter' => 'role:1'], function ($routes) {
     // Pantalla de pago (step 3) accesible desde admin
     $routes->get('venta/(:num)/confirmar',  'MostradorController::ventaStp3/$1');
     $routes->post('venta/(:num)/confirmar', 'MostradorController::ventaStp3Post/$1');
+
+    // ── Venta Normal desde admin (paso 1 y 2) ──
+    $routes->get('venta/nueva',              'AdminController::ventaNueva');
+    $routes->post('venta/nueva',             'AdminController::ventaNuevaPost');
+
+    // ── Venta Mayoreo desde admin (paso 1 y 2) ──
+    $routes->get('venta/mayoreo',            'AdminController::ventaMayoreo');
+    $routes->post('venta/mayoreo',           'AdminController::ventaMayoreoPost');
+
+    // ── Paso 2: Carrito de productos desde admin ──
+    $routes->get('venta/(:num)/productos',   'MostradorController::ventaProductosAdmin/$1');
+
+    // ── Cancelar nota desde admin ──
+    $routes->get('venta/(:num)/cancelar',    'MostradorController::cancelar/$1');
+
+    // ── AJAX compartidos: búsqueda de clientes ──
+    $routes->post('clientes/buscar',         'MostradorController::buscarClientes');
+
+    // ── AJAX compartidos: búsqueda de productos y operaciones de nota ──
+    $routes->post('productos/buscar',        'MostradorController::buscarProductos');
+    $routes->post('nota/agregarProducto',    'MostradorController::agregarProducto');
+    $routes->post('nota/eliminarProducto',   'MostradorController::eliminarProducto');
 });
 
 // =============================================================

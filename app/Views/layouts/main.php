@@ -151,6 +151,8 @@
         elseif ($seg2 === 'reportediario') $subActivo = 'reportediario';
         elseif ($seg1 === 'mostrador' && $seg2 === 'venta') $subActivo = 'venta';
         elseif ($seg1 === 'mostrador' && $seg2 === 'mayoreo') $subActivo = 'ventamayoreo';
+        elseif ($seg1 === 'admin' && $seg2 === 'venta' && $seg3 === 'nueva') $subActivo = 'ventanueva';
+        elseif ($seg1 === 'admin' && $seg2 === 'venta' && $seg3 === 'mayoreo') $subActivo = 'ventamayoreoadmin';
         elseif ($seg1 === 'admin' && $seg2 === 'consulta' && service('request')->getGet('tipo') === 'mayoreo') $subActivo = 'ventamayoreo';
         elseif (($seg1 === 'mostrador' || $seg1 === 'admin') && $seg2 === 'consulta') $subActivo = 'consultafolios';
         elseif ($seg2 === 'mensajes') $subActivo = 'mensajes';
@@ -228,6 +230,18 @@
                         <a href="<?= base_url('admin/venta') ?>">
                             <i class="simple-icon-picture"></i>
                             <span class="d-inline-block">Venta</span>
+                        </a>
+                    </li>
+                    <li class="<?= $subActivo === 'ventanueva' ? 'active' : '' ?>" data-submenu="ventanueva">
+                        <a href="<?= base_url('admin/venta/nueva') ?>">
+                            <i class="simple-icon-tag"></i>
+                            <span class="d-inline-block">Venta Normal</span>
+                        </a>
+                    </li>
+                    <li class="<?= $subActivo === 'ventamayoreoadmin' ? 'active' : '' ?>" data-submenu="ventamayoreoadmin">
+                        <a href="<?= base_url('admin/venta/mayoreo') ?>">
+                            <i class="simple-icon-layers"></i>
+                            <span class="d-inline-block">Venta Mayoreo</span>
                         </a>
                     </li>
                     <li class="<?= $subActivo === 'consultafolios' ? 'active' : '' ?>" data-submenu="consultafolios">

@@ -693,7 +693,14 @@ class CajaController extends BaseController
         $baseSql = "FROM notas_1 n
                     LEFT JOIN clientes c ON c.id = n.idCliente
                     LEFT JOIN usuarios u ON u.Id = n.idVendedor
-                    LEFT JOIN status s ON s.id = n.status";
+                    LEFT JOIN status s ON s.id = n.status
+                    LEFT JOIN (
+                        SELECT mn.idNotas,
+                               GROUP_CONCAT(DISTINCT tp.descripcion ORDER BY tp.id SEPARATOR ' / ') AS tipos_pago
+                        FROM montosnotas mn
+                        INNER JOIN tipopago tp ON tp.id = mn.idTipoPago
+                        GROUP BY mn.idNotas
+                    ) pm ON pm.idNotas = n.Id_Notas_1";
 
         $whereClauses = [];
         $params       = [];
@@ -719,7 +726,7 @@ class CajaController extends BaseController
             "SELECT n.folio, n.fecha_inicial,
                     COALESCE(c.nombre, '—') AS cliente,
                     COALESCE(u.usuario, '—') AS vendedor,
-                    COALESCE(n.tipoPago, '—')                AS tipopago,
+                    COALESCE(pm.tipos_pago, NULLIF(TRIM(n.tipoPago), ''), 'A Crédito') AS tipopago,
                     n.total, n.status AS idstatus,
                     COALESCE(s.nombre, '')                   AS status_nombre,
                     n.verificado

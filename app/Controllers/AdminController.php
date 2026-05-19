@@ -1910,6 +1910,90 @@ class AdminController extends BaseController
     }
 
     // ──────────────────────────────────────────────────────────────
+    // GET /admin/venta/nueva  —  Paso 1: Nueva venta normal desde admin
+    // ──────────────────────────────────────────────────────────────
+    public function ventaNueva(): string
+    {
+        return view('mostrador/venta_stp_1', [
+            'usuario'   => $this->getUsuarioSesion(),
+            'tipoVenta' => 'normal',
+            'base'      => 'admin',
+            'error'     => session()->getFlashdata('error'),
+        ]);
+    }
+
+    // ──────────────────────────────────────────────────────────────
+    // POST /admin/venta/nueva  —  Crea la nota y redirige al paso 2
+    // ──────────────────────────────────────────────────────────────
+    public function ventaNuevaPost(): \CodeIgniter\HTTP\RedirectResponse
+    {
+        $idCliente  = (int) $this->request->getPost('idCliente');
+        $idVendedor = (int) session()->get('user_id');
+
+        if (! $idCliente) {
+            return redirect()->to('/admin/venta/nueva')->with('error', 'Debes seleccionar un cliente.');
+        }
+
+        $folio = $this->notaModel->siguienteFolio();
+
+        $this->notaModel->insert([
+            'idCliente'     => $idCliente,
+            'idVendedor'    => $idVendedor,
+            'folio'         => $folio,
+            'status'        => 3,
+            'precioMayoreo' => 0,
+        ]);
+
+        $this->usuarioModel->activarBandera($idVendedor);
+
+        return redirect()->to("/admin/venta/{$folio}/productos");
+    }
+
+    // ──────────────────────────────────────────────────────────────
+    // GET /admin/venta/mayoreo  —  Paso 1: Nueva venta mayoreo desde admin
+    // (precio mayoreo sin importar cantidad de piezas)
+    // ──────────────────────────────────────────────────────────────
+    public function ventaMayoreo(): string
+    {
+        return view('mostrador/venta_stp_1', [
+            'usuario'   => $this->getUsuarioSesion(),
+            'tipoVenta' => 'mayoreo',
+            'base'      => 'admin',
+            'error'     => session()->getFlashdata('error'),
+        ]);
+    }
+
+    // ──────────────────────────────────────────────────────────────
+    // POST /admin/venta/mayoreo  —  Crea la nota mayoreo y redirige al paso 2
+    // ──────────────────────────────────────────────────────────────
+    public function ventaMayoreoPost(): \CodeIgniter\HTTP\RedirectResponse
+    {
+        $idCliente  = (int) $this->request->getPost('idCliente');
+        $idVendedor = (int) session()->get('user_id');
+
+        if (! $idCliente) {
+            return redirect()->to('/admin/venta/mayoreo')->with('error', 'Debes seleccionar un cliente.');
+        }
+
+        $folio = $this->notaModel->siguienteFolio();
+
+        $this->notaModel->insert([
+            'idCliente'     => $idCliente,
+            'idVendedor'    => $idVendedor,
+            'folio'         => $folio,
+            'status'        => 3,
+            'precioMayoreo' => 1,
+        ]);
+
+        $this->usuarioModel->activarBandera($idVendedor);
+
+        // Marcar esta nota como MAYOREO en sesión (precio mayoreo siempre)
+        session()->set("nota_{$folio}_tipo", 'mayoreo');
+
+        return redirect()->to("/admin/venta/{$folio}/productos");
+    }
+
+    // ──────────────────────────────────────────────────────────────
     // GET /admin/exportar  —  Exporta la base completa de productos a Excel
     // Migrado desde: admin/BaseCompleta.php
     // ──────────────────────────────────────────────────────────────
@@ -1998,14 +2082,12 @@ class AdminController extends BaseController
                         LEFT JOIN usuarios u ON u.Id = n.idVendedor
                         LEFT JOIN status s ON s.id = n.status
                         LEFT JOIN (
-                            SELECT n2.folio AS folio_padre,
+                            SELECT mn.idNotas,
                                    GROUP_CONCAT(DISTINCT tp.descripcion ORDER BY tp.id SEPARATOR ' / ') AS tipos_pago
-                            FROM notas_1 n2
-                            INNER JOIN montosnotas mn ON mn.idNotas = n2.Id_Notas_1
+                            FROM montosnotas mn
                             INNER JOIN tipopago tp ON tp.id = mn.idTipoPago
-                            WHERE n2.referencia > 0
-                            GROUP BY n2.referencia
-                        ) pm ON pm.folio_padre = n.folio";
+                            GROUP BY mn.idNotas
+                        ) pm ON pm.idNotas = n.Id_Notas_1";
 
             $whereClauses = [];
             $params       = [];
@@ -2034,7 +2116,7 @@ class AdminController extends BaseController
                 "SELECT n.folio, n.fecha_inicial,
                         COALESCE(c.nombre, '—')   AS cliente,
                         COALESCE(u.usuario, '—')  AS vendedor,
-                        COALESCE(pm.tipos_pago, '—') AS tipopago,
+                        COALESCE(pm.tipos_pago, NULLIF(TRIM(n.tipoPago), ''), 'A Crédito') AS tipopago,
                         n.total, n.status AS idstatus,
                         COALESCE(s.nombre, '')    AS status_nombre,
                         n.verificado,

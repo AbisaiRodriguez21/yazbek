@@ -170,8 +170,13 @@ class MostradorController extends BaseController
         $db      = \Config\Database::connect();
         $carrito = $this->getCarritoData($folio, $db, $esMayoreoForzado);
 
-        // No se puede confirmar una nota sin productos
+        // Si el carrito está vacío y la nota es un folio hijo (anticipo),
+        // redirigir al padre donde están los productos y los pagos
         if (empty($carrito['detalle'])) {
+            $refPadre = (int)($nota['referencia'] ?? 0);
+            if ($refPadre > 0) {
+                return redirect()->to("/mostrador/venta/{$refPadre}/confirmar");
+            }
             return redirect()->to("/mostrador/venta/{$folio}/productos")
                              ->with('error', 'Agrega al menos un producto antes de confirmar.');
         }
@@ -981,6 +986,30 @@ class MostradorController extends BaseController
     }
 
     // ──────────────────────────────────────────────────────────────
+    // GET /admin/venta/:folio/productos  —  Paso 2 desde admin
+    // Wrapper público para que el admin pueda usar la misma vista de carrito
+    // que mostrador, pasando $base='admin' para que las URLs apunten a /admin/...
+    // ──────────────────────────────────────────────────────────────
+    public function ventaProductosAdmin(int $folio): string
+    {
+        $nota             = $this->notaModel->getPorFolio($folio);
+        $esMayoreoForzado = session()->get("nota_{$folio}_tipo") === 'mayoreo';
+        $db               = \Config\Database::connect();
+        $carrito          = $this->getCarritoData($folio, $db, $esMayoreoForzado);
+
+        return view('mostrador/venta_stp_2', [
+            'usuario'      => $this->getUsuarioSesion(),
+            'nota'         => $nota,
+            'folio'        => $folio,
+            'detalle'      => $carrito['detalle'],
+            'totalPiezas'  => $carrito['totalPiezas'],
+            'sumaImportes' => $carrito['sumaImportes'],
+            'esMayoreo'    => $carrito['esMayoreo'],
+            'base'         => 'admin',
+        ]);
+    }
+
+    // ──────────────────────────────────────────────────────────────
     // GET /mostrador/mayoreo  —  Paso 1 Mayoreo: Selección de cliente
     // POST /mostrador/mayoreo — Crea la nota y redirige al paso 2 (modo mayoreo)
     // ──────────────────────────────────────────────────────────────
@@ -1071,7 +1100,14 @@ class MostradorController extends BaseController
         $baseSql = "FROM notas_1 n
                     LEFT JOIN clientes c ON c.id = n.idCliente
                     LEFT JOIN usuarios u ON u.Id = n.idVendedor
-                    LEFT JOIN status s ON s.id = n.status";
+                    LEFT JOIN status s ON s.id = n.status
+                    LEFT JOIN (
+                        SELECT mn.idNotas,
+                               GROUP_CONCAT(DISTINCT tp.descripcion ORDER BY tp.id SEPARATOR ' / ') AS tipos_pago
+                        FROM montosnotas mn
+                        INNER JOIN tipopago tp ON tp.id = mn.idTipoPago
+                        GROUP BY mn.idNotas
+                    ) pm ON pm.idNotas = n.Id_Notas_1";
 
         // Siempre filtrar por el vendedor logueado
         $whereClauses = ["n.idVendedor = ?"];
@@ -1092,10 +1128,11 @@ class MostradorController extends BaseController
             "SELECT n.folio, n.fecha_inicial,
                     COALESCE(c.nombre, '—') AS cliente,
                     COALESCE(u.usuario, '—') AS vendedor,
-                    COALESCE(n.tipoPago, '—') AS tipopago,
+                    COALESCE(pm.tipos_pago, n.tipoPago, '—') AS tipopago,
                     n.total, n.status AS idstatus,
                     COALESCE(s.nombre, '') AS status_nombre,
-                    n.verificado
+                    n.verificado,
+                    COALESCE(n.referencia, 0) AS referencia
              {$baseSql} {$where}
              ORDER BY {$orderCol} {$orderDir}
              LIMIT ? OFFSET ?",

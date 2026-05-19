@@ -53,6 +53,10 @@ var STATUS_LABELS = {
 };
 
 $(document).ready(function() {
+    if ($.fn.DataTable.isDataTable('#tablaStp1')) {
+        $('#tablaStp1').DataTable().destroy();
+    }
+
     var table = $('#tablaStp1').DataTable({
         processing: true,
         serverSide: true,
@@ -89,18 +93,29 @@ $(document).ready(function() {
 
 function accionesNota(n) {
     var btns = '';
-    var idstatus = parseInt(n.idstatus, 10);
+    var idstatus   = parseInt(n.idstatus, 10);
+    var referencia = parseInt(n.referencia || 0, 10);
+    var esHijo     = referencia > 0;
+    var BASE       = '<?= base_url('mostrador/venta/') ?>';
 
-    if (idstatus === 1 || idstatus === 3 || idstatus === 4) {
-        btns += '<a href="<?= base_url('mostrador/venta/') ?>' + n.folio + '/productos" class="btn btn-xs btn-outline-primary mr-1">Editar</a>';
+    if (esHijo) {
+        // Folio hijo (anticipo): solo ver el padre
+        btns += '<a href="' + BASE + referencia + '/confirmar" class="btn btn-xs btn-outline-primary mr-1">Ver Nota</a>';
+    } else {
+        // Folio padre
+        if (idstatus === 1 || idstatus === 4) {
+            btns += '<a href="' + BASE + n.folio + '/confirmar" class="btn btn-xs btn-outline-primary mr-1">Ver / Pagar</a>';
+        }
+        if (idstatus === 1 || idstatus === 3) {
+            btns += '<a href="' + BASE + n.folio + '/productos" class="btn btn-xs btn-outline-secondary mr-1">Editar</a>';
+            btns += '<a href="' + BASE + n.folio + '/duplicar" class="btn btn-xs btn-outline-secondary mr-1">Duplicar</a>';
+        }
+        if (idstatus !== 5) {
+            btns += '<a href="' + BASE + n.folio + '/cancelar" class="btn btn-xs btn-outline-danger"'
+                + ' onclick="return confirm(\'Cancelar folio ' + n.folio + '?\')">Cancelar</a>';
+        }
     }
-    if (idstatus === 1 || idstatus === 3) {
-        btns += '<a href="<?= base_url('mostrador/venta/') ?>' + n.folio + '/duplicar" class="btn btn-xs btn-outline-secondary mr-1">Duplicar</a>';
-    }
-    if (idstatus !== 5) {
-        btns += '<a href="<?= base_url('mostrador/venta/') ?>' + n.folio + '/cancelar" class="btn btn-xs btn-outline-danger"'
-            + ' onclick="return confirm(\'¿Cancelar el folio ' + n.folio + '?\')">Cancelar</a>';
-    }
+
     if (!btns) btns = '<span class="text-muted">—</span>';
     return btns;
 }

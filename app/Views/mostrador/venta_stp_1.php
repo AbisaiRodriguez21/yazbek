@@ -10,7 +10,12 @@
 <?php
 $esMayoreo   = isset($tipoVenta) && $tipoVenta === 'mayoreo';
 $tituloVenta = $esMayoreo ? 'Venta Mayoreo' : 'Venta';
-$accionForm  = $esMayoreo ? base_url('mostrador/mayoreo') : base_url('mostrador/venta');
+$basePrefix  = $base ?? 'mostrador';
+if ($basePrefix === 'admin') {
+    $accionForm = $esMayoreo ? base_url('admin/venta/mayoreo') : base_url('admin/venta/nueva');
+} else {
+    $accionForm = $esMayoreo ? base_url('mostrador/mayoreo') : base_url('mostrador/venta');
+}
 ?>
 
 <div class="page-title-container">
@@ -18,7 +23,7 @@ $accionForm  = $esMayoreo ? base_url('mostrador/mayoreo') : base_url('mostrador/
         <h1><?= $tituloVenta ?> — Paso 1</h1>
         <nav aria-label="breadcrumb">
             <ol class="breadcrumb">
-                <li class="breadcrumb-item"><a href="<?= base_url('mostrador') ?>">Mostrador</a></li>
+                <li class="breadcrumb-item"><a href="<?= base_url($basePrefix) ?>"><?= $basePrefix === 'admin' ? 'Admin' : 'Mostrador' ?></a></li>
                 <li class="breadcrumb-item active"><?= $tituloVenta ?></li>
             </ol>
         </nav>
@@ -122,7 +127,7 @@ $accionForm  = $esMayoreo ? base_url('mostrador/mayoreo') : base_url('mostrador/
                     </div>
 
                     <div class="text-right mt-3">
-                        <a href="<?= base_url('mostrador') ?>" class="btn btn-secondary mr-2">Cancelar</a>
+                        <a href="<?= base_url($basePrefix) ?>" class="btn btn-secondary mr-2">Cancelar</a>
                         <button type="submit" class="btn <?= $esMayoreo ? 'btn-success' : 'btn-primary' ?>">
                             Siguiente <i class="iconsminds-arrow-right ml-1"></i>
                         </button>
@@ -156,7 +161,7 @@ $accionForm  = $esMayoreo ? base_url('mostrador/mayoreo') : base_url('mostrador/
             noResults: function() { return 'No se encontraron clientes.'; }
         },
         ajax: {
-            url: '<?= base_url('mostrador/clientes/buscar') ?>',
+            url: '<?= base_url($basePrefix . '/clientes/buscar') ?>',
             type: 'POST',
             dataType: 'json',
             delay: 300,
@@ -186,7 +191,7 @@ $accionForm  = $esMayoreo ? base_url('mostrador/mayoreo') : base_url('mostrador/
             $('#datosCliente').hide();
             return;
         }
-        $.post('<?= base_url('mostrador/clientes/datos') ?>', {
+        $.post('<?= base_url($basePrefix . '/clientes/datos') ?>', {
             idCliente: idCliente,
             '<?= csrf_token() ?>': '<?= csrf_hash() ?>'
         }, function(data) {

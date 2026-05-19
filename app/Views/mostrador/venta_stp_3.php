@@ -31,7 +31,7 @@
                 <table class="table table-sm mb-0">
                     <tr><th>Folio</th><td><?= (int)$nota['folio'] ?></td></tr>
                     <tr><th>Cliente</th><td><?= esc($nota['cliente'] ?? '') ?></td></tr>
-                    <tr><th>Vendedor</th><td><?= esc($usuario['nombre']) ?></td></tr>
+                    <tr><th>Vendedor</th><td><?= esc($nota['vendedor'] ?? $usuario['nombre']) ?></td></tr>
                     <tr><th>Fecha</th><td><?= date('Y-m-d', strtotime($nota['fecha_inicial'])) ?></td></tr>
                     <tr><th>Total Piezas</th>
                         <td>
@@ -89,21 +89,7 @@
                     <input type="hidden" name="Id_Notas_1" id="hidIdNotas1" value="<?= (int)$nota['Id_Notas_1'] ?>">
                     <input type="hidden" name="totalPiezas" value="<?= (int)$totalPiezas ?>">
 
-                    <!-- Descuento (solo acceso 1 y 4) -->
-                    <?php if (in_array((int)$usuario['acceso'], [1, 4])): ?>
-                    <div class="form-group">
-                        <label>Descuento (%)</label>
-                        <div class="input-group" style="max-width:200px">
-                            <input type="number" id="inputDescuento" name="descuento" class="form-control"
-                                   value="0" min="0" max="100" step="1">
-                            <div class="input-group-append">
-                                <span class="input-group-text">%</span>
-                            </div>
-                        </div>
-                    </div>
-                    <?php else: ?>
-                    <input type="hidden" name="descuento" value="0">
-                    <?php endif; ?>
+                    <input type="hidden" id="inputDescuento" name="descuento" value="0">
 
                     <!-- Totales calculados -->
                     <table class="table table-sm mb-3">
@@ -255,6 +241,7 @@
 <?= $this->section('page_scripts') ?>
 <script>
 var pagos = [];   // solo pagos NUEVOS de esta sesión
+var sinPagarSeleccionado = false;   // true cuando el usuario eligió "Sin Pagar" (a crédito)
 var sumaImportes = parseFloat($('#hidSumaImportes').val()) || 0;
 var yaPagado     = parseFloat($('#hidYaPagado').val()) || 0;
 var descuento    = 0;
@@ -270,6 +257,8 @@ function recalcular() {
     var cargos = 0;
     pagos.forEach(function(p) { cargos += parseFloat(p.cargo || 0); });
     total += cargos;
+    // Redondear el total al peso más cercano (misma lógica que restante)
+    total = Math.round(total);
 
     $('#tdSubtotal').text('$' + subtotal.toFixed(2));
     $('#tdIva').text('$' + iva.toFixed(2));
@@ -312,10 +301,33 @@ $('#btnAgregarPago').on('click', function() {
     var cargoPct = parseFloat($('#modalTipoPago option:selected').data('cargo')) || 0;
     var cargo    = monto * cargoPct / 100;
 
-    if (!tipo || monto <= 0) {
-        alert('Selecciona tipo de pago y monto válido.');
+    // Sin selección: obligatorio elegir método
+    if (!tipo) {
+        alert('Debes seleccionar un método de pago.');
         return;
     }
+
+    // "Sin Pagar" = a crédito: no requiere monto, solo marca la bandera
+    if (desc === 'Sin Pagar') {
+        sinPagarSeleccionado = true;
+        pagos = [];   // limpiar pagos reales si había alguno
+        renderPagos();
+        recalcular();
+        $('#modalPago').modal('hide');
+        $('#modalTipoPago').val('');
+        $('#modalMonto').val(0);
+        $('#modalAnticipo').prop('checked', false);
+        return;
+    }
+
+    // Método de pago real: requiere monto
+    if (monto <= 0) {
+        alert('Ingresa un monto válido.');
+        return;
+    }
+
+    // Si había "Sin Pagar" seleccionado antes, se reemplaza con pago real
+    sinPagarSeleccionado = false;
 
     // Calcular cuánto falta por pagar antes de agregar este pago
     var yaPagadoActual = pagos.reduce(function(acc, p) { return acc + parseFloat(p.monto); }, 0);
@@ -344,7 +356,11 @@ $('#btnAgregarPago').on('click', function() {
 
 function renderPagos() {
     if (pagos.length === 0) {
-        $('#listaPagos').html('<li class="list-group-item text-muted text-center" id="liSinPagos">Sin pagos nuevos aún.</li>');
+        if (sinPagarSeleccionado) {
+            $('#listaPagos').html('<li class="list-group-item text-center"><span class="badge badge-secondary">Sin Pagar — A Crédito</span> <button type="button" class="btn btn-xs btn-outline-danger ml-2" id="btnQuitarSinPagar">&times;</button></li>');
+        } else {
+            $('#listaPagos').html('<li class="list-group-item text-muted text-center" id="liSinPagos">Sin pagos nuevos aún.</li>');
+        }
         return;
     }
     var html = '';
@@ -365,12 +381,19 @@ $(document).on('click', '.btn-del-pago', function() {
     recalcular();
 });
 
+$(document).on('click', '#btnQuitarSinPagar', function() {
+    sinPagarSeleccionado = false;
+    renderPagos();
+    recalcular();
+});
+
 $('#btnGuardar').on('click', function() {
     // Si no hay pagos nuevos pero ya estaba cubierto con anticipo, se permite cerrar
     var total    = parseFloat($('#hidTotal').val()) || 0;
     var montoNuevo = pagos.reduce(function(acc, p) { return acc + parseFloat(p.monto); }, 0);
-    if (pagos.length === 0 && total > 0 && yaPagado < total) {
-        alert('Agrega al menos una forma de pago para el monto restante.');
+    // Obligatorio: debe haber elegido algún método de pago (real o "Sin Pagar")
+    if (pagos.length === 0 && !sinPagarSeleccionado && yaPagado <= 0) {
+        alert('Debes seleccionar al menos un método de pago.');
         return;
     }
 
