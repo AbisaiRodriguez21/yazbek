@@ -26,7 +26,7 @@
     <!-- Resumen de la nota -->
     <div class="col-md-5">
         <div class="card mb-3">
-            <div class="card-header font-weight-bold">Datos de la Nota</div>
+            <div class="card-header font-weight-bold" style="padding-top: 1rem; padding-bottom: 1rem;">Datos de la Nota</div>
             <div class="card-body">
                 <table class="table table-sm mb-0">
                     <tr><th>Folio</th><td><?= (int)$nota['folio'] ?></td></tr>
@@ -49,8 +49,8 @@
 
         <!-- Detalle de productos -->
         <div class="card">
-            <div class="card-header font-weight-bold">Productos</div>
-            <div class="table-responsive">
+            <div class="card-header font-weight-bold" style="padding-top: 1rem; padding-bottom: 1rem;">Productos</div>
+            <div class="table-responsive" style="max-height: 420px; overflow-y: auto;">
                 <table class="table table-sm mb-0">
                     <thead>
                         <tr>
@@ -80,7 +80,7 @@
     <!-- Formulario de pago -->
     <div class="col-md-7">
         <div class="card">
-            <div class="card-header font-weight-bold">Cierre de Nota</div>
+            <div class="card-header font-weight-bold" style="padding-top: 1rem; padding-bottom: 1rem;">Cierre de Nota</div>
             <div class="card-body">
 
                 <form id="formConfirmar">
@@ -162,6 +162,9 @@
                                     <?= esc($pe['descripcion']) ?>
                                     <?php if ($pe['anticipo']): ?>
                                     <span class="badge badge-warning">Anticipo</span>
+                                    <?php endif; ?>
+                                    <?php if (!empty($pe['folio_origen']) && (int)$pe['folio_origen'] !== (int)$nota['folio']): ?>
+                                    <small class="text-info ml-1">Folio #<?= (int)$pe['folio_origen'] ?></small>
                                     <?php endif; ?>
                                 </span>
                                 <span class="text-muted">$<?= number_format($pe['monto'], 2) ?></span>
@@ -279,11 +282,14 @@ function recalcular() {
     var montoNuevo = pagos.reduce(function(acc, p) { return acc + parseFloat(p.monto); }, 0);
     // Restante = total - ya pagado antes - nuevos pagos ahora
     var restante = total - yaPagado - montoNuevo;
+    // Redondear al peso más cercano (< .50 baja, >= .50 sube)
+    restante = Math.round(restante);
+    var liquidado = restante <= 0;
 
     $('#spMontoPagado').text('$' + montoNuevo.toFixed(2));
     $('#spRestante').text('$' + Math.max(0, restante).toFixed(2));
 
-    if (restante <= 0.009) {
+    if (liquidado) {
         // Liquidado: poner Pagada automáticamente
         $('#spRestante').removeClass('text-danger').addClass('text-success');
         $('#selectEstatus').val('5');
@@ -309,6 +315,22 @@ $('#btnAgregarPago').on('click', function() {
     if (!tipo || monto <= 0) {
         alert('Selecciona tipo de pago y monto válido.');
         return;
+    }
+
+    // Calcular cuánto falta por pagar antes de agregar este pago
+    var yaPagadoActual = pagos.reduce(function(acc, p) { return acc + parseFloat(p.monto); }, 0);
+    var totalActual    = parseFloat($('#hidTotal').val()) || 0;
+    var yaPagadoPrev   = parseFloat($('#hidYaPagado').val()) || 0;
+    var pendiente      = Math.round(totalActual - yaPagadoPrev - yaPagadoActual);
+
+    if (monto > pendiente + 0.99) {
+        var excedente = (monto - pendiente).toFixed(2);
+        var confirmar = confirm(
+            '⚠ El pago de $' + monto.toFixed(2) + ' excede lo que resta por cobrar ($' + Math.max(0, pendiente) + '.00).\n' +
+            'Se está cobrando $' + excedente + ' de más.\n\n' +
+            '¿Deseas agregarlo de todas formas?'
+        );
+        if (!confirmar) return;
     }
 
     pagos.push({ tipo: tipo, desc: desc, monto: monto, cargo: cargo, anticipo: anticipo });
@@ -369,16 +391,23 @@ $('#btnGuardar').on('click', function() {
 
     $('#btnGuardar').prop('disabled', true).text('Guardando...');
 
-    $.ajax({
+    // URL dinamica: funciona desde /mostrador y desde /admin
+        var postUrl = window.location.href.split('?')[0];
+
+        $.ajax({
         type: 'POST',
-        url: '<?= base_url('mostrador/venta/' . (int)$nota['folio'] . '/confirmar') ?>',
+        url: postUrl,
         data: payload,
         complete: function(xhr) {
             var resp = null;
             try { resp = JSON.parse(xhr.responseText); } catch(e) {}
 
             if (resp && resp.success) {
-                window.location.href = '<?= base_url('mostrador/consulta') ?>';
+                // Redirigir segun el prefijo de la URL actual
+                var esAdmin = window.location.pathname.indexOf('/admin/') !== -1;
+                window.location.href = esAdmin
+                    ? '<?= base_url('admin/consulta') ?>'
+                    : '<?= base_url('mostrador/consulta') ?>';
                 return;
             }
 

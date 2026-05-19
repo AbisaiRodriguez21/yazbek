@@ -26,6 +26,7 @@ class UsuarioModel extends Model
         'dato2',
         'notificaciones',
         'bandera',
+        'eliminado',
     ];
 
     // Sin timestamps automáticos (la tabla no los tiene)
@@ -37,20 +38,22 @@ class UsuarioModel extends Model
 
     /**
      * Busca un usuario por email y contraseña para el login.
+     * Solo devuelve usuarios activos (no eliminados).
      */
     public function verificarLogin(string $mail, string $pass): array|null
     {
         return $this->where('mail', $mail)
                     ->where('pass', $pass)
+                    ->where('eliminado', 0)
                     ->first();
     }
 
     /**
-     * Devuelve todos los usuarios ordenados por Id.
+     * Devuelve todos los usuarios activos ordenados por Id.
      */
     public function getTodos(): array
     {
-        return $this->orderBy('Id', 'ASC')->findAll();
+        return $this->where('eliminado', 0)->orderBy('Id', 'ASC')->findAll();
     }
 
     /**
@@ -75,6 +78,55 @@ class UsuarioModel extends Model
     public function cambiarPass(int $id, string $pass): bool
     {
         return $this->update($id, ['pass' => $pass]);
+    }
+
+    /**
+     * Soft-delete: marca el usuario como eliminado.
+     */
+    public function softDelete(int $id): void
+    {
+        \Config\Database::connect()
+            ->query("UPDATE usuarios SET eliminado = 1 WHERE Id = ?", [$id]);
+    }
+
+    /**
+     * Restaura un usuario eliminado.
+     */
+    public function restaurar(int $id): void
+    {
+        \Config\Database::connect()
+            ->query("UPDATE usuarios SET eliminado = 0 WHERE Id = ?", [$id]);
+    }
+
+    /**
+     * Datatable server-side para usuarios eliminados.
+     */
+    public function getDatatableEliminados(int $start, int $length, string $search, string $orderDir): array
+    {
+        $db = \Config\Database::connect();
+
+        $total = (int) $db->table($this->table)->where('eliminado', 1)->countAllResults();
+
+        $q = $db->table($this->table)->where('eliminado', 1);
+
+        if ($search !== '') {
+            $q->groupStart()
+              ->like('nombre', $search)
+              ->orLike('mail', $search)
+              ->groupEnd();
+        }
+
+        $filtered = (int) (clone $q)->countAllResults(false);
+
+        $data = $q->orderBy('Id', strtoupper($orderDir) === 'DESC' ? 'DESC' : 'ASC')
+                  ->limit($length, $start)
+                  ->get()->getResultArray();
+
+        return [
+            'total'    => $total,
+            'filtered' => $filtered,
+            'data'     => fix_enc_rows($data),
+        ];
     }
 
     // ──────────────────────────────────────────────

@@ -40,60 +40,67 @@
 <?php endif; ?>
 
 <!-- Tabla Usuarios -->
-<div class="card">
-    <div class="card-body p-0">
-        <div class="table-responsive">
-            <table id="usuariosTable" class="table table-striped table-hover mb-0">
-                <thead>
-                    <tr>
-                        <th>ID</th>
-                        <th>Correo</th>
-                        <th>Ticket Activo</th>
-                        <th>Nombre</th>
-                        <th>Contraseña <small class="text-muted">(clic para editar)</small></th>
-                        <th>Acciones</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php foreach ($usuarios as $user): ?>
-                    <tr>
-                        <td><?= (int)($user['Id'] ?? 0) ?></td>
-                        <td class="font-weight-bold"><?= esc($user['mail'] ?? '') ?></td>
-                        <td>
-                            <?php if (($user['bandera'] ?? 0) == 1): ?>
-                                <span class="badge badge-warning">Activo</span>
-                                <form method="POST" action="<?= base_url('admin/usuarios/liberar/' . (int)$user['Id']) ?>"
-                                      style="display:inline">
-                                    <?= csrf_field() ?>
-                                    <button type="submit" class="btn btn-xs btn-outline-secondary ml-1" title="Liberar ticket">
-                                        <i class="simple-icon-arrow-right"></i>
-                                    </button>
-                                </form>
-                            <?php else: ?>
-                                <span class="badge badge-success">Libre</span>
-                            <?php endif; ?>
-                        </td>
-                        <td><?= esc($user['nombre'] ?? '') ?></td>
-                        <td contenteditable="true"
-                            id="pass:<?= (int)$user['Id'] ?>"
-                            style="cursor: text; min-width: 120px;">
-                            <?= esc($user['pass'] ?? '') ?>
-                        </td>
-                        <td>
-                            <form method="POST" action="<?= base_url('admin/usuarios/eliminar/' . (int)$user['Id']) ?>"
-                                  style="display:inline"
-                                  onsubmit="return confirm('¿Eliminar este usuario?')">
+<div class="separator mb-5"></div>
+<div class="row">
+    <div class="col-12 mb-4">
+        <table id="usuariosTable" class="table responsive nowrap" style="width:100%">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Correo</th>
+                    <th>Ticket Activo</th>
+                    <th>Nombre</th>
+                    <th>Contraseña</th>
+                    <th>Acceso</th>
+                    <th>Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php foreach ($usuarios as $user): ?>
+                <tr>
+                    <td><?= (int)($user['Id'] ?? 0) ?></td>
+                    <td class="font-weight-bold"><?= esc($user['mail'] ?? '') ?></td>
+                    <td>
+                        <?php if (($user['bandera'] ?? 0) == 1): ?>
+                            <span class="badge badge-warning">Activo</span>
+                            <form method="POST" action="<?= base_url('admin/usuarios/liberar/' . (int)$user['Id']) ?>"
+                                  style="display:inline">
                                 <?= csrf_field() ?>
-                                <button type="submit" class="btn btn-sm btn-danger">
-                                    <i class="simple-icon-trash"></i>
+                                <button type="submit" class="btn btn-xs btn-outline-secondary ml-1" title="Liberar ticket">
+                                    <i class="simple-icon-arrow-right"></i>
                                 </button>
                             </form>
-                        </td>
-                    </tr>
-                    <?php endforeach; ?>
-                </tbody>
-            </table>
-        </div>
+                        <?php else: ?>
+                            <span class="badge badge-success">Libre</span>
+                        <?php endif; ?>
+                    </td>
+                    <td><?= esc($user['nombre'] ?? '') ?></td>
+                    <td><?= esc($user['pass'] ?? '') ?></td>
+                    <td>
+                        <?php
+                            $niveles = [1=>'Admin', 2=>'Caja', 3=>'Mostrador', 4=>'G Ventas'];
+                            $acc = (int)($user['acceso'] ?? 0);
+                            echo esc($niveles[$acc] ?? $acc);
+                        ?>
+                    </td>
+                    <td class="text-nowrap">
+                        <button type="button" class="btn btn-xs btn-outline-primary mr-1"
+                                onclick="abrirEditarUsuario(<?= (int)$user['Id'] ?>, '<?= esc($user['nombre'] ?? '', 'js') ?>', '<?= esc($user['mail'] ?? '', 'js') ?>', '<?= esc($user['pass'] ?? '', 'js') ?>', <?= $acc ?>)">
+                            <i class="simple-icon-pencil"></i> Editar
+                        </button>
+                        <form method="POST" action="<?= base_url('admin/usuarios/eliminar/' . (int)$user['Id']) ?>"
+                              style="display:inline"
+                              onsubmit="return confirm('¿Eliminar este usuario? Podrás restaurarlo desde Usuarios Eliminados.')">
+                            <?= csrf_field() ?>
+                            <button type="submit" class="btn btn-xs btn-danger">
+                                <i class="simple-icon-trash"></i>
+                            </button>
+                        </form>
+                    </td>
+                </tr>
+                <?php endforeach; ?>
+            </tbody>
+        </table>
     </div>
 </div>
 
@@ -127,7 +134,6 @@
                             <option value="1">Admin (1)</option>
                             <option value="2">Caja (2)</option>
                             <option value="3">Mostrador (3)</option>
-                            <option value="4">G Ventas (4)</option>
                         </select>
                     </div>
                 </div>
@@ -140,10 +146,63 @@
     </div>
 </div>
 
+<!-- Modal Editar Usuario -->
+<div class="modal fade" id="modalEditarUsuario" tabindex="-1" role="dialog">
+    <div class="modal-dialog" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Editar Usuario</h5>
+                <button type="button" class="close" data-dismiss="modal"><span>&times;</span></button>
+            </div>
+            <form method="POST" id="formEditarUsuario" action="">
+                <?= csrf_field() ?>
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label>Nombre de usuario</label>
+                        <input type="text" name="nombre" id="editNombre" class="form-control" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Correo electrónico</label>
+                        <input type="email" name="mail" id="editMail" class="form-control" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Contraseña</label>
+                        <input type="text" name="pass" id="editPass" class="form-control" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Nivel de acceso</label>
+                        <select name="acceso" id="editAcceso" class="form-control" required>
+                            <option value="">-- Seleccionar --</option>
+                            <option value="1">Admin (1)</option>
+                            <option value="2">Caja (2)</option>
+                            <option value="3">Mostrador (3)</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-primary">Guardar cambios</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
 <?= $this->endSection() ?>
 
 <?= $this->section('page_scripts') ?>
 <script>
+var BASE_EDITAR = '<?= base_url('admin/usuarios/editar/') ?>';
+
+function abrirEditarUsuario(id, nombre, mail, pass, acceso) {
+    document.getElementById('formEditarUsuario').action = BASE_EDITAR + id;
+    document.getElementById('editNombre').value  = nombre;
+    document.getElementById('editMail').value    = mail;
+    document.getElementById('editPass').value    = pass;
+    document.getElementById('editAcceso').value  = acceso;
+    $('#modalEditarUsuario').modal('show');
+}
+
 /* DataTables JS ya cargado en el layout — no importar de nuevo */
 (function initUsuariosTable() {
     var $table = $('#usuariosTable');
@@ -163,24 +222,6 @@
             }
         });
     }
-
-    // Edición inline de contraseña — igual que el original
-    $('td[contenteditable="true"]').on('blur', function() {
-        var campo = $(this).attr('id'); // "pass:5"
-        var valor = $(this).text().trim();
-        if (!campo || !valor) return;
-
-        var data = {};
-        data[campo] = valor;
-
-        $.post('<?= base_url('admin/ajax/usuarios') ?>', data, function(resp) {
-            // Respuesta OK — no hacer nada extra
-        });
-    });
-
-    $('td[contenteditable="true"]').on('keydown', function(e) {
-        if (e.which === 13) { e.preventDefault(); $(this).blur(); }
-    });
 })();
 </script>
 <?= $this->endSection() ?>

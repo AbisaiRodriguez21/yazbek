@@ -23,6 +23,33 @@
     <link rel="stylesheet" href="<?= base_url('assets/vendor/nouislider.min.css') ?>">
 
     <style>
+    /* ── Padding interno en tablas (aplica después del tema y DataTables) ── */
+    .table > thead > tr > th,
+    .table > tbody > tr > td,
+    .table > tfoot > tr > td {
+        padding: 1rem 1.5rem;
+        vertical-align: middle;
+    }
+    table.dataTable thead th,
+    table.dataTable tbody td,
+    table.dataTable tfoot td {
+        padding: 1rem 1.5rem !important;
+        vertical-align: middle;
+    }
+    /* Sin bordes verticales — solo línea horizontal entre filas */
+    .table th,
+    .table td {
+        border-left: 0;
+        border-right: 0;
+    }
+    .table thead th {
+        border-bottom-width: 1px;
+    }
+    /* Sin borde exterior en las cards que envuelven tablas */
+    .card {
+        border: none;
+        box-shadow: 0 1px 8px rgba(0,0,0,.07);
+    }
     @media print {
         .app-menu, .navbar, .page-footer, .btn, .breadcrumb, .page-title-container { display: none !important; }
         main { margin: 0 !important; padding: 0 !important; }
@@ -32,7 +59,7 @@
 
     <?= $this->renderSection('page_css') ?>
 </head>
-<body id="app-container" class="menu-default show-spinner">
+<body id="app-container" class="menu-sub-hidden show-spinner">
 
     <!-- ========== NAVBAR ========== -->
     <nav class="navbar fixed-top">
@@ -127,6 +154,7 @@
         elseif ($seg1 === 'admin' && $seg2 === 'consulta' && service('request')->getGet('tipo') === 'mayoreo') $subActivo = 'ventamayoreo';
         elseif (($seg1 === 'mostrador' || $seg1 === 'admin') && $seg2 === 'consulta') $subActivo = 'consultafolios';
         elseif ($seg2 === 'mensajes') $subActivo = 'mensajes';
+        elseif ($seg2 === 'usuarios' && $seg3 === 'eliminados') $subActivo = 'usuarios-eliminados';
         elseif ($seg2 === 'usuarios') $subActivo = 'usuarios';
         elseif ($seg2 === 'clientes' && $seg3 === 'eliminados') $subActivo = 'clientes-eliminados';
         elseif ($seg2 === 'clientes' || ($seg1 === 'mostrador' && $seg2 === 'clientes')) $subActivo = 'clientes';
@@ -222,6 +250,12 @@
                         <a href="<?= base_url('admin/usuarios') ?>">
                             <i class="simple-icon-check"></i>
                             <span class="d-inline-block">Usuarios</span>
+                        </a>
+                    </li>
+                    <li class="<?= $subActivo === 'usuarios-eliminados' ? 'active' : '' ?>" data-submenu="usuarios-eliminados">
+                        <a href="<?= base_url('admin/usuarios/eliminados') ?>">
+                            <i class="simple-icon-trash"></i>
+                            <span class="d-inline-block">Usuarios Eliminados</span>
                         </a>
                     </li>
                     <li class="<?= $subActivo === 'clientes' ? 'active' : '' ?>" data-submenu="clientes">
@@ -437,6 +471,7 @@
             else if (seg1 === 'admin' && seg2 === 'consulta' && window.location.search.indexOf('tipo=mayoreo') !== -1) sub = 'ventamayoreo';
             else if ((seg1 === 'mostrador' || seg1 === 'admin') && seg2 === 'consulta') sub = 'consultafolios';
             else if (seg2 === 'mensajes') sub = 'mensajes';
+            else if (seg2 === 'usuarios' && seg3 === 'eliminados') sub = 'usuarios-eliminados';
             else if (seg2 === 'usuarios') sub = 'usuarios';
             else if (seg2 === 'clientes' || (seg1 === 'mostrador' && seg2 === 'clientes')) sub = 'clientes';
             else if (seg2 === 'importar') sub = 'importar';
@@ -599,27 +634,4 @@
     /* ── Dark mode toggle ── */
     (function () {
         var LIGHT = 'dore.light.bluenavy.min.css';
-        var DARK  = 'dore.dark.bluenavy.min.css';
-
-        function applyTheme(isDark) {
-            var link = document.getElementById('themeLink');
-            if (link) link.href = BASE_ASSETS + (isDark ? DARK : LIGHT);
-            localStorage.setItem('dore-theme-color', isDark ? DARK : LIGHT);
-            var sw = document.getElementById('switchDark');
-            if (sw) sw.checked = isDark;
-        }
-
-        // Aplicar preferencia guardada al cargar
-        var saved = localStorage.getItem('dore-theme-color') || LIGHT;
-        applyTheme(saved === DARK);
-
-        // Listener en el toggle
-        document.addEventListener('change', function (e) {
-            if (e.target && e.target.id === 'switchDark') {
-                applyTheme(e.target.checked);
-            }
-        });
-    })();
-    </script>
-</body>
-</html>
+        var DARK  = 'dore.dark.bluenavy.min

@@ -2,6 +2,52 @@ html {
   width: 100%;
 }
 
+/* ══════════════════════════════════════════════
+   ESTILO GLOBAL DE TABLAS
+   ══════════════════════════════════════════════ */
+
+/* 1. Padding interno en celdas */
+.table > thead > tr > th,
+.table > tbody > tr > td,
+.table > tfoot > tr > td,
+table.dataTable thead th,
+table.dataTable tbody td,
+table.dataTable tfoot td {
+  padding: 1rem 1.5rem !important;
+  vertical-align: middle;
+}
+
+/* 2. Sin bordes verticales ni borde exterior — solo línea horizontal entre filas */
+.table,
+.table > thead > tr > th,
+.table > tbody > tr > td,
+table.dataTable thead th,
+table.dataTable tbody td {
+  border-left: none !important;
+  border-right: none !important;
+  border-top: none !important;
+  border-bottom: 1px solid rgba(0,0,0,0.07) !important;
+}
+
+/* 3. Sin borde en el wrapper DataTables y table-responsive */
+.dataTables_wrapper,
+.table-responsive {
+  border: none !important;
+  box-shadow: none !important;
+}
+
+/* 4. Sin borde superior en el thead (la primera línea arriba de los encabezados) */
+.table > thead > tr > th {
+  border-bottom: 2px solid rgba(0,0,0,0.1) !important;
+  font-weight: 600;
+}
+
+/* 5. Quitar borde de la card que envuelve la tabla cuando la hay */
+.card {
+  border: none !important;
+  box-shadow: 0 1px 8px rgba(0,0,0,0.07) !important;
+}
+
 body {
   overflow-x: hidden !important;
 }

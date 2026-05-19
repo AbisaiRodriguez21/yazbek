@@ -36,7 +36,7 @@ $accionForm  = $esMayoreo ? base_url('mostrador/mayoreo') : base_url('mostrador/
 <div class="row">
     <div class="col-md-8 offset-md-2">
         <div class="card">
-            <div class="card-header d-flex justify-content-between align-items-center">
+            <div class="card-header d-flex justify-content-between align-items-center" style="margin-top: 1.2rem;">
                 <span class="font-weight-bold">Seleccionar Cliente</span>
                 <span class="text-muted"><?= date('Y-m-d') ?></span>
             </div>
@@ -58,17 +58,60 @@ $accionForm  = $esMayoreo ? base_url('mostrador/mayoreo') : base_url('mostrador/
 
                     <!-- Datos del cliente (se llenan vía AJAX al seleccionar) -->
                     <div id="datosCliente" style="display:none;">
-                        <div class="form-group">
-                            <label>Dirección</label>
-                            <input type="text" class="form-control" id="clienteDireccion" readonly>
-                        </div>
-                        <div class="form-group">
-                            <label>Teléfono</label>
-                            <input type="text" class="form-control" id="clienteTelefono" readonly>
-                        </div>
-                        <div class="form-group">
-                            <label>Email</label>
-                            <input type="text" class="form-control" id="clienteEmail" readonly>
+                        <hr class="mt-2 mb-3">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="form-group mb-2">
+                                    <label class="small text-muted mb-0">RFC</label>
+                                    <input type="text" class="form-control form-control-sm" id="clienteRFC" readonly>
+                                </div>
+                                <div class="form-group mb-2">
+                                    <label class="small text-muted mb-0">Razón Social</label>
+                                    <input type="text" class="form-control form-control-sm" id="clienteRazonSocial" readonly>
+                                </div>
+                                <div class="form-group mb-2">
+                                    <label class="small text-muted mb-0">Nombre Empresa</label>
+                                    <input type="text" class="form-control form-control-sm" id="clienteEmpresa" readonly>
+                                </div>
+                                <div class="form-group mb-2">
+                                    <label class="small text-muted mb-0">Teléfono</label>
+                                    <input type="text" class="form-control form-control-sm" id="clienteTelefono" readonly>
+                                </div>
+                                <div class="form-group mb-2">
+                                    <label class="small text-muted mb-0">Celular</label>
+                                    <input type="text" class="form-control form-control-sm" id="clienteCelular" readonly>
+                                </div>
+                                <div class="form-group mb-2">
+                                    <label class="small text-muted mb-0">Email</label>
+                                    <input type="text" class="form-control form-control-sm" id="clienteEmail" readonly>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-group mb-2">
+                                    <label class="small text-muted mb-0">Dirección</label>
+                                    <input type="text" class="form-control form-control-sm" id="clienteDireccion" readonly>
+                                </div>
+                                <div class="form-group mb-2">
+                                    <label class="small text-muted mb-0">CP</label>
+                                    <input type="text" class="form-control form-control-sm" id="clienteCP" readonly>
+                                </div>
+                                <div class="form-group mb-2">
+                                    <label class="small text-muted mb-0">Ciudad</label>
+                                    <input type="text" class="form-control form-control-sm" id="clienteCiudad" readonly>
+                                </div>
+                                <div class="form-group mb-2">
+                                    <label class="small text-muted mb-0">Estado</label>
+                                    <input type="text" class="form-control form-control-sm" id="clienteEstado" readonly>
+                                </div>
+                                <div class="form-group mb-2">
+                                    <label class="small text-muted mb-0">¿Cómo nos conoció?</label>
+                                    <input type="text" class="form-control form-control-sm" id="clienteComoNos" readonly>
+                                </div>
+                                <div class="form-group mb-2">
+                                    <label class="small text-muted mb-0">Fecha de ingreso</label>
+                                    <input type="text" class="form-control form-control-sm" id="clienteFecha" readonly>
+                                </div>
+                            </div>
                         </div>
                     </div>
 
@@ -148,9 +191,18 @@ $accionForm  = $esMayoreo ? base_url('mostrador/mayoreo') : base_url('mostrador/
             '<?= csrf_token() ?>': '<?= csrf_hash() ?>'
         }, function(data) {
             if (data.success) {
-                $('#clienteDireccion').val(data.direccion);
+                $('#clienteRFC').val(data.RFC);
+                $('#clienteRazonSocial').val(data.razonSocial);
+                $('#clienteEmpresa').val(data.NombreEmpresa);
                 $('#clienteTelefono').val(data.telefono);
+                $('#clienteCelular').val(data.celular);
                 $('#clienteEmail').val(data.email);
+                $('#clienteDireccion').val(data.direccion);
+                $('#clienteCP').val(data.CP);
+                $('#clienteCiudad').val(data.ciudad);
+                $('#clienteEstado').val(data.estado);
+                $('#clienteComoNos').val(data.comoNosConoce);
+                $('#clienteFecha').val(data.fechaIngreso ? data.fechaIngreso.substring(0,10) : '');
                 $('#datosCliente').show();
             }
         }, 'json').fail(function() {

@@ -448,13 +448,86 @@ class AdminController extends BaseController
     }
 
     // ──────────────────────────────────────────────────────────────
-    // GET /admin/usuarios/eliminar/:id  —  Elimina un usuario
-    // Migrado desde: admin/eliminar_usuario.php
+    // POST /admin/usuarios/eliminar/:id  —  Soft-delete un usuario
     // ──────────────────────────────────────────────────────────────
     public function eliminarUsuario(int $id): \CodeIgniter\HTTP\RedirectResponse
     {
-        $this->usuarioModel->delete($id);
+        $this->usuarioModel->softDelete($id);
         return redirect()->to('/admin/usuarios')->with('success', 'Usuario eliminado.');
+    }
+
+    // ──────────────────────────────────────────────────────────────
+    // POST /admin/usuarios/editar/:id  —  Edita datos de un usuario
+    // ──────────────────────────────────────────────────────────────
+    public function editarUsuario(int $id): \CodeIgniter\HTTP\RedirectResponse
+    {
+        $data = [
+            'nombre' => trim($this->request->getPost('nombre') ?? ''),
+            'mail'   => trim($this->request->getPost('mail')   ?? ''),
+            'pass'   => trim($this->request->getPost('pass')   ?? ''),
+            'acceso' => (int) $this->request->getPost('acceso'),
+        ];
+
+        if (empty($data['nombre']) || empty($data['mail']) || empty($data['pass']) || ! $data['acceso']) {
+            return redirect()->to('/admin/usuarios')->with('error', 'Todos los campos son obligatorios.');
+        }
+
+        $this->usuarioModel->update($id, $data);
+        return redirect()->to('/admin/usuarios')->with('success', 'Usuario actualizado correctamente.');
+    }
+
+    // ──────────────────────────────────────────────────────────────
+    // GET /admin/usuarios/eliminados  —  Lista de usuarios eliminados
+    // ──────────────────────────────────────────────────────────────
+    public function usuariosEliminados(): string
+    {
+        return view('admin/usuarios_eliminados', [
+            'usuario' => $this->getUsuarioSesion(),
+        ]);
+    }
+
+    // ──────────────────────────────────────────────────────────────
+    // GET /admin/usuarios/eliminados/datatable
+    // ──────────────────────────────────────────────────────────────
+    public function usuariosEliminadosDatatable(): \CodeIgniter\HTTP\Response
+    {
+        $draw     = (int) $this->request->getGet('draw');
+        $start    = (int) $this->request->getGet('start');
+        $length   = (int) $this->request->getGet('length');
+        $search   = $this->request->getGet('search')['value'] ?? '';
+        $orderDir = $this->request->getGet('order')[0]['dir'] ?? 'asc';
+
+        $result = $this->usuarioModel->getDatatableEliminados($start, $length, $search, $orderDir);
+
+        return $this->response->setJSON([
+            'draw'            => $draw,
+            'recordsTotal'    => $result['total'],
+            'recordsFiltered' => $result['filtered'],
+            'data'            => $result['data'],
+        ]);
+    }
+
+    // ──────────────────────────────────────────────────────────────
+    // POST /admin/usuarios/restaurar/:id  —  Restaura un usuario eliminado
+    // ──────────────────────────────────────────────────────────────
+    public function restaurarUsuario(int $id): \CodeIgniter\HTTP\RedirectResponse
+    {
+        $this->usuarioModel->restaurar($id);
+        return redirect()->to('/admin/usuarios/eliminados')->with('success', 'Usuario restaurado correctamente.');
+    }
+
+    // ──────────────────────────────────────────────────────────────
+    // POST /admin/usuarios/eliminar-definitivo/:id  —  Elimina permanentemente
+    // ──────────────────────────────────────────────────────────────
+    public function eliminarUsuarioDefinitivo(int $id): \CodeIgniter\HTTP\Response
+    {
+        $db = \Config\Database::connect();
+        try {
+            $db->query("DELETE FROM usuarios WHERE Id = ? AND eliminado = 1", [$id]);
+            return $this->response->setJSON(['ok' => true]);
+        } catch (\Exception $e) {
+            return $this->response->setJSON(['ok' => false, 'error' => $e->getMessage()]);
+        }
     }
 
     // ──────────────────────────────────────────────────────────────
@@ -1131,6 +1204,25 @@ class AdminController extends BaseController
         ]);
     }
 
+    // ──────────────────────────────────────────────────────────────
+    // POST /admin/folio/:folio/liquidar  —  Liquida un anticipo
+    // ──────────────────────────────────────────────────────────────
+    public function liquidarAnticipo(int $folio): \CodeIgniter\HTTP\Response
+    {
+        $notaModel = new \App\Models\NotaModel();
+        $nota      = $notaModel->getPorFolio($folio);
+
+        if (! $nota) {
+            return $this->response->setJSON(['ok' => false, 'error' => 'Folio no encontrado.']);
+        }
+        if ((int)($nota['status'] ?? 0) === 5) {
+            return $this->response->setJSON(['ok' => false, 'error' => 'La nota ya está liquidada.']);
+        }
+
+        $notaModel->liquidarAnticipo($folio);
+        return $this->response->setJSON(['ok' => true, 'mensaje' => "Folio #{$folio} liquidado correctamente."]);
+    }
+
     // POST /admin/clientes/restaurar/(:num)  —  Revive un cliente eliminado
     public function restaurarCliente(int $id): \CodeIgniter\HTTP\RedirectResponse
     {
@@ -1360,14 +1452,17 @@ class AdminController extends BaseController
                 return '<p class="text-danger">FOLIO NO ENCONTRADO</p>';
             }
 
-            // Pagos (Id_Notas_1 directo, igual al original)
+            // Pagos: del folio padre + de todos sus folios hijos (con referencia = folio)
             $pagos = $db->query(
                 "SELECT m.idTipoPago, t.descripcion AS tipopago,
-                        m.monto, m.cargos AS cargo, m.anticipo
-                 FROM montosnotas m
-                 INNER JOIN tipopago t ON m.idTipoPago = t.id
-                 WHERE m.idNotas = ?",
-                [$nota['Id_Notas_1']]
+                        m.monto, m.cargos AS cargo, m.anticipo,
+                        n2.folio AS folio_pago
+                 FROM notas_1 n2
+                 INNER JOIN montosnotas m ON m.idNotas = n2.Id_Notas_1
+                 INNER JOIN tipopago t ON t.id = m.idTipoPago
+                 WHERE n2.folio = ? OR n2.referencia = ?
+                 ORDER BY n2.folio ASC",
+                [$folio, $folio]
             )->getResultArray();
 
             // Productos: pUnitario=precio real, estilo=sku en notas_2
@@ -1452,6 +1547,7 @@ class AdminController extends BaseController
 
         foreach ($pagos as $p) {
             $html .= '<tr><td colspan="4" class="text-right no-border">';
+            $html .= '<strong>Folio #' . ($p['folio_pago'] ?? '') . '</strong> — ';
             $html .= '<strong>Forma de Pago:</strong> ' . esc($p['tipopago']);
             $html .= ' <strong>Monto: </strong>$ ' . number_format($p['monto'] ?? 0, 2);
             if (in_array($p['idTipoPago'] ?? 0, [2, 3])) {
@@ -1477,7 +1573,7 @@ class AdminController extends BaseController
         $html .= '<td colspan="2" align="left">' . (($nota['factura'] ?? 0) == 1 ? 'Si requiere' : 'No requiere') . '</td></tr>';
 
         $html .= '<tr><input type="hidden" id="folio_input" value="' . $nota['folio'] . '" />';
-        if ($statusId !== 3 && $statusId !== 5 && $verificado !== 'Pagado') {
+        if ($statusId !== 3 && $verificado !== 'Pagado') {
             $html .= '<td></td>';
             $html .= '<td colspan="2" class="text-right no-border"><button type="button" class="btn btn-danger" onclick="fn_modal_calcelar_nota()">Cancelar Nota</button></td>';
             $html .= '<td colspan="2" class="text-right no-border"><button type="button" class="btn btn-success" onclick="fn_muestra_modal()">Pago Verificado</button></td>';
@@ -1864,10 +1960,13 @@ class AdminController extends BaseController
     public function consulta(): string
     {
         $tipo = $this->request->getGet('tipo') ?? 'todos';
+        $db   = \Config\Database::connect();
+        $tiposPago = $db->query("SELECT id, descripcion AS tipo FROM tipopago ORDER BY id ASC")->getResultArray();
 
         return view('admin/consulta', [
-            'usuario' => $this->getUsuarioSesion(),
-            'tipo'    => $tipo,
+            'usuario'   => $this->getUsuarioSesion(),
+            'tipo'      => $tipo,
+            'tiposPago' => $tiposPago,
         ]);
     }
 
@@ -1897,7 +1996,16 @@ class AdminController extends BaseController
             $baseSql = "FROM notas_1 n
                         LEFT JOIN clientes c ON c.id = n.idCliente
                         LEFT JOIN usuarios u ON u.Id = n.idVendedor
-                        LEFT JOIN status s ON s.id = n.status";
+                        LEFT JOIN status s ON s.id = n.status
+                        LEFT JOIN (
+                            SELECT n2.folio AS folio_padre,
+                                   GROUP_CONCAT(DISTINCT tp.descripcion ORDER BY tp.id SEPARATOR ' / ') AS tipos_pago
+                            FROM notas_1 n2
+                            INNER JOIN montosnotas mn ON mn.idNotas = n2.Id_Notas_1
+                            INNER JOIN tipopago tp ON tp.id = mn.idTipoPago
+                            WHERE n2.referencia > 0
+                            GROUP BY n2.referencia
+                        ) pm ON pm.folio_padre = n.folio";
 
             $whereClauses = [];
             $params       = [];
@@ -1926,10 +2034,11 @@ class AdminController extends BaseController
                 "SELECT n.folio, n.fecha_inicial,
                         COALESCE(c.nombre, '—')   AS cliente,
                         COALESCE(u.usuario, '—')  AS vendedor,
-                        COALESCE(n.tipoPago, '—') AS tipopago,
+                        COALESCE(pm.tipos_pago, '—') AS tipopago,
                         n.total, n.status AS idstatus,
                         COALESCE(s.nombre, '')    AS status_nombre,
-                        n.verificado
+                        n.verificado,
+                        COALESCE(n.referencia, 0) AS referencia
                  {$baseSql} {$where}
                  ORDER BY {$orderCol} {$orderDir}
                  LIMIT ? OFFSET ?",

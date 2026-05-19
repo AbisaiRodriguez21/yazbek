@@ -59,7 +59,7 @@
         <?php if (!empty($pagos)): ?>
         <div class="card">
             <div class="card-header font-weight-bold">Pagos ya Registrados</div>
-            <div class="card-body p-0">
+            <div class="card-body p-0 pt-2">
                 <table class="table table-sm mb-0">
                     <thead>
                         <tr><th>Tipo</th><th class="text-right">Monto</th><th class="text-right">Cargo</th></tr>

@@ -26,8 +26,13 @@ $routes->group('admin', ['filter' => 'role:1'], function ($routes) {
     // Usuarios
     $routes->get('usuarios', 'AdminController::usuarios');
     $routes->post('usuarios/crear', 'AdminController::crearUsuario');
+    $routes->post('usuarios/editar/(:num)', 'AdminController::editarUsuario/$1');
     $routes->post('usuarios/eliminar/(:num)', 'AdminController::eliminarUsuario/$1');
     $routes->post('usuarios/liberar/(:num)', 'AdminController::liberarUsuario/$1');
+    $routes->get('usuarios/eliminados', 'AdminController::usuariosEliminados');
+    $routes->get('usuarios/eliminados/datatable', 'AdminController::usuariosEliminadosDatatable');
+    $routes->post('usuarios/restaurar/(:num)', 'AdminController::restaurarUsuario/$1');
+    $routes->post('usuarios/eliminar-definitivo/(:num)', 'AdminController::eliminarUsuarioDefinitivo/$1');
 
     // Inventario de productos
     $routes->get('inventario', 'AdminController::inventario');
@@ -97,6 +102,13 @@ $routes->group('admin', ['filter' => 'role:1'], function ($routes) {
     // Consultar folios (admin ve todos, con filtro mayoreo/menudeo)
     $routes->get('consulta', 'AdminController::consulta');
     $routes->get('consulta/datatable', 'AdminController::consultaDatatable');
+
+    // Liquidar anticipo
+    $routes->post('folio/(:num)/liquidar', 'AdminController::liquidarAnticipo/$1');
+
+    // Pantalla de pago (step 3) accesible desde admin
+    $routes->get('venta/(:num)/confirmar',  'MostradorController::ventaStp3/$1');
+    $routes->post('venta/(:num)/confirmar', 'MostradorController::ventaStp3Post/$1');
 });
 
 // =============================================================
@@ -136,6 +148,7 @@ $routes->group('mostrador', ['filter' => 'role:3,4'], function ($routes) {
     // ── Anticipos ──
     $routes->get('anticipos', 'MostradorController::anticipos');
     $routes->get('anticipos/folio/(:num)', 'MostradorController::muestraFolioAnticipo/$1');
+    $routes->post('anticipo/nuevo-pago', 'MostradorController::nuevoPagoAnticipo');
 
     // ── Búsqueda de productos (select2 autocomplete) ──
     $routes->post('productos/buscar', 'MostradorController::buscarProductos');

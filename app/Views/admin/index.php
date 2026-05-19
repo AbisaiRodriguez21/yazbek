@@ -717,7 +717,8 @@ $mesActualNum = (int)date('n');
             return;
         }
 
-        var nombres  = filas.map(function(r){ return r.nombre ? r.nombre.substring(0,26) : r.sku; });
+        var skus     = filas.map(function(r){ return r.sku || r.nombre || ''; });
+        var nombres  = filas.map(function(r){ return r.nombre || r.sku || ''; });
         var piezas   = filas.map(function(r){ return parseInt(r.piezas); });
         var importes = filas.map(function(r){ return parseFloat(r.importe); });
 
@@ -725,15 +726,17 @@ $mesActualNum = (int)date('n');
             tooltip: {
                 trigger: 'axis', axisPointer: { type: 'shadow' },
                 formatter: function(p) {
-                    return p[0].name + '<br>'
+                    var i = p[0].dataIndex;
+                    return '<b>' + skus[filas.length - 1 - i] + '</b><br>'
+                         + '<span style="font-size:11px;color:#666">' + nombres[filas.length - 1 - i] + '</span><br>'
                          + p[0].marker + ' Piezas: <b>' + p[0].value + '</b><br>'
-                         + '💰 Importe: <b>' + peso(importes[p[0].dataIndex]) + '</b>';
+                         + '💰 Importe: <b>' + peso(importes[filas.length - 1 - i]) + '</b>';
                 }
             },
-            grid:   { top: 10, left: 148, right: 20, bottom: 25 },
+            grid:   { top: 10, left: 120, right: 20, bottom: 25 },
             xAxis:  { type: 'value', axisLabel: { fontSize: 9 }, splitLine: { lineStyle: { color: '#eee' } } },
-            yAxis:  { type: 'category', data: nombres.slice().reverse(),
-                      axisLabel: { fontSize: 9, width: 140, overflow: 'truncate' } },
+            yAxis:  { type: 'category', data: skus.slice().reverse(),
+                      axisLabel: { fontSize: 9, width: 112, overflow: 'truncate' } },
             series: [{
                 type: 'bar', data: piezas.slice().reverse(), barMaxWidth: 20,
                 itemStyle: { color: function(p){ return PAL[p.dataIndex % PAL.length]; } },
@@ -900,7 +903,8 @@ $mesActualNum = (int)date('n');
             return;
         }
 
-        var nombres  = filas.map(function(r){ return r.nombre ? r.nombre.substring(0,28) : r.sku; });
+        var skus     = filas.map(function(r){ return r.sku || r.nombre || ''; });
+        var nombres  = filas.map(function(r){ return r.nombre || r.sku || ''; });
         var piezas   = filas.map(function(r){ return parseInt(r.piezas); });
         var importes = filas.map(function(r){ return parseFloat(r.importe); });
 
@@ -908,15 +912,17 @@ $mesActualNum = (int)date('n');
             tooltip: {
                 trigger: 'axis', axisPointer: { type: 'shadow' },
                 formatter: function(p){
-                    return p[0].name + '<br>'
+                    var i = p[0].dataIndex;
+                    return '<b>' + skus[filas.length - 1 - i] + '</b><br>'
+                         + '<span style="font-size:11px;color:#666">' + nombres[filas.length - 1 - i] + '</span><br>'
                          + p[0].marker + ' Piezas: <b>' + p[0].value + '</b><br>'
-                         + '💰 Importe: <b>' + peso(importes[p[0].dataIndex]) + '</b>';
+                         + '💰 Importe: <b>' + peso(importes[filas.length - 1 - i]) + '</b>';
                 }
             },
-            grid:   { top: 10, left: 168, right: 20, bottom: 30 },
+            grid:   { top: 10, left: 120, right: 20, bottom: 30 },
             xAxis:  { type: 'value', axisLabel: { fontSize: 9 }, splitLine: { lineStyle: { color: '#eee' } } },
-            yAxis:  { type: 'category', data: nombres.slice().reverse(),
-                      axisLabel: { fontSize: 9, width: 155, overflow: 'truncate' } },
+            yAxis:  { type: 'category', data: skus.slice().reverse(),
+                      axisLabel: { fontSize: 9, width: 112, overflow: 'truncate' } },
             series: [{ type: 'bar', data: piezas.slice().reverse(), barMaxWidth: 26,
                 itemStyle: { color: function(p){ return PAL[p.dataIndex % PAL.length]; } }
             }]

@@ -183,7 +183,26 @@ class NotaModel extends Model
      */
     public function getAnticipos(): array
     {
-        return $this->where('status', 4)->orderBy('Id_Notas_1', 'DESC')->findAll();
+        $db = \Config\Database::connect();
+        return $db->query("
+            SELECT
+                n.folio,
+                n.fecha_inicial,
+                COALESCE(c.nombre, n.NombreCliente, '—') AS cliente,
+                COALESCE(n.vendedor, '—')                  AS vendedor,
+                n.total,
+                COALESCE((
+                    SELECT SUM(m2.monto)
+                    FROM montosnotas m2
+                    INNER JOIN notas_1 nh ON nh.Id_Notas_1 = m2.idNotas
+                    WHERE nh.folio = n.folio OR nh.referencia = n.folio
+                ), 0) AS pagado
+            FROM notas_1 n
+            LEFT JOIN clientes c ON c.id = n.idCliente
+            WHERE n.status = 4
+              AND (n.referencia IS NULL OR n.referencia = 0)
+            ORDER BY n.Id_Notas_1 DESC
+        ")->getResultArray();
     }
 
     /**
@@ -233,5 +252,85 @@ class NotaModel extends Model
         $folio  = ($result->max_folio ?? 1000000) + 1;
         $db->transComplete();
         return $folio;
+    }
+
+    /**
+     * Crea un folio hijo de pago para un anticipo existente.
+     * El hijo tiene referencia = folio padre, sin productos, solo registra el pago.
+     */
+    public function crearFolioPagoAnticipo(int $foliopadre, int $idCliente, int $idVendedor, float $monto, int $idTipoPago, float $cargo = 0, int $esAnticipo = 1): int
+    {
+        $db    = \Config\Database::connect();
+        $folio = $this->siguienteFolio();
+        $fecha = date('Y-m-d H:i:s');
+
+        // status 4 = anticipo (pago parcial), 5 = pagada (pago final)
+        $statusHijo = $esAnticipo ? 4 : 5;
+
+        $db->query(
+            "INSERT INTO notas_1
+             (folio, fecha_inicial, idCliente, idVendedor, referencia,
+              sumaImportes, subTotal, subTotal2, iva, total, totalPiezas,
+              status, descuento, cargoTarjeta, factura, tipoImpresion)
+             VALUES (?, ?, ?, ?, ?, 0, ?, 0, 0, ?, 0, ?, 0, ?, 0, 1)",
+            [$folio, $fecha, $idCliente, $idVendedor, $foliopadre, $monto, $monto, $statusHijo, $cargo]
+        );
+
+        $idNota = $db->insertID();
+
+        $db->query(
+            "INSERT INTO montosnotas (idNotas, idTipoPago, monto, cargos, anticipo, montoEfectivoIva, fecha)
+             VALUES (?, ?, ?, ?, ?, 0, ?)",
+            [$idNota, $idTipoPago, $monto, $cargo, $esAnticipo, $fecha]
+        );
+
+        return $folio;
+    }
+
+    /**
+     * Liquida el folio padre y todos sus hijos de anticipo (status → 5).
+     */
+    public function liquidarAnticipo(int $foliopadre): void
+    {
+        $db = \Config\Database::connect();
+        $db->query(
+            "UPDATE notas_1 SET status = 5 WHERE folio = ? OR referencia = ?",
+            [$foliopadre, $foliopadre]
+        );
+    }
+
+    /**
+     * Devuelve el total pagado (suma de montosnotas) del folio padre + todos sus hijos.
+     */
+    public function getTotalPagadoAnticipo(int $foliopadre): float
+    {
+        $db = \Config\Database::connect();
+        $row = $db->query(
+            "SELECT COALESCE(SUM(mn.monto), 0) AS pagado
+             FROM montosnotas mn
+             INNER JOIN notas_1 n ON n.Id_Notas_1 = mn.idNotas
+             WHERE n.folio = ? OR n.referencia = ?",
+            [$foliopadre, $foliopadre]
+        )->getRowArray();
+        return (float)($row['pagado'] ?? 0);
+    }
+
+    /**
+     * Devuelve los pagos hijos de un folio anticipo.
+     */
+    public function getPagosHijos(int $foliopadre): array
+    {
+        $db = \Config\Database::connect();
+        return $db->query(
+            "SELECT n.folio, n.fecha_inicial, n.total,
+                    COALESCE(tp.descripcion, '—') AS tipoPago,
+                    mn.anticipo
+             FROM notas_1 n
+             LEFT JOIN montosnotas mn ON mn.idNotas = n.Id_Notas_1
+             LEFT JOIN tipopago tp   ON tp.id = mn.idTipoPago
+             WHERE n.referencia = ?
+             ORDER BY n.folio ASC",
+            [$foliopadre]
+        )->getResultArray();
     }
 }

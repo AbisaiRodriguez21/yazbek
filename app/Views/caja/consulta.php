@@ -27,30 +27,24 @@
 </div>
 <?php endif; ?>
 
+<div class="separator mb-5"></div>
 <div class="row">
-    <div class="col-md-10 offset-md-1">
-        <div class="card">
-            <div class="card-header font-weight-bold">Resultado de búsqueda</div>
-            <div class="card-body p-0">
-                <div class="table-responsive">
-                    <table class="table table-striped mb-0" id="tablaCajaConsulta">
-                        <thead>
-                            <tr>
-                                <th>Folio</th>
-                                <th>Fecha</th>
-                                <th>Cliente</th>
-                                <th>Vendedor</th>
-                                <th>Tipo Pago</th>
-                                <th class="text-right">Total</th>
-                                <th>Status</th>
-                                <th>Acciones</th>
-                            </tr>
-                        </thead>
-                        <tbody></tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
+    <div class="col-12 mb-4">
+        <table class="table responsive nowrap" id="tablaCajaConsulta" style="width:100%">
+            <thead>
+                <tr>
+                    <th>Folio</th>
+                    <th>Fecha</th>
+                    <th>Cliente</th>
+                    <th>Vendedor</th>
+                    <th>Tipo Pago</th>
+                    <th class="text-right">Total</th>
+                    <th>Status</th>
+                    <th>Acciones</th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
     </div>
 </div>
 

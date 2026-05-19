@@ -58,7 +58,7 @@
             <div class="card-header font-weight-bold">
                 Desglose por Tipo de Pago — <?= esc($fecha) ?>
             </div>
-            <div class="card-body p-0">
+            <div class="card-body p-0 pt-2">
                 <table class="table table-sm mb-0">
                     <thead>
                         <tr>

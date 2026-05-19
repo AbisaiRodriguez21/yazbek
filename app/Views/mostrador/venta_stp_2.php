@@ -42,7 +42,7 @@
     <!-- Panel izquierdo: info + buscador -->
     <div class="col-md-4">
         <div class="card mb-3" id="panelResumen">
-            <div class="card-header font-weight-bold">Resumen</div>
+            <div class="card-header font-weight-bold" style="padding-top: 1rem; padding-bottom: 1rem;">Resumen</div>
             <div class="card-body">
                 <p class="mb-1"><strong>Folio:</strong> <?= (int)$nota['folio'] ?></p>
                 <p class="mb-1"><strong>Cliente:</strong> <?= esc($nota['cliente'] ?? '') ?></p>
@@ -68,7 +68,7 @@
 
         <!-- Agregar producto -->
         <div class="card">
-            <div class="card-header font-weight-bold">Agregar Producto</div>
+            <div class="card-header font-weight-bold" style="padding-top: 1rem; padding-bottom: 1rem;">Agregar Producto</div>
             <div class="card-body">
                 <div class="form-group">
                     <label>Buscar por SKU / Descripción</label>
@@ -77,8 +77,8 @@
                     </select>
                 </div>
                 <div class="form-group">
-                    <label>Cantidad</label>
-                    <input type="number" id="inputCantidad" class="form-control" value="1" min="1">
+                    <label>Cantidad <small id="stockDisponible" class="text-muted"></small></label>
+                    <input type="number" id="inputCantidad" class="form-control" value="1" min="1" max="9999" step="1">
                 </div>
                 <button id="btnAgregar" class="btn btn-primary btn-block">
                     <i class="iconsminds-add"></i> Agregar
@@ -91,9 +91,9 @@
     <!-- Panel derecho: carrito -->
     <div class="col-md-8">
         <div class="card">
-            <div class="card-header font-weight-bold">Productos en la Nota</div>
-            <div class="card-body p-0">
-                <div class="table-responsive">
+            <div class="card-header font-weight-bold" style="padding-top: 1rem; padding-bottom: 1rem;">Productos en la Nota</div>
+            <div class="card-body p-0 pt-2">
+                <div class="table-responsive" style="max-height: 420px; overflow-y: auto;">
                     <table class="table table-striped mb-0 carrito-table" id="tablaCarrito">
                         <thead>
                             <tr>
@@ -184,7 +184,8 @@ $('#selectProducto').select2({
                         id: p.sku,
                         text: '[' + p.sku + '] ' + p.descripcion + '  (' + p.piezas + ' pzs)',
                         sku: p.sku,
-                        descripcion: p.descripcion
+                        descripcion: p.descripcion,
+                        piezas: parseInt(p.piezas, 10) || 0
                     };
                 })
             };
@@ -192,14 +193,61 @@ $('#selectProducto').select2({
     }
 });
 
+// Bloquear decimales en el campo cantidad
+$('#inputCantidad').on('keydown', function(e) {
+    if (e.key === '.' || e.key === ',') { e.preventDefault(); }
+});
+$('#inputCantidad').on('input', function() {
+    var v = $(this).val();
+    if (v.indexOf('.') !== -1 || v.indexOf(',') !== -1) {
+        $(this).val(v.replace(/[.,].*/,''));
+    }
+});
+
+// Mostrar stock al seleccionar producto
+$('#selectProducto').on('select2:select', function(e) {
+    var data = e.params.data;
+    var stock = data.piezas || 0;
+    $('#stockDisponible').text('— Stock disponible: ' + stock + ' pzs');
+    $('#inputCantidad').attr('max', stock).val(Math.min(parseInt($('#inputCantidad').val(), 10) || 1, stock || 1));
+    $('#msgAgregar').html('');
+});
+$('#selectProducto').on('select2:clear select2:unselect', function() {
+    $('#stockDisponible').text('');
+    $('#inputCantidad').removeAttr('max');
+});
+
 // Agregar producto
 $('#btnAgregar').on('click', function() {
-    var sku = $('#selectProducto').val();
-    var cantidad = parseInt($('#inputCantidad').val(), 10) || 1;
-    var folio = $('#hidFolio').val();
+    var sku      = $('#selectProducto').val();
+    var cantidad = parseInt($('#inputCantidad').val(), 10);
+    var folio    = $('#hidFolio').val();
+    var stockMax = parseInt($('#inputCantidad').attr('max'), 10);
 
     if (!sku) {
-        $('#msgAgregar').html('<span class="text-danger">Selecciona un producto.</span>');
+        $('#msgAgregar').html('<span class="text-danger">Selecciona un producto antes de agregar.</span>');
+        return;
+    }
+    if (isNaN(cantidad) || cantidad < 1) {
+        $('#msgAgregar').html('<span class="text-danger">La cantidad debe ser al menos 1.</span>');
+        $('#inputCantidad').val(1).focus();
+        return;
+    }
+    // Rechazar decimales — verificar el valor crudo del input
+    var valorRaw = $('#inputCantidad').val();
+    if (valorRaw.indexOf('.') !== -1 || valorRaw.indexOf(',') !== -1) {
+        $('#msgAgregar').html('<span class="text-danger">La cantidad debe ser un número entero, sin decimales.</span>');
+        $('#inputCantidad').val('').focus();
+        return;
+    }
+    if (cantidad !== Math.floor(cantidad)) {
+        $('#msgAgregar').html('<span class="text-danger">La cantidad debe ser un número entero, sin decimales.</span>');
+        $('#inputCantidad').val('').focus();
+        return;
+    }
+    if (!isNaN(stockMax) && cantidad > stockMax) {
+        $('#msgAgregar').html('<span class="text-danger">No hay suficiente stock. Máximo disponible: ' + stockMax + ' pzs.</span>');
+        $('#inputCantidad').val(stockMax).focus();
         return;
     }
 

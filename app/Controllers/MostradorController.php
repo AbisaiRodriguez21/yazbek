@@ -162,7 +162,7 @@ class MostradorController extends BaseController
     // GET /mostrador/venta/:folio/confirmar  —  Paso 3: Resumen y pago
     // Migrado desde: mostrador/venta_stp_3.php
     // ──────────────────────────────────────────────────────────────
-    public function ventaStp3(int $folio): string
+    public function ventaStp3(int $folio): string|\CodeIgniter\HTTP\RedirectResponse
     {
         $nota             = $this->notaModel->getPorFolio($folio);
         $esMayoreoForzado = session()->get("nota_{$folio}_tipo") === 'mayoreo';
@@ -170,17 +170,25 @@ class MostradorController extends BaseController
         $db      = \Config\Database::connect();
         $carrito = $this->getCarritoData($folio, $db, $esMayoreoForzado);
 
+        // No se puede confirmar una nota sin productos
+        if (empty($carrito['detalle'])) {
+            return redirect()->to("/mostrador/venta/{$folio}/productos")
+                             ->with('error', 'Agrega al menos un producto antes de confirmar.');
+        }
+
         $tipoPagos = $db->query("SELECT * FROM tipopago ORDER BY id ASC")->getResultArray();
 
-        // Pagos ya registrados en montosnotas para esta nota (ej. anticipos previos)
+        // Pagos ya registrados: del folio padre + de todos sus folios hijos (anticipos previos)
         $pagosExistentes = $db->query(
             "SELECT mn.id, mn.idTipoPago, mn.monto, mn.cargos, mn.anticipo,
-                    COALESCE(tp.descripcion, 'Pago') AS descripcion
-             FROM montosnotas mn
+                    COALESCE(tp.descripcion, 'Pago') AS descripcion,
+                    n2.folio AS folio_origen
+             FROM notas_1 n2
+             INNER JOIN montosnotas mn ON mn.idNotas = n2.Id_Notas_1
              LEFT JOIN tipopago tp ON tp.id = mn.idTipoPago
-             WHERE mn.idNotas = ?
+             WHERE n2.folio = ? OR n2.referencia = ?
              ORDER BY mn.id ASC",
-            [$nota['Id_Notas_1']]
+            [$folio, $folio]
         )->getResultArray();
 
         return view('mostrador/venta_stp_3', [
@@ -279,6 +287,8 @@ class MostradorController extends BaseController
         $fechaHoraActual = date('Y-m-d H:i:s');
 
         // ── Registrar pagos en montosnotas ──
+        // Los pagos marcados como anticipo crean un folio hijo independiente
+        // con referencia apuntando al folio padre, para control de caja por fecha.
         if ($subTotal <= 0) {
             $db->query(
                 "INSERT INTO montosnotas (idNotas, idTipoPago, monto, cargos, anticipo, montoEfectivoIva, fecha)
@@ -286,11 +296,26 @@ class MostradorController extends BaseController
                 [$idNotas1, $fechaHoraActual]
             );
         } else {
+            // Obtener idCliente e idVendedor del folio padre para crear hijos
+            $notaOrigen = $db->query(
+                "SELECT idCliente, idVendedor FROM notas_1 WHERE folio = ? LIMIT 1",
+                [$folioN1]
+            )->getRowArray();
+            $idClienteOrigen  = (int)($notaOrigen['idCliente']  ?? 0);
+            $idVendedorOrigen = (int)($notaOrigen['idVendedor'] ?? 0);
+
             foreach ($listaPagos as $pago) {
-                $db->query(
-                    "INSERT INTO montosnotas (idNotas, idTipoPago, monto, cargos, anticipo, montoEfectivoIva, fecha)
-                     VALUES (?, ?, ?, ?, ?, 0, ?)",
-                    [$idNotas1, $pago['tipo'], $pago['monto'], $pago['cargo'], $pago['anticipo'], $fechaHoraActual]
+                // Siempre crear folio hijo: cada pago genera ticket independiente
+                // referencia = folio padre para control de caja por fecha
+                $esAnticipo = (int)($pago['anticipo'] ?? 0);
+                $this->notaModel->crearFolioPagoAnticipo(
+                    $folioN1,
+                    $idClienteOrigen,
+                    $idVendedorOrigen,
+                    (float)$pago['monto'],
+                    (int)$pago['tipo'],
+                    (float)($pago['cargo'] ?? 0),
+                    $esAnticipo   // 1=anticipo, 0=pago normal/liquidación
                 );
             }
         }
@@ -308,6 +333,11 @@ class MostradorController extends BaseController
                 $factura, $impresion, $totalPiezas, $folioN1,
             ]
         );
+
+        // ── Si se liquida completamente, marcar padre + todos los hijos como Pagada ──
+        if ($idEstatus === 5) {
+            $this->notaModel->liquidarAnticipo($folioN1);
+        }
 
         // ── Liberar bandera del vendedor ──
         $this->usuarioModel->liberarBandera((int) session()->get('user_id'));
@@ -340,11 +370,29 @@ class MostradorController extends BaseController
     {
         $db       = \Config\Database::connect();
         $folio    = (int)    $this->request->getPost('folio');
-        $cantidad = (int)   ($this->request->getPost('cantidad') ?: 1);
+        $cantidad = (int) abs((int) ($this->request->getPost('cantidad') ?: 1));
 
         // Formato nuevo (venta_stp_2): solo sku + cantidad + folio
         // El controlador resuelve el resto desde productosyazbek
-        $sku = (string) $this->request->getPost('sku');
+        $sku = trim((string) $this->request->getPost('sku'));
+
+        // ── Validaciones de entrada ─────────────────────────────────
+        if ($cantidad < 1) {
+            return $this->response->setContentType('application/json')
+                        ->setBody(json_encode(['success' => false, 'message' => 'La cantidad debe ser al menos 1.']));
+        }
+        if ($cantidad > 9999) {
+            return $this->response->setContentType('application/json')
+                        ->setBody(json_encode(['success' => false, 'message' => 'Cantidad demasiado grande.']));
+        }
+        if ($sku === '') {
+            return $this->response->setContentType('application/json')
+                        ->setBody(json_encode(['success' => false, 'message' => 'Selecciona un producto.']));
+        }
+        if ($folio < 1) {
+            return $this->response->setContentType('application/json')
+                        ->setBody(json_encode(['success' => false, 'message' => 'Folio inválido.']));
+        }
 
         // Obtener nota y producto
         $nota = $db->query(
@@ -737,10 +785,19 @@ class MostradorController extends BaseController
         $cliente = $this->clienteModel->find($id);
 
         $resp = $cliente ? [
-            'success'   => true,
-            'direccion' => $cliente['direccion'] ?? '',
-            'telefono'  => $cliente['telefono'] ?? '',
-            'email'     => $cliente['mail'] ?? '',
+            'success'       => true,
+            'direccion'     => $cliente['direccion']     ?? '',
+            'telefono'      => $cliente['telefono']      ?? '',
+            'celular'       => $cliente['celular']       ?? '',
+            'email'         => $cliente['mail']          ?? '',
+            'RFC'           => $cliente['RFC']           ?? '',
+            'razonSocial'   => $cliente['razonSocial']   ?? '',
+            'NombreEmpresa' => $cliente['NombreEmpresa'] ?? '',
+            'CP'            => $cliente['CP']            ?? '',
+            'ciudad'        => $cliente['ciudad']        ?? '',
+            'estado'        => $cliente['estado']        ?? '',
+            'comoNosConoce' => $cliente['comoNosConoce'] ?? '',
+            'fechaIngreso'  => $cliente['fechaIngreso']  ?? '',
         ] : ['success' => false];
 
         return $this->response
@@ -839,19 +896,77 @@ class MostradorController extends BaseController
     // ──────────────────────────────────────────────────────────────
     public function anticipos(): string
     {
+        $db = \Config\Database::connect();
+        $tiposPago = $db->query("SELECT id, descripcion AS tipo FROM tipopago ORDER BY id ASC")->getResultArray();
         return view('mostrador/anticipos', [
-            'usuario'   => $this->getUsuarioSesion(),
-            'anticipos' => $this->notaModel->getAnticipos(),
+            'usuario'    => $this->getUsuarioSesion(),
+            'anticipos'  => $this->notaModel->getAnticipos(),
+            'tiposPago'  => $tiposPago,
         ]);
     }
 
     // GET /mostrador/anticipos/folio/:folio  —  AJAX: datos del anticipo
     public function muestraFolioAnticipo(int $folio): \CodeIgniter\HTTP\Response
     {
-        $nota = $this->notaModel->getPorFolio($folio);
-        return $this->response
-                    ->setContentType('application/json')
-                    ->setBody(json_encode($nota));
+        $nota     = $this->notaModel->getPorFolio($folio);
+        $pagados  = $this->notaModel->getPagosHijos($folio);
+        $total    = (float)($nota['total'] ?? 0);
+        $pagado   = $this->notaModel->getTotalPagadoAnticipo($folio);
+
+        return $this->response->setContentType('application/json')->setBody(json_encode([
+            'ok'      => true,
+            'nota'    => $nota,
+            'pagos'   => $pagados,
+            'total'   => $total,
+            'pagado'  => $pagado,
+            'restante'=> round($total - $pagado, 2),
+        ]));
+    }
+
+    // ──────────────────────────────────────────────────────────────
+    // POST /mostrador/anticipo/nuevo-pago — Registra nuevo pago anticipo
+    // Crea un folio hijo que referencia al padre
+    // ──────────────────────────────────────────────────────────────
+    public function nuevoPagoAnticipo(): \CodeIgniter\HTTP\Response
+    {
+        $foliopadre = (int)   $this->request->getPost('folio');
+        $monto      = (float) $this->request->getPost('monto');
+        $idTipoPago = (int)   $this->request->getPost('tipoPago');
+
+        if ($foliopadre < 1 || $monto <= 0 || $idTipoPago < 1) {
+            return $this->response->setJSON(['ok' => false, 'error' => 'Datos inválidos.']);
+        }
+
+        $padre = $this->notaModel->getPorFolio($foliopadre);
+        if (! $padre || (int)($padre['status'] ?? 0) === 5) {
+            return $this->response->setJSON(['ok' => false, 'error' => 'La nota no existe o ya está liquidada.']);
+        }
+
+        $idCliente  = (int)$padre['idCliente'];
+        $idVendedor = (int) session()->get('user_id');
+
+        // Cargo de tarjeta si aplica
+        $db       = \Config\Database::connect();
+        $tipoPago = $db->query("SELECT cargo FROM tipopago WHERE id = ? LIMIT 1", [$idTipoPago])->getRowArray();
+        $cargoPct = (float)($tipoPago['cargo'] ?? 0);
+        $cargo    = $monto * $cargoPct / 100;
+
+        $folioHijo = $this->notaModel->crearFolioPagoAnticipo($foliopadre, $idCliente, $idVendedor, $monto, $idTipoPago, $cargo);
+
+        // Verificar si ya está liquidado (total pagado >= total nota)
+        $totalPagado = $this->notaModel->getTotalPagadoAnticipo($foliopadre);
+        $totalNota   = (float)($padre['total'] ?? 0);
+        if ($totalPagado >= $totalNota - 0.99) {
+            $this->notaModel->liquidarAnticipo($foliopadre);
+        }
+
+        return $this->response->setJSON([
+            'ok'         => true,
+            'folioHijo'  => $folioHijo,
+            'totalPagado'=> $totalPagado,
+            'totalNota'  => $totalNota,
+            'liquidado'  => $totalPagado >= $totalNota - 0.99,
+        ]);
     }
 
     // ──────────────────────────────────────────────────────────────
