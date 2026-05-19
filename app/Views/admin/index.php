@@ -172,6 +172,52 @@ $mesActualNum = (int)date('n');
 </div>
 
 <!-- ══════════════════════════════════════════════════
+     FILA HOY — Vendedores del día + Forma de pago hoy
+═══════════════════════════════════════════════════ -->
+<div class="row mb-4">
+
+    <!-- Vendedores hoy -->
+    <div class="col-lg-6 mb-4">
+        <div class="card chart-card h-100">
+            <div class="card-body">
+                <h5 class="card-title mb-1">Ingresos por vendedor — <span id="labelFechaHoy"><?= date('d/m/Y') ?></span></h5>
+                <p class="text-muted mb-3" style="font-size:.78rem">
+                    Ingresos (Pagada + Anticipo) y notas canceladas del día
+                </p>
+                <div class="chart-container" style="height:260px; position:relative">
+                    <div id="chartVendedoresHoy" style="width:100%;height:100%"></div>
+                    <div id="loadVendedoresHoy" class="text-center text-muted pt-5">
+                        <span class="spinner-border spinner-border-sm" role="status"></span> Cargando…
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Forma de pago hoy + botón exportar -->
+    <div class="col-lg-6 mb-4">
+        <div class="card chart-card h-100">
+            <div class="card-body d-flex flex-column">
+                <div class="d-flex justify-content-between align-items-start mb-1">
+                    <h5 class="card-title mb-0">Forma de pago — <span id="labelFechaHoyPago"><?= date('d/m/Y') ?></span></h5>
+                    <a href="<?= base_url('admin/reportediario/dia') ?>" class="btn btn-sm btn-outline-success" title="Exportar reporte del día">
+                        <i class="simple-icon-cloud-download mr-1"></i> Exportar
+                    </a>
+                </div>
+                <p class="text-muted mb-3" style="font-size:.78rem">Distribución de métodos de pago (notas Pagada + Anticipo)</p>
+                <div class="chart-container flex-grow-1" style="min-height:220px">
+                    <div id="chartTipoPagoHoy" style="width:100%;height:100%"></div>
+                </div>
+                <div class="mt-2 text-center text-muted" id="legendTipoPagoHoy" style="font-size:.8rem">
+                    <span class="spinner-border spinner-border-sm" role="status"></span> Cargando…
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<!-- ══════════════════════════════════════════════════
      FILA 2 — Comparativa mensual
 ═══════════════════════════════════════════════════ -->
 <div class="row mb-4">
@@ -252,11 +298,13 @@ $mesActualNum = (int)date('n');
 </div>
 
 <!-- ══════════════════════════════════════════════════
-     FILA 4 — Histórico anual (todos los años)
+     FILA 4 — Histórico anual + Forma de pago
 ═══════════════════════════════════════════════════ -->
 <div class="row mb-4">
-    <div class="col-12">
-        <div class="card chart-card">
+
+    <!-- Ingresos históricos por año -->
+    <div class="col-lg-8 mb-4">
+        <div class="card chart-card h-100">
             <div class="card-body">
                 <h5 class="card-title mb-1">Ingresos históricos por año</h5>
                 <p class="text-muted mb-3" style="font-size:.78rem">
@@ -266,28 +314,6 @@ $mesActualNum = (int)date('n');
                 </p>
                 <div class="chart-container" style="height:240px">
                     <div id="chartAnual" style="width:100%;height:100%"></div>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- ══════════════════════════════════════════════════
-     FILA 3 — Gráfica ventas mensuales + tipo de pago
-═══════════════════════════════════════════════════ -->
-<div class="row mb-4">
-
-    <!-- Ventas mensuales (barras) -->
-    <div class="col-lg-8 mb-4">
-        <div class="card chart-card h-100">
-            <div class="card-body">
-                <h5 class="card-title mb-1">Ingresos mensuales <span id="anioMensual"><?= $anio ?></span></h5>
-                <p class="text-muted mb-3" style="font-size:.78rem">
-                    <i class="simple-icon-info mr-1"></i>
-                    Solo notas con estatus <strong>Pagada</strong> o <strong>Anticipo</strong>.
-                </p>
-                <div class="chart-container" style="height:240px">
-                    <div id="chartMensual" style="width:100%;height:100%"></div>
                 </div>
             </div>
         </div>
@@ -311,18 +337,34 @@ $mesActualNum = (int)date('n');
 </div>
 
 <!-- ══════════════════════════════════════════════════
-     FILA 3 — Top productos + Ventas por vendedor
+     FILA 5 — Ingresos mensuales + Ingresos por vendedor
 ═══════════════════════════════════════════════════ -->
 <div class="row mb-4">
 
-    <!-- Top 10 productos (barras horizontales) -->
-    <div class="col-lg-7 mb-4">
+    <!-- Ventas mensuales (mitad izquierda) -->
+    <div class="col-lg-6 mb-4">
         <div class="card chart-card h-100">
             <div class="card-body">
-                <h5 class="card-title mb-3">Top 10 productos — mayor cantidad de piezas <span id="anioTopProd"><?= $anio ?></span></h5>
-                <div class="chart-container" style="height:380px; position:relative">
-                    <div id="chartTopProductos" style="width:100%;height:100%"></div>
-                    <div id="loadingTop" class="text-center text-muted pt-5">
+                <h5 class="card-title mb-1">Ingresos mensuales <span id="anioMensual"><?= $anio ?></span></h5>
+                <p class="text-muted mb-3" style="font-size:.78rem">
+                    <i class="simple-icon-info mr-1"></i>
+                    Solo notas con estatus <strong>Pagada</strong> o <strong>Anticipo</strong>.
+                </p>
+                <div class="chart-container" style="height:280px">
+                    <div id="chartMensual" style="width:100%;height:100%"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Ingresos por vendedor (mitad derecha) -->
+    <div class="col-lg-6 mb-4">
+        <div class="card chart-card h-100">
+            <div class="card-body">
+                <h5 class="card-title mb-3">Ingresos por vendedor <span id="anioVendedor"><?= $anio ?></span></h5>
+                <div class="chart-container" style="height:280px; position:relative">
+                    <div id="chartVendedor" style="width:100%;height:100%"></div>
+                    <div id="loadingVend" class="text-center text-muted pt-5">
                         <span class="spinner-border spinner-border-sm" role="status"></span> Cargando…
                     </div>
                 </div>
@@ -330,14 +372,21 @@ $mesActualNum = (int)date('n');
         </div>
     </div>
 
-    <!-- Ventas por vendedor (barras) -->
-    <div class="col-lg-5 mb-4">
-        <div class="card chart-card h-100">
+</div>
+
+<!-- ══════════════════════════════════════════════════
+     FILA 6 — Top 10 productos (ancho completo)
+═══════════════════════════════════════════════════ -->
+<div class="row mb-4">
+
+    <!-- Top 10 productos (ancho completo) -->
+    <div class="col-12 mb-4">
+        <div class="card chart-card">
             <div class="card-body">
-                <h5 class="card-title mb-3">Ingresos por vendedor <span id="anioVendedor"><?= $anio ?></span></h5>
-                <div class="chart-container" style="height:380px; position:relative">
-                    <div id="chartVendedor" style="width:100%;height:100%"></div>
-                    <div id="loadingVend" class="text-center text-muted pt-5">
+                <h5 class="card-title mb-3">Top 10 productos — mayor cantidad de piezas <span id="anioTopProd"><?= $anio ?></span></h5>
+                <div class="chart-container" style="height:360px; position:relative">
+                    <div id="chartTopProductos" style="width:100%;height:100%"></div>
+                    <div id="loadingTop" class="text-center text-muted pt-5">
                         <span class="spinner-border spinner-border-sm" role="status"></span> Cargando…
                     </div>
                 </div>
@@ -587,6 +636,8 @@ $mesActualNum = (int)date('n');
                 setText('periodoActivo', d.mesActual + '  vs  ' + d.mesAnterior);
 
                 /* ── Renderizar todas las gráficas ── */
+                renderVendedoresHoy( d.vendedoresHoy  || [], d.fechaHoy || '');
+                renderTipoPagoHoy(   d.tipoPagoHoy    || [], d.fechaHoy || '');
                 renderCompNotas(    d.comparativa,    d.mesActual, d.mesAnterior);
                 renderCompIngresos( d.comparativa,    d.mesActual, d.mesAnterior);
                 renderTopMes('chartTopMesAnterior', 'loadTopMesAnterior', d.topMesAnterior || []);
@@ -945,25 +996,155 @@ $mesActualNum = (int)date('n');
             return;
         }
 
-        var nombres = filas.map(function(r){ return r.vendedor; });
-        var totales = filas.map(function(r){ return parseFloat(r.total); });
+        var nombres    = filas.map(function(r){ return r.vendedor; });
+        var totales    = filas.map(function(r){ return parseFloat(r.total); });
+        var canceladas = filas.map(function(r){ return parseInt(r.canceladas, 10) || 0; });
 
         ec.setOption({
             tooltip: {
                 trigger: 'axis', axisPointer: { type: 'shadow' },
-                formatter: function(p){ return p[0].name + '<br><b>' + peso(p[0].value) + '</b>'; }
+                formatter: function(params) {
+                    var out = '<b>' + params[0].name + '</b><br>';
+                    params.forEach(function(p) {
+                        out += p.marker + ' ' + p.seriesName + ': <b>';
+                        out += p.seriesIndex === 0 ? peso(p.value) : p.value + ' nota(s)';
+                        out += '</b><br>';
+                    });
+                    return out;
+                }
             },
-            grid:   { top: 10, left: 70, right: 10, bottom: 40 },
+            legend: { data: ['Ingresos', 'Canceladas'], top: 0, right: 0, itemWidth: 10, textStyle: { fontSize: 9 } },
+            grid:   { top: 28, left: 70, right: 55, bottom: 40 },
             xAxis:  { type: 'category', data: nombres,
                       axisLabel: { fontSize: 9, rotate: nombres.length > 4 ? 15 : 0 } },
-            yAxis:  { type: 'value',
-                      axisLabel: { formatter: function(v){ return peso(v); }, fontSize: 8 },
-                      splitLine: { lineStyle: { color: '#eee' } } },
-            series: [{ type: 'bar', data: totales, barMaxWidth: 40,
-                itemStyle: { color: function(p){ return PAL[p.dataIndex % PAL.length]; } }
-            }]
+            yAxis: [
+                { type: 'value', name: '',
+                  axisLabel: { formatter: function(v){ return peso(v); }, fontSize: 8 },
+                  splitLine: { lineStyle: { color: '#eee' } } },
+                { type: 'value', name: 'Canceladas', nameTextStyle: { fontSize: 8 }, minInterval: 1,
+                  axisLabel: { fontSize: 8 },
+                  splitLine: { show: false } }
+            ],
+            series: [
+                { name: 'Ingresos', type: 'bar', yAxisIndex: 0, data: totales, barMaxWidth: 40,
+                  itemStyle: { color: function(p){ return PAL[p.dataIndex % PAL.length]; } } },
+                { name: 'Canceladas', type: 'bar', yAxisIndex: 1, data: canceladas, barMaxWidth: 20,
+                  itemStyle: { color: 'rgba(220,53,69,0.75)' } }
+            ]
         });
         window.addEventListener('resize', function(){ if(ecMap['chartVendedor']) ecMap['chartVendedor'].resize(); });
+    }
+
+    /* ══════════════════════════════════════════════════════════
+       GRÁFICA HOY: Ingresos por vendedor del día
+    ══════════════════════════════════════════════════════════ */
+    function renderVendedoresHoy(filas, fecha) {
+        hideSpinner('loadVendedoresHoy');
+        var ec = initChart('chartVendedoresHoy');
+        if (!ec) return;
+
+        if (!filas.length) {
+            ec.clear();
+            ec.setOption({ graphic: [{ type:'text', left:'center', top:'middle',
+                style:{ text:'Sin actividad hoy', fill:'#aaa', fontSize:13 } }] });
+            return;
+        }
+
+        var nombres    = filas.map(function(r){ return r.vendedor; });
+        var totales    = filas.map(function(r){ return parseFloat(r.total); });
+        var canceladas = filas.map(function(r){ return parseInt(r.canceladas, 10) || 0; });
+
+        ec.setOption({
+            tooltip: {
+                trigger: 'axis', axisPointer: { type: 'shadow' },
+                formatter: function(params) {
+                    var out = '<b>' + params[0].name + '</b><br>';
+                    params.forEach(function(p) {
+                        out += p.marker + ' ' + p.seriesName + ': <b>';
+                        out += p.seriesIndex === 0 ? peso(p.value) : p.value + ' nota(s)';
+                        out += '</b><br>';
+                    });
+                    return out;
+                }
+            },
+            legend: { data: ['Ingresos', 'Canceladas'], top: 0, right: 0, itemWidth: 10, textStyle: { fontSize: 9 } },
+            grid:   { top: 28, left: 70, right: 55, bottom: 40 },
+            xAxis:  { type: 'category', data: nombres,
+                      axisLabel: { fontSize: 10, rotate: nombres.length > 4 ? 15 : 0 } },
+            yAxis: [
+                { type: 'value',
+                  axisLabel: { formatter: function(v){ return peso(v); }, fontSize: 8 },
+                  splitLine: { lineStyle: { color: '#eee' } } },
+                { type: 'value', name: 'Canceladas', nameTextStyle: { fontSize: 8 }, minInterval: 1,
+                  axisLabel: { fontSize: 8 }, splitLine: { show: false } }
+            ],
+            series: [
+                { name: 'Ingresos', type: 'bar', yAxisIndex: 0, data: totales, barMaxWidth: 45,
+                  itemStyle: { color: function(p){ return PAL[p.dataIndex % PAL.length]; } },
+                  label: { show: true, position: 'top', fontSize: 9,
+                           formatter: function(p){ return p.value > 0 ? peso(p.value) : ''; } } },
+                { name: 'Canceladas', type: 'bar', yAxisIndex: 1, data: canceladas, barMaxWidth: 20,
+                  itemStyle: { color: 'rgba(220,53,69,0.75)' },
+                  label: { show: true, position: 'top', fontSize: 9,
+                           formatter: function(p){ return p.value > 0 ? p.value : ''; } } }
+            ]
+        });
+        window.addEventListener('resize', function(){ if(ecMap['chartVendedoresHoy']) ecMap['chartVendedoresHoy'].resize(); });
+    }
+
+    /* ══════════════════════════════════════════════════════════
+       GRÁFICA HOY: Forma de pago del día (donut grande)
+    ══════════════════════════════════════════════════════════ */
+    function renderTipoPagoHoy(filas, fecha) {
+        var legendEl = document.getElementById('legendTipoPagoHoy');
+        var ec = initChart('chartTipoPagoHoy');
+        if (!ec) return;
+
+        if (!filas.length) {
+            ec.clear();
+            if (legendEl) legendEl.textContent = 'Sin pagos registrados hoy.';
+            ec.setOption({ graphic: [{ type:'text', left:'center', top:'middle',
+                style:{ text:'Sin pagos hoy', fill:'#aaa', fontSize:13 } }] });
+            return;
+        }
+
+        var COLORS = ['#145388','#28a745','#fd7e14','#6f42c1','#17a2b8','#e83e8c','#20c997','#ffc107'];
+        var datos  = filas.map(function(r,i){ return { value: parseFloat(r.total), name: r.tipo, itemStyle:{ color: COLORS[i % COLORS.length] } }; });
+        var totalHoy = filas.reduce(function(s,r){ return s + parseFloat(r.total); }, 0);
+
+        ec.setOption({
+            tooltip: {
+                trigger: 'item',
+                formatter: function(p){
+                    return '<b>' + p.name + '</b><br>' + peso(p.value) + ' (' + p.percent + '%)';
+                }
+            },
+            legend: { show: false },
+            series: [{
+                type: 'pie', radius: ['52%','82%'],
+                center: ['50%','52%'],
+                data: datos,
+                label: { show: true, fontSize: 10,
+                         formatter: function(p){ return p.name + '\n' + p.percent + '%'; } },
+                emphasis: { itemStyle: { shadowBlur: 10, shadowOffsetX: 0, shadowColor: 'rgba(0,0,0,0.3)' } }
+            }],
+            graphic: [{
+                type: 'text', left: 'center', top: '42%',
+                style: { text: peso(totalHoy), fill: '#333', fontSize: 14, fontWeight: 'bold', textAlign: 'center' }
+            }]
+        });
+
+        // Leyenda manual
+        if (legendEl) {
+            legendEl.innerHTML = filas.map(function(r, i){
+                var pct = totalHoy > 0 ? (parseFloat(r.total) / totalHoy * 100).toFixed(1) : 0;
+                return '<span style="display:inline-flex;align-items:center;margin:2px 8px">'
+                     + '<span style="width:10px;height:10px;border-radius:50%;background:' + COLORS[i % COLORS.length] + ';display:inline-block;margin-right:4px"></span>'
+                     + r.tipo + ' <b style="margin-left:4px">' + pct + '%</b></span>';
+            }).join('');
+        }
+
+        window.addEventListener('resize', function(){ if(ecMap['chartTipoPagoHoy']) ecMap['chartTipoPagoHoy'].resize(); });
     }
 
 })();

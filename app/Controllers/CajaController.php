@@ -700,7 +700,16 @@ class CajaController extends BaseController
                         FROM montosnotas mn
                         INNER JOIN tipopago tp ON tp.id = mn.idTipoPago
                         GROUP BY mn.idNotas
-                    ) pm ON pm.idNotas = n.Id_Notas_1";
+                    ) pm_direct ON pm_direct.idNotas = n.Id_Notas_1
+                    LEFT JOIN (
+                        SELECT nc.referencia AS folio_padre,
+                               GROUP_CONCAT(DISTINCT tp.descripcion ORDER BY tp.id SEPARATOR ' / ') AS tipos_pago
+                        FROM notas_1 nc
+                        INNER JOIN montosnotas mn ON mn.idNotas = nc.Id_Notas_1
+                        INNER JOIN tipopago tp ON tp.id = mn.idTipoPago
+                        WHERE COALESCE(nc.referencia, 0) > 0
+                        GROUP BY nc.referencia
+                    ) pm_child ON pm_child.folio_padre = n.folio";
 
         $whereClauses = [];
         $params       = [];
@@ -726,7 +735,7 @@ class CajaController extends BaseController
             "SELECT n.folio, n.fecha_inicial,
                     COALESCE(c.nombre, '—') AS cliente,
                     COALESCE(u.usuario, '—') AS vendedor,
-                    COALESCE(pm.tipos_pago, NULLIF(TRIM(n.tipoPago), ''), 'A Crédito') AS tipopago,
+                    COALESCE(pm_direct.tipos_pago, pm_child.tipos_pago, NULLIF(TRIM(n.tipoPago), ''), 'A Crédito') AS tipopago,
                     n.total, n.status AS idstatus,
                     COALESCE(s.nombre, '')                   AS status_nombre,
                     n.verificado

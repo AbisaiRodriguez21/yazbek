@@ -93,7 +93,10 @@ class AdminController extends BaseController
         $ingresosMes  = (float)($statsPeriodo->mes  ?? 0);
         $ingresosAnio = (float)($statsPeriodo->anio ?? 0);
 
-        $clientesActivos = (int) $db->query("SELECT COUNT(*) AS t FROM clientes WHERE eliminado=0")->getRow()->t;
+        // Defensivo: si la columna eliminado no existe aún en la BD local, cuenta todos
+        $camposClientes  = $db->getFieldNames('clientes');
+        $whereEliminado  = in_array('eliminado', $camposClientes) ? ' WHERE eliminado=0' : '';
+        $clientesActivos = (int) $db->query("SELECT COUNT(*) AS t FROM clientes{$whereEliminado}")->getRow()->t;
 
         // ── Ventas mensuales del año (rangos de fecha = usa índice) ─
         $ventasMensualesRaw = $db->query(
@@ -273,11 +276,12 @@ class AdminController extends BaseController
         // ── Ingresos por vendedor (año) ───────────────────────────
         $ventasVendedor = $db->query(
             "SELECT u.usuario AS vendedor,
-                    COALESCE(SUM(n.total),0) AS total,
-                    COUNT(*) AS notas
+                    COALESCE(SUM(CASE WHEN n.status IN (4,5) THEN n.total ELSE 0 END),0) AS total,
+                    SUM(CASE WHEN n.status IN (4,5) THEN 1 ELSE 0 END) AS notas,
+                    SUM(CASE WHEN n.status = 3 THEN 1 ELSE 0 END) AS canceladas
              FROM notas_1 n
              INNER JOIN usuarios u ON u.Id = n.idVendedor
-             WHERE n.status IN (4,5)
+             WHERE n.status IN (3,4,5)
                AND n.fecha_inicial >= ? AND n.fecha_inicial < ?
              GROUP BY n.idVendedor
              ORDER BY total DESC
@@ -375,12 +379,44 @@ class AdminController extends BaseController
              ORDER BY anio ASC"
         )->getResultArray();
 
+        // ── Vendedores hoy (todos los activos, ingresos + canceladas) ─
+        $hoy = date('Y-m-d');
+        $vendedoresHoy = $db->query(
+            "SELECT u.usuario AS vendedor,
+                    COALESCE(SUM(CASE WHEN n.status IN (4,5) THEN n.total ELSE 0 END),0) AS total,
+                    COALESCE(SUM(CASE WHEN n.status IN (4,5) THEN 1 ELSE 0 END),0) AS notas,
+                    COALESCE(SUM(CASE WHEN n.status = 3 THEN 1 ELSE 0 END),0) AS canceladas
+             FROM usuarios u
+             LEFT JOIN notas_1 n ON n.idVendedor = u.Id
+                                 AND DATE(n.fecha_inicial) = ?
+             WHERE u.eliminado = 0
+             GROUP BY u.Id, u.usuario
+             ORDER BY total DESC",
+            [$hoy]
+        )->getResultArray();
+
+        // ── Forma de pago hoy ─────────────────────────────────
+        $tipoPagoHoy = $db->query(
+            "SELECT tp.descripcion AS tipo,
+                    COALESCE(SUM(mn.monto),0) AS total
+             FROM notas_1 n
+             INNER JOIN montosnotas mn ON mn.idNotas = n.Id_Notas_1
+             INNER JOIN tipopago tp    ON tp.id = mn.idTipoPago
+             WHERE n.status IN (4,5)
+               AND DATE(n.fecha_inicial) = ?
+             GROUP BY mn.idTipoPago
+             ORDER BY total DESC",
+            [$hoy]
+        )->getResultArray();
+
         // ── Corregir encoding en textos con caracteres especiales ──
         $topProductos   = $this->fixRows($topProductos);
         $ventasVendedor = $this->fixRows($ventasVendedor);
         $tipoPago       = $this->fixRows($tipoPago);
         $topMesActual   = $this->fixRows($topMesActual);
         $topMesAnterior = $this->fixRows($topMesAnterior);
+        $vendedoresHoy  = $this->fixRows($vendedoresHoy);
+        $tipoPagoHoy    = $this->fixRows($tipoPagoHoy);
 
         return $this->response
             ->setContentType('application/json')
@@ -401,6 +437,9 @@ class AdminController extends BaseController
                 'aniosTotales'   => array_map(fn($r) => round((float)$r['total'], 2), $ventasAnualesRaw),
                 'aniosNotas'     => array_map(fn($r) => (int)$r['notas'], $ventasAnualesRaw),
                 'aniosPagadas'   => array_map(fn($r) => (int)$r['notas_pagadas'], $ventasAnualesRaw),
+                'vendedoresHoy'  => $vendedoresHoy,
+                'tipoPagoHoy'    => $tipoPagoHoy,
+                'fechaHoy'       => $hoy,
             ]);
     }
 
@@ -1316,33 +1355,59 @@ class AdminController extends BaseController
         $desde = "{$fecha1} {$h1}:{$m1}:{$s1}";
         $hasta  = "{$fecha2} {$h2}:{$m2}:{$s2}";
 
+        // ── Detalle por folio (con tipo de pago concatenado) ─────
         $filas = $db->query(
             "SELECT n1.fecha_inicial, n1.folio,
                     SUM(n2.cantidad) AS totalPiezas,
                     SUM(COALESCE(NULLIF(n2.importe, 0), n2.cantidad * n2.pUnitario, 0)) AS totalImporte,
-                    COALESCE(u.usuario, '—') AS vendedor
+                    COALESCE(u.usuario, '—') AS vendedor,
+                    COALESCE(
+                        GROUP_CONCAT(DISTINCT tp.descripcion ORDER BY tp.descripcion SEPARATOR ' / '),
+                        'A Crédito'
+                    ) AS tipoPago
              FROM notas_1 n1
              INNER JOIN notas_2 n2 ON n1.folio = n2.folio
              LEFT JOIN usuarios u ON u.Id = n1.idVendedor
+             LEFT JOIN montosnotas mn ON mn.idNotas = n1.Id_Notas_1
+             LEFT JOIN tipopago tp ON tp.id = mn.idTipoPago
              WHERE n1.fecha_inicial >= ? AND n1.fecha_inicial <= ? AND n1.status != 3
              GROUP BY n1.Id_Notas_1, n1.fecha_inicial, n1.folio, u.usuario
              ORDER BY n1.folio ASC",
             [$desde, $hasta]
         )->getResultArray();
 
-        $tdH = 'style="background:#145388;color:#fff;font-family:Calibri,Arial,sans-serif;font-size:11pt;padding:4px 8px;font-weight:bold;"';
-        $tdS = 'style="font-family:Calibri,Arial,sans-serif;font-size:10pt;padding:3px 7px;"';
-        $tdT = 'style="font-family:Calibri,Arial,sans-serif;font-size:9pt;padding:3px 7px;color:#555;"';
+        // ── Resumen por tipo de pago (para sección final) ─────────
+        $resumenPago = $db->query(
+            "SELECT tp.descripcion AS tipo,
+                    COALESCE(SUM(mn.monto), 0) AS total
+             FROM notas_1 n1
+             INNER JOIN montosnotas mn ON mn.idNotas = n1.Id_Notas_1
+             INNER JOIN tipopago tp ON tp.id = mn.idTipoPago
+             WHERE n1.fecha_inicial >= ? AND n1.fecha_inicial <= ? AND n1.status != 3
+             GROUP BY mn.idTipoPago, tp.descripcion
+             ORDER BY total DESC",
+            [$desde, $hasta]
+        )->getResultArray();
+        $totalDia = array_sum(array_column($resumenPago, 'total'));
+
+        $tdH  = 'style="background:#145388;color:#fff;font-family:Calibri,Arial,sans-serif;font-size:11pt;padding:4px 8px;font-weight:bold;"';
+        $tdS  = 'style="font-family:Calibri,Arial,sans-serif;font-size:10pt;padding:3px 7px;"';
+        $tdT  = 'style="font-family:Calibri,Arial,sans-serif;font-size:9pt;padding:3px 7px;color:#555;"';
+        $tdH2 = 'style="background:#1a7a3c;color:#fff;font-family:Calibri,Arial,sans-serif;font-size:11pt;padding:4px 8px;font-weight:bold;"';
+        $tdTot= 'style="font-family:Calibri,Arial,sans-serif;font-size:10pt;padding:3px 7px;font-weight:bold;background:#f0f4f8;"';
 
         $html  = '<html><head><meta charset="utf-8"></head><body>';
+
+        // ── Tabla detalle de folios ────────────────────────────────
         $html .= '<table border="1" cellspacing="0" cellpadding="0">';
-        $html .= '<tr><td colspan="5" ' . $tdT . '>Reporte del ' . $desde . ' al ' . $hasta . '</td></tr>';
+        $html .= '<tr><td colspan="6" ' . $tdT . '>Reporte del ' . $desde . ' al ' . $hasta . '</td></tr>';
         $html .= '<tr>';
         $html .= '<td ' . $tdH . '>Fecha</td>';
         $html .= '<td ' . $tdH . '>Folio</td>';
         $html .= '<td ' . $tdH . '>Piezas</td>';
         $html .= '<td ' . $tdH . '>Importe</td>';
         $html .= '<td ' . $tdH . '>Vendedor</td>';
+        $html .= '<td ' . $tdH . '>Tipo Pago</td>';
         $html .= '</tr>';
         foreach ($filas as $f) {
             $html .= '<tr>';
@@ -1351,9 +1416,39 @@ class AdminController extends BaseController
             $html .= '<td ' . $tdS . ' align="center">' . (int)$f['totalPiezas'] . '</td>';
             $html .= '<td ' . $tdS . ' align="right">$ ' . number_format((float)($f['totalImporte'] ?? 0), 2) . '</td>';
             $html .= '<td ' . $tdS . '>' . htmlspecialchars($f['vendedor']) . '</td>';
+            $html .= '<td ' . $tdS . '>' . htmlspecialchars($f['tipoPago'] ?? '—') . '</td>';
             $html .= '</tr>';
         }
-        $html .= '</table></body></html>';
+        $html .= '</table>';
+
+        // ── Espacio entre tablas ───────────────────────────────────
+        $html .= '<br><br>';
+
+        // ── Tabla resumen por forma de pago ───────────────────────
+        $html .= '<table border="1" cellspacing="0" cellpadding="0">';
+        $html .= '<tr><td colspan="3" ' . $tdT . '>Resumen por forma de pago — ' . $desde . ' al ' . $hasta . '</td></tr>';
+        $html .= '<tr>';
+        $html .= '<td ' . $tdH2 . '>Tipo de Pago</td>';
+        $html .= '<td ' . $tdH2 . '>Total</td>';
+        $html .= '<td ' . $tdH2 . '>%</td>';
+        $html .= '</tr>';
+        foreach ($resumenPago as $r) {
+            $pct = $totalDia > 0 ? round($r['total'] / $totalDia * 100, 1) : 0;
+            $html .= '<tr>';
+            $html .= '<td ' . $tdS . '>' . htmlspecialchars($r['tipo']) . '</td>';
+            $html .= '<td ' . $tdS . ' align="right">$ ' . number_format((float)$r['total'], 2) . '</td>';
+            $html .= '<td ' . $tdS . ' align="right">' . $pct . '%</td>';
+            $html .= '</tr>';
+        }
+        // Fila total
+        $html .= '<tr>';
+        $html .= '<td ' . $tdTot . '>TOTAL</td>';
+        $html .= '<td ' . $tdTot . ' align="right">$ ' . number_format((float)$totalDia, 2) . '</td>';
+        $html .= '<td ' . $tdTot . ' align="right">100%</td>';
+        $html .= '</tr>';
+        $html .= '</table>';
+
+        $html .= '</body></html>';
 
         return $this->response
             ->setHeader('Last-Modified', gmdate('D,d M Y H:i:s') . ' GMT')
@@ -2087,7 +2182,16 @@ class AdminController extends BaseController
                             FROM montosnotas mn
                             INNER JOIN tipopago tp ON tp.id = mn.idTipoPago
                             GROUP BY mn.idNotas
-                        ) pm ON pm.idNotas = n.Id_Notas_1";
+                        ) pm_direct ON pm_direct.idNotas = n.Id_Notas_1
+                        LEFT JOIN (
+                            SELECT nc.referencia AS folio_padre,
+                                   GROUP_CONCAT(DISTINCT tp.descripcion ORDER BY tp.id SEPARATOR ' / ') AS tipos_pago
+                            FROM notas_1 nc
+                            INNER JOIN montosnotas mn ON mn.idNotas = nc.Id_Notas_1
+                            INNER JOIN tipopago tp ON tp.id = mn.idTipoPago
+                            WHERE COALESCE(nc.referencia, 0) > 0
+                            GROUP BY nc.referencia
+                        ) pm_child ON pm_child.folio_padre = n.folio";
 
             $whereClauses = [];
             $params       = [];
@@ -2116,7 +2220,7 @@ class AdminController extends BaseController
                 "SELECT n.folio, n.fecha_inicial,
                         COALESCE(c.nombre, '—')   AS cliente,
                         COALESCE(u.usuario, '—')  AS vendedor,
-                        COALESCE(pm.tipos_pago, NULLIF(TRIM(n.tipoPago), ''), 'A Crédito') AS tipopago,
+                        COALESCE(pm_direct.tipos_pago, pm_child.tipos_pago, NULLIF(TRIM(n.tipoPago), ''), 'A Crédito') AS tipopago,
                         n.total, n.status AS idstatus,
                         COALESCE(s.nombre, '')    AS status_nombre,
                         n.verificado,

@@ -310,18 +310,35 @@ class MostradorController extends BaseController
             $idVendedorOrigen = (int)($notaOrigen['idVendedor'] ?? 0);
 
             foreach ($listaPagos as $pago) {
-                // Siempre crear folio hijo: cada pago genera ticket independiente
-                // referencia = folio padre para control de caja por fecha
                 $esAnticipo = (int)($pago['anticipo'] ?? 0);
-                $this->notaModel->crearFolioPagoAnticipo(
-                    $folioN1,
-                    $idClienteOrigen,
-                    $idVendedorOrigen,
-                    (float)$pago['monto'],
-                    (int)$pago['tipo'],
-                    (float)($pago['cargo'] ?? 0),
-                    $esAnticipo   // 1=anticipo, 0=pago normal/liquidación
-                );
+
+                if ($esAnticipo === 1) {
+                    // Pago de anticipo sobre una nota ya abierta (sin pagar/A Crédito):
+                    // se crea un folio hijo con referencia al padre.
+                    $this->notaModel->crearFolioPagoAnticipo(
+                        $folioN1,
+                        $idClienteOrigen,
+                        $idVendedorOrigen,
+                        (float)$pago['monto'],
+                        (int)$pago['tipo'],
+                        (float)($pago['cargo'] ?? 0),
+                        1
+                    );
+                } else {
+                    // Pago directo al cerrar la nota (contado, transferencia, etc.):
+                    // solo se registra en montosnotas del folio padre, sin crear folio hijo.
+                    $db->query(
+                        "INSERT INTO montosnotas (idNotas, idTipoPago, monto, cargos, anticipo, montoEfectivoIva, fecha)
+                         VALUES (?, ?, ?, ?, 0, 0, ?)",
+                        [
+                            $idNotas1,
+                            (int)$pago['tipo'],
+                            (float)$pago['monto'],
+                            (float)($pago['cargo'] ?? 0),
+                            $fechaHoraActual,
+                        ]
+                    );
+                }
             }
         }
 
@@ -1107,7 +1124,16 @@ class MostradorController extends BaseController
                         FROM montosnotas mn
                         INNER JOIN tipopago tp ON tp.id = mn.idTipoPago
                         GROUP BY mn.idNotas
-                    ) pm ON pm.idNotas = n.Id_Notas_1";
+                    ) pm_direct ON pm_direct.idNotas = n.Id_Notas_1
+                    LEFT JOIN (
+                        SELECT nc.referencia AS folio_padre,
+                               GROUP_CONCAT(DISTINCT tp.descripcion ORDER BY tp.id SEPARATOR ' / ') AS tipos_pago
+                        FROM notas_1 nc
+                        INNER JOIN montosnotas mn ON mn.idNotas = nc.Id_Notas_1
+                        INNER JOIN tipopago tp ON tp.id = mn.idTipoPago
+                        WHERE COALESCE(nc.referencia, 0) > 0
+                        GROUP BY nc.referencia
+                    ) pm_child ON pm_child.folio_padre = n.folio";
 
         // Siempre filtrar por el vendedor logueado
         $whereClauses = ["n.idVendedor = ?"];
@@ -1128,7 +1154,7 @@ class MostradorController extends BaseController
             "SELECT n.folio, n.fecha_inicial,
                     COALESCE(c.nombre, '—') AS cliente,
                     COALESCE(u.usuario, '—') AS vendedor,
-                    COALESCE(pm.tipos_pago, n.tipoPago, '—') AS tipopago,
+                    COALESCE(pm_direct.tipos_pago, pm_child.tipos_pago, NULLIF(TRIM(n.tipoPago), ''), 'A Crédito') AS tipopago,
                     n.total, n.status AS idstatus,
                     COALESCE(s.nombre, '') AS status_nombre,
                     n.verificado,
