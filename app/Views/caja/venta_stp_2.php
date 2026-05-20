@@ -146,7 +146,13 @@
                         </div>
                     </div>
                     <div class="text-right">
+                        <?php if (empty($detalle)): ?>
+                        <div class="alert alert-warning text-center mb-2">
+                            <i class="iconsminds-danger"></i> Esta nota no tiene productos. No se puede confirmar el pago.
+                        </div>
+                        <?php endif; ?>
                         <button type="submit" class="btn btn-success btn-lg"
+                                <?= empty($detalle) ? 'disabled' : '' ?>
                                 onclick="return confirm('¿Confirmar el pago de la nota #<?= (int)$folio ?>?')">
                             <i class="iconsminds-yes"></i> Confirmar Pago
                         </button>

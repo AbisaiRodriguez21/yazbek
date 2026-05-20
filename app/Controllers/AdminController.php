@@ -1254,9 +1254,6 @@ class AdminController extends BaseController
         if (! $nota) {
             return $this->response->setJSON(['ok' => false, 'error' => 'Folio no encontrado.']);
         }
-        if ((int)($nota['status'] ?? 0) === 5) {
-            return $this->response->setJSON(['ok' => false, 'error' => 'La nota ya está liquidada.']);
-        }
 
         $notaModel->liquidarAnticipo($folio);
         return $this->response->setJSON(['ok' => true, 'mensaje' => "Folio #{$folio} liquidado correctamente."]);
@@ -1668,10 +1665,12 @@ class AdminController extends BaseController
         $html .= '<td colspan="2" align="left">' . (($nota['factura'] ?? 0) == 1 ? 'Si requiere' : 'No requiere') . '</td></tr>';
 
         $html .= '<tr><input type="hidden" id="folio_input" value="' . $nota['folio'] . '" />';
-        if ($statusId !== 3 && $verificado !== 'Pagado') {
+        if ($statusId !== 3) {
+            // Siempre mostrar Cancelar Nota para notas no canceladas (incluyendo Pagada)
             $html .= '<td></td>';
             $html .= '<td colspan="2" class="text-right no-border"><button type="button" class="btn btn-danger" onclick="fn_modal_calcelar_nota()">Cancelar Nota</button></td>';
-            $html .= '<td colspan="2" class="text-right no-border"><button type="button" class="btn btn-success" onclick="fn_muestra_modal()">Pago Verificado</button></td>';
+            // Liquidar: aplica para cualquier nota no cancelada
+            $html .= '<td colspan="2" class="text-right no-border"><button type="button" class="btn btn-success" onclick="fn_liquidar_modal()">Liquidar</button></td>';
         }
         $html .= '</tr></tbody></table></div>';
         $html .= '<script>function blurFnCj(){var p=parseFloat(document.getElementById("pagar2_cj").value)||0;var i=parseFloat(document.getElementById("importe_cj").value)||0;document.getElementById("resultado_cj").value=(i-p).toFixed(2);}</script>';
@@ -1712,7 +1711,7 @@ class AdminController extends BaseController
             $db = \Config\Database::connect();
 
             $nota = $db->query(
-                "SELECT Id_Notas_1, totalPiezas, referencia FROM notas_1 WHERE folio = ? LIMIT 1",
+                "SELECT Id_Notas_1, referencia, status FROM notas_1 WHERE folio = ? LIMIT 1",
                 [$folio]
             )->getRowArray();
 
@@ -1720,23 +1719,35 @@ class AdminController extends BaseController
                 return $this->response->setBody('0');
             }
 
-            // Siempre actualizar status = 3 (cancelado) para el folio y su referencia
+            // Cancelar el folio y todos sus hijos (folios con referencia = folio)
             $db->query(
                 "UPDATE notas_1 SET status = 3 WHERE folio = ? OR referencia = ?",
                 [$folio, $folio]
             );
 
-            // Restaurar piezas en inventario si hay productos vinculados
-            if (($nota['totalPiezas'] ?? 0) > 0 && empty($nota['referencia'])) {
+            // Restaurar stock del folio padre (notas_2 usa columna 'folio', no 'Id_Notas_1')
+            // Solo el padre tiene productos — los hijos (anticipos) no tienen notas_2
+            $esHijo = !empty($nota['referencia']);
+            if (! $esHijo) {
                 $productos = $db->query(
-                    "SELECT cantidad, estilo FROM notas_2 WHERE Id_Notas_1 = ?",
-                    [$nota['Id_Notas_1']]
+                    "SELECT cantidad, estilo AS sku FROM notas_2 WHERE folio = ?",
+                    [$folio]
                 )->getResultArray();
 
                 foreach ($productos as $p) {
+                    if (empty($p['sku']) || (int)$p['cantidad'] <= 0) continue;
                     $db->query(
                         "UPDATE productosyazbek SET piezas = piezas + ? WHERE sku = ?",
-                        [(int)$p['cantidad'], $p['estilo']]
+                        [(int)$p['cantidad'], $p['sku']]
+                    );
+                    // Broadcast del nuevo stock en tiempo real
+                    $stockRow = $db->query(
+                        "SELECT piezas FROM productosyazbek WHERE sku = ? LIMIT 1",
+                        [$p['sku']]
+                    )->getRowArray();
+                    $db->query(
+                        "INSERT INTO stock_eventos (sku, nuevo_stock) VALUES (?, ?)",
+                        [$p['sku'], (int)($stockRow['piezas'] ?? 0)]
                     );
                 }
             }
@@ -1745,6 +1756,100 @@ class AdminController extends BaseController
         } catch (\Exception $e) {
             log_message('error', 'cajaCancelar folio=' . $folio . ': ' . $e->getMessage());
             return $this->response->setBody('0');
+        }
+    }
+
+    // ──────────────────────────────────────────────────────────────
+    // POST /admin/folio/(:num)/revivir  —  Reactiva una nota cancelada (solo admin)
+    // Restablece status=1 (Abierta) y vuelve a descontar el stock
+    // ──────────────────────────────────────────────────────────────
+    public function revivirNota(int $folio): \CodeIgniter\HTTP\Response
+    {
+        try {
+            $db = \Config\Database::connect();
+
+            $nota = $db->query(
+                "SELECT Id_Notas_1, status, referencia FROM notas_1 WHERE folio = ? LIMIT 1",
+                [$folio]
+            )->getRowArray();
+
+            if (! $nota) {
+                return $this->response->setContentType('application/json')
+                    ->setJSON(['ok' => false, 'error' => 'Folio no encontrado']);
+            }
+            if ((int)$nota['status'] !== 3) {
+                return $this->response->setContentType('application/json')
+                    ->setJSON(['ok' => false, 'error' => 'La nota no está cancelada']);
+            }
+
+            $advertencias = [];
+
+            // Solo notas padre tienen stock que restar (hijos=anticipos no tienen notas_2)
+            $esHijo = !empty($nota['referencia']);
+            if (! $esHijo) {
+                $productos = $db->query(
+                    "SELECT cantidad, estilo AS sku FROM notas_2 WHERE folio = ?",
+                    [$folio]
+                )->getResultArray();
+
+                foreach ($productos as $p) {
+                    if (empty($p['sku']) || (int)$p['cantidad'] <= 0) continue;
+
+                    $cantNecesaria = (int)$p['cantidad'];
+                    $stockActual   = (int)($db->query(
+                        "SELECT piezas FROM productosyazbek WHERE sku = ? LIMIT 1",
+                        [$p['sku']]
+                    )->getRowArray()['piezas'] ?? 0);
+
+                    if ($stockActual < $cantNecesaria) {
+                        // Advertir pero no bloquear — ajustar notas_2 a lo disponible
+                        $advertencias[] = "SKU {$p['sku']}: disponible {$stockActual}, necesario {$cantNecesaria}";
+                        // Actualizar cantidad e importe en notas_2 al stock real disponible
+                        $db->query(
+                            "UPDATE notas_2 SET cantidad = ?, importe = precio * ? WHERE folio = ? AND estilo = ?",
+                            [$stockActual, $stockActual, $folio, $p['sku']]
+                        );
+                        if ($stockActual > 0) {
+                            $db->query(
+                                "UPDATE productosyazbek SET piezas = 0 WHERE sku = ?",
+                                [$p['sku']]
+                            );
+                            $db->query(
+                                "INSERT INTO stock_eventos (sku, nuevo_stock) VALUES (?, 0)",
+                                [$p['sku']]
+                            );
+                        }
+                    } else {
+                        $db->query(
+                            "UPDATE productosyazbek SET piezas = piezas - ? WHERE sku = ? AND piezas >= ?",
+                            [$cantNecesaria, $p['sku'], $cantNecesaria]
+                        );
+                        $stockRow = $db->query(
+                            "SELECT piezas FROM productosyazbek WHERE sku = ? LIMIT 1",
+                            [$p['sku']]
+                        )->getRowArray();
+                        $db->query(
+                            "INSERT INTO stock_eventos (sku, nuevo_stock) VALUES (?, ?)",
+                            [$p['sku'], (int)($stockRow['piezas'] ?? 0)]
+                        );
+                    }
+                }
+            }
+
+            // Reactivar nota padre → Abierta (1)
+            // También reactivar hijos cancelados (anticipos) del mismo padre
+            $db->query(
+                "UPDATE notas_1 SET status = 1 WHERE folio = ? OR (referencia = ? AND status = 3)",
+                [$folio, $folio]
+            );
+
+            return $this->response->setContentType('application/json')
+                ->setJSON(['ok' => true, 'folio' => $folio, 'esHijo' => $esHijo, 'advertencias' => $advertencias]);
+
+        } catch (\Exception $e) {
+            log_message('error', 'revivirNota folio=' . $folio . ': ' . $e->getMessage());
+            return $this->response->setContentType('application/json')
+                ->setJSON(['ok' => false, 'error' => $e->getMessage()]);
         }
     }
 
@@ -2178,18 +2283,19 @@ class AdminController extends BaseController
                         LEFT JOIN status s ON s.id = n.status
                         LEFT JOIN (
                             SELECT mn.idNotas,
-                                   GROUP_CONCAT(DISTINCT tp.descripcion ORDER BY tp.id SEPARATOR ' / ') AS tipos_pago
+                                   GROUP_CONCAT(DISTINCT tp.descripcion ORDER BY tp.id SEPARATOR '<br>') AS tipos_pago
                             FROM montosnotas mn
                             INNER JOIN tipopago tp ON tp.id = mn.idTipoPago
                             GROUP BY mn.idNotas
                         ) pm_direct ON pm_direct.idNotas = n.Id_Notas_1
                         LEFT JOIN (
                             SELECT nc.referencia AS folio_padre,
-                                   GROUP_CONCAT(DISTINCT tp.descripcion ORDER BY tp.id SEPARATOR ' / ') AS tipos_pago
+                                   GROUP_CONCAT(DISTINCT tp.descripcion ORDER BY tp.id SEPARATOR '<br>') AS tipos_pago
                             FROM notas_1 nc
                             INNER JOIN montosnotas mn ON mn.idNotas = nc.Id_Notas_1
                             INNER JOIN tipopago tp ON tp.id = mn.idTipoPago
                             WHERE COALESCE(nc.referencia, 0) > 0
+                              AND nc.status != 3
                             GROUP BY nc.referencia
                         ) pm_child ON pm_child.folio_padre = n.folio";
 

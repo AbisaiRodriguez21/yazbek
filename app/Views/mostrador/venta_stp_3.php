@@ -142,18 +142,33 @@
                         <!-- Pagos ya registrados (solo lectura) -->
                         <p class="small text-muted mb-1">Pagos registrados anteriormente:</p>
                         <ul class="list-group mb-2" id="listaPagosExistentes">
-                            <?php foreach ($pagosExistentes as $pe): ?>
-                            <li class="list-group-item d-flex justify-content-between align-items-center py-1">
-                                <span class="text-muted">
+                            <?php foreach ($pagosExistentes as $pe):
+                                $cancelado = ((int)($pe['nota_status'] ?? 0) === 3);
+                            ?>
+                            <li class="list-group-item d-flex justify-content-between align-items-center py-1<?= $cancelado ? ' list-group-item-light' : '' ?>">
+                                <span class="<?= $cancelado ? 'text-muted' : 'text-muted' ?>">
+                                    <?php if ($cancelado): ?>
+                                    <s><?= esc($pe['descripcion']) ?></s>
+                                    <?php else: ?>
                                     <?= esc($pe['descripcion']) ?>
-                                    <?php if ($pe['anticipo']): ?>
+                                    <?php endif; ?>
+                                    <?php if ($pe['anticipo'] && !$cancelado): ?>
                                     <span class="badge badge-warning">Anticipo</span>
+                                    <?php endif; ?>
+                                    <?php if ($cancelado): ?>
+                                    <span class="badge badge-danger">Cancelada</span>
                                     <?php endif; ?>
                                     <?php if (!empty($pe['folio_origen']) && (int)$pe['folio_origen'] !== (int)$nota['folio']): ?>
                                     <small class="text-info ml-1">Folio #<?= (int)$pe['folio_origen'] ?></small>
                                     <?php endif; ?>
                                 </span>
-                                <span class="text-muted">$<?= number_format($pe['monto'], 2) ?></span>
+                                <span class="text-muted">
+                                    <?php if ($cancelado): ?>
+                                    <s>$<?= number_format($pe['monto'], 2) ?></s>
+                                    <?php else: ?>
+                                    $<?= number_format($pe['monto'], 2) ?>
+                                    <?php endif; ?>
+                                </span>
                             </li>
                             <?php endforeach; ?>
                         </ul>
@@ -163,10 +178,17 @@
                         <ul id="listaPagos" class="list-group">
                             <li class="list-group-item text-muted text-center" id="liSinPagos">Sin pagos nuevos aún.</li>
                         </ul>
+                        <?php
+                        // Solo sumar pagos de notas NO canceladas
+                        $sumaPagosValidos = array_sum(array_column(
+                            array_filter($pagosExistentes ?? [], fn($pe) => (int)($pe['nota_status'] ?? 0) !== 3),
+                            'monto'
+                        ));
+                        ?>
                         <div class="mt-2 text-right">
                             <?php if (!empty($pagosExistentes)): ?>
                             <strong>Ya pagado: <span id="spYaPagado" class="text-muted">
-                                $<?= number_format(array_sum(array_column($pagosExistentes, 'monto')), 2) ?>
+                                $<?= number_format($sumaPagosValidos, 2) ?>
                             </span></strong><br>
                             <?php endif; ?>
                             <strong>Nuevo pago: <span id="spMontoPagado" class="text-success">$0.00</span></strong><br>
@@ -233,8 +255,8 @@
 <input type="hidden" id="hidCsrfHash" value="<?= csrf_hash() ?>">
 <input type="hidden" id="hidSumaImportes" value="<?= $sumaImportes ?>">
 <input type="hidden" id="hidFolio" value="<?= (int)$nota['folio'] ?>">
-<!-- Total ya pagado en sesiones anteriores (anticipos, etc.) -->
-<input type="hidden" id="hidYaPagado" value="<?= number_format(array_sum(array_column($pagosExistentes, 'monto')), 2, '.', '') ?>">
+<!-- Total ya pagado en sesiones anteriores — excluye folios hijos cancelados -->
+<input type="hidden" id="hidYaPagado" value="<?= number_format($sumaPagosValidos, 2, '.', '') ?>">
 
 <?= $this->endSection() ?>
 
@@ -257,8 +279,6 @@ function recalcular() {
     var cargos = 0;
     pagos.forEach(function(p) { cargos += parseFloat(p.cargo || 0); });
     total += cargos;
-    // Redondear el total al peso más cercano (misma lógica que restante)
-    total = Math.round(total);
 
     $('#tdSubtotal').text('$' + subtotal.toFixed(2));
     $('#tdIva').text('$' + iva.toFixed(2));
@@ -271,8 +291,6 @@ function recalcular() {
     var montoNuevo = pagos.reduce(function(acc, p) { return acc + parseFloat(p.monto); }, 0);
     // Restante = total - ya pagado antes - nuevos pagos ahora
     var restante = total - yaPagado - montoNuevo;
-    // Redondear al peso más cercano (< .50 baja, >= .50 sube)
-    restante = Math.round(restante);
     var liquidado = restante <= 0;
 
     $('#spMontoPagado').text('$' + montoNuevo.toFixed(2));
@@ -333,12 +351,12 @@ $('#btnAgregarPago').on('click', function() {
     var yaPagadoActual = pagos.reduce(function(acc, p) { return acc + parseFloat(p.monto); }, 0);
     var totalActual    = parseFloat($('#hidTotal').val()) || 0;
     var yaPagadoPrev   = parseFloat($('#hidYaPagado').val()) || 0;
-    var pendiente      = Math.round(totalActual - yaPagadoPrev - yaPagadoActual);
+    var pendiente      = totalActual - yaPagadoPrev - yaPagadoActual;
 
-    if (monto > pendiente + 0.99) {
+    if (monto > pendiente + 0.005) {
         var excedente = (monto - pendiente).toFixed(2);
         var confirmar = confirm(
-            '⚠ El pago de $' + monto.toFixed(2) + ' excede lo que resta por cobrar ($' + Math.max(0, pendiente) + '.00).\n' +
+            '⚠ El pago de $' + monto.toFixed(2) + ' excede lo que resta por cobrar ($' + Math.max(0, pendiente).toFixed(2) + ').\n' +
             'Se está cobrando $' + excedente + ' de más.\n\n' +
             '¿Deseas agregarlo de todas formas?'
         );
@@ -395,6 +413,15 @@ $('#btnGuardar').on('click', function() {
     if (pagos.length === 0 && !sinPagarSeleccionado && yaPagado <= 0) {
         alert('Debes seleccionar al menos un método de pago.');
         return;
+    }
+
+    // Bloquear si hay saldo pendiente y NO eligió "Sin Pagar"
+    if (!sinPagarSeleccionado) {
+        var restanteFinal = total - yaPagado - montoNuevo;
+        if (restanteFinal > 0.005) {
+            alert('Falta por pagar: $' + restanteFinal.toFixed(2) + '\nAgrega el monto restante antes de cerrar la nota.');
+            return;
+        }
     }
 
     var csrf = {};

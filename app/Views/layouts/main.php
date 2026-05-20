@@ -648,4 +648,144 @@
     /* ── Dark mode toggle ── */
     (function () {
         var LIGHT = 'dore.light.bluenavy.min.css';
-        var DARK  = 'dore.dark.bluenavy.min
+        var DARK  = 'dore.dark.bluenavy.min.css';
+        var BASE  = '<?= base_url("assets/css/") ?>';
+        var link  = document.getElementById('themeCss');
+
+        function applyTheme(dark) {
+            if (link) link.href = BASE + (dark ? DARK : LIGHT);
+            localStorage.setItem('yazbek_dark', dark ? '1' : '0');
+            var toggle = document.getElementById('darkToggle');
+            if (toggle) toggle.checked = !!dark;
+        }
+
+        // Restaurar preferencia guardada
+        var saved = localStorage.getItem('yazbek_dark');
+        if (saved !== null) applyTheme(saved === '1');
+
+        // Escuchar el toggle del header
+        document.addEventListener('change', function(e) {
+            if (e.target && e.target.id === 'darkToggle') {
+                applyTheme(e.target.checked);
+            }
+        });
+    })();
+    </script>
+
+    <!-- ═══════════════════════════════════════════════════════════
+         Stock sync — Polling corto cada 2s
+         No mantiene conexiones abiertas, Apache nunca se satura
+    ════════════════════════════════════════════════════════════ -->
+    <style>
+    @keyframes stock-flash-baja  { 0%,100%{background:transparent} 50%{background:#ffe0dc} }
+    @keyframes stock-flash-sube  { 0%,100%{background:transparent} 50%{background:#d4f5dc} }
+    .stock-baja { animation: stock-flash-baja 1.3s ease; }
+    .stock-sube { animation: stock-flash-sube 1.3s ease; }
+    </style>
+    <script>
+    (function initStockSync() {
+        var POLL_URL = '<?= base_url("stock/poll") ?>';
+        var lastId   = 0;
+        var timer    = null;
+
+        // Primera llamada: obtener el last_id actual sin procesar eventos históricos
+        function inicializar() {
+            fetch(POLL_URL + '?since=0', { credentials: 'same-origin' })
+                .then(function(r) { return r.ok ? r.json() : null; })
+                .then(function(data) {
+                    if (data) lastId = data.last_id;
+                    timer = setInterval(poll, 2000); // revisar cada 2 segundos
+                })
+                .catch(function() {
+                    timer = setInterval(poll, 2000);
+                });
+        }
+
+        // Polling: pide solo eventos más nuevos que lastId
+        function poll() {
+            fetch(POLL_URL + '?since=' + lastId, { credentials: 'same-origin' })
+                .then(function(r) { return r.ok ? r.json() : null; })
+                .then(function(data) {
+                    if (!data || !data.eventos) return;
+                    lastId = data.last_id;
+                    data.eventos.forEach(function(ev) {
+                        sincronizarStock(ev.sku, ev.stock);
+                    });
+                })
+                .catch(function() { /* silenciar errores de red momentáneos */ });
+        }
+
+        // Pausar cuando la pestaña está en segundo plano (ahorro de recursos)
+        document.addEventListener('visibilitychange', function() {
+            if (document.hidden) {
+                clearInterval(timer);
+            } else {
+                poll(); // actualizar de inmediato al volver
+                timer = setInterval(poll, 2000);
+            }
+        });
+
+        window.addEventListener('beforeunload', function() {
+            clearInterval(timer);
+        });
+
+        inicializar();
+
+        /**
+         * Actualiza en la UI el stock de un SKU dado.
+         * Funciona en:
+         *   - Tabla de inventario admin/mostrador (data-stock-sku="X")
+         *   - Select2 de agregar producto en venta_stp_2
+         */
+        window.sincronizarStock = function(sku, nuevoStock) {
+
+            // ── 1. Celdas/badges con data-stock-sku ───────────────────────
+            document.querySelectorAll('[data-stock-sku="' + sku + '"]').forEach(function(el) {
+                var anterior = parseInt(el.textContent, 10) || 0;
+                el.textContent = nuevoStock;
+
+                if (el.classList.contains('badge')) {
+                    el.classList.remove('badge-success', 'badge-warning', 'badge-danger');
+                    if (nuevoStock > 10)     el.classList.add('badge-success');
+                    else if (nuevoStock > 0) el.classList.add('badge-warning');
+                    else                     el.classList.add('badge-danger');
+                }
+
+                el.classList.remove('stock-baja', 'stock-sube');
+                void el.offsetWidth;
+                el.classList.add(nuevoStock < anterior ? 'stock-baja' : 'stock-sube');
+                setTimeout(function() {
+                    el.classList.remove('stock-baja', 'stock-sube');
+                }, 1400);
+            });
+
+            // ── 2. Select2 activo en venta_stp_2 ──────────────────────────
+            if (typeof $ !== 'undefined') {
+                var $sel = $('#selectProducto');
+                if ($sel.length && typeof $sel.select2 === 'function') {
+                    var selData = $sel.select2('data');
+                    if (selData && selData.length && selData[0].sku === sku) {
+                        selData[0].piezas = nuevoStock;
+                        if (nuevoStock > 0) {
+                            $('#stockDisponible').text('— Stock disponible: ' + nuevoStock + ' pzs')
+                                .removeClass('text-danger').addClass('text-muted');
+                            $('#inputCantidad').attr('max', nuevoStock);
+                            $('#btnAgregar').prop('disabled', false);
+                            $('#msgAgregar').html('');
+                        } else {
+                            $('#stockDisponible').text('— ⚠ Sin stock — otro mostrador tomó las últimas piezas')
+                                .removeClass('text-muted').addClass('text-danger');
+                            $('#inputCantidad').attr('max', 0).val(0);
+                            $('#btnAgregar').prop('disabled', true);
+                            $('#msgAgregar').html('<span class="text-danger">Stock agotado en este momento.</span>');
+                        }
+                    }
+                }
+            }
+        };
+
+    })();
+    </script>
+
+</body>
+</html>

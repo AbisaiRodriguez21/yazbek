@@ -27,13 +27,9 @@
         </div>
         <div class="pt-2">
             <a href="<?= base_url($basePrefix . '/venta/' . (int)$nota['folio'] . '/cancelar') ?>"
-               class="btn btn-outline-danger mr-2"
+               class="btn btn-outline-danger"
                onclick="return confirm('¿Cancelar esta nota?')">
                 <i class="iconsminds-close"></i> Cancelar Nota
-            </a>
-            <a href="<?= base_url($basePrefix . '/venta/' . (int)$nota['folio'] . '/confirmar') ?>"
-               class="btn btn-success">
-                <i class="iconsminds-arrow-right"></i> Confirmar
             </a>
         </div>
     </div>
@@ -133,10 +129,13 @@
                 </div>
             </div>
             <div class="card-footer text-right">
-                <a href="<?= base_url($basePrefix . '/venta/' . (int)$nota['folio'] . '/confirmar') ?>"
-                   class="btn btn-success">
+                <div id="alertSinProductos" class="text-danger small mb-2" style="display:none;">
+                    <i class="iconsminds-danger"></i> Agrega al menos un producto antes de continuar.
+                </div>
+                <button id="btnSiguiente" type="button" class="btn btn-success"
+                        data-url="<?= base_url($basePrefix . '/venta/' . (int)$nota['folio'] . '/confirmar') ?>">
                     Siguiente: Confirmar <i class="iconsminds-arrow-right ml-1"></i>
-                </a>
+                </button>
             </div>
         </div>
     </div>
@@ -182,16 +181,29 @@ $('#selectProducto').select2({
         processResults: function(data) {
             return {
                 results: data.map(function(p) {
+                    var piezas = parseInt(p.piezas, 10) || 0;
+                    var sinStock = piezas <= 0;
                     return {
-                        id: p.sku,
-                        text: '[' + p.sku + '] ' + p.descripcion + '  (' + p.piezas + ' pzs)',
+                        id: sinStock ? '' : p.sku,   // id vacío = no seleccionable
+                        text: sinStock
+                            ? '[' + p.sku + '] ' + p.descripcion + '  — Sin existencias'
+                            : '[' + p.sku + '] ' + p.descripcion + '  (' + piezas + ' pzs)',
                         sku: p.sku,
                         descripcion: p.descripcion,
-                        piezas: parseInt(p.piezas, 10) || 0
+                        piezas: piezas,
+                        disabled: sinStock
                     };
                 })
             };
         }
+    },
+    // Render personalizado: los sin stock aparecen en gris con ícono
+    templateResult: function(item) {
+        if (item.loading) return item.text;
+        if (item.disabled) {
+            return $('<span style="color:#aaa;cursor:not-allowed;">⊘ ' + item.text + '</span>');
+        }
+        return item.text;
     }
 });
 
@@ -208,11 +220,26 @@ $('#inputCantidad').on('input', function() {
 
 // Mostrar stock al seleccionar producto
 $('#selectProducto').on('select2:select', function(e) {
-    var data = e.params.data;
+    var data  = e.params.data;
     var stock = data.piezas || 0;
-    $('#stockDisponible').text('— Stock disponible: ' + stock + ' pzs');
-    $('#inputCantidad').attr('max', stock).val(Math.min(parseInt($('#inputCantidad').val(), 10) || 1, stock || 1));
-    $('#msgAgregar').html('');
+
+    if (stock <= 0) {
+        // Producto existe pero sin existencias — bloquear
+        $('#stockDisponible').text('').removeClass('text-muted').addClass('text-danger');
+        $('#stockDisponible').text('— Sin existencias disponibles');
+        $('#inputCantidad').attr('max', 0).val(0);
+        $('#btnAgregar').prop('disabled', true);
+        $('#msgAgregar').html(
+            '<span class="text-danger"><strong>Producto sin stock.</strong> ' +
+            'Existe en el catálogo pero no hay piezas disponibles en este momento.</span>'
+        );
+    } else {
+        $('#stockDisponible').text('— Stock disponible: ' + stock + ' pzs')
+            .removeClass('text-danger').addClass('text-muted');
+        $('#inputCantidad').attr('max', stock).val(Math.min(parseInt($('#inputCantidad').val(), 10) || 1, stock));
+        $('#btnAgregar').prop('disabled', false);
+        $('#msgAgregar').html('');
+    }
 });
 $('#selectProducto').on('select2:clear select2:unselect', function() {
     $('#stockDisponible').text('');
@@ -328,6 +355,36 @@ function renderCarrito(resp) {
 function escHtml(str) {
     return $('<div>').text(str).html();
 }
+
+// ── Guard "Siguiente: Confirmar" ──────────────────────────────
+function hayProductos() {
+    // Si el único tr es el de "Sin productos aún." → no hay
+    return $('#tbodyCarrito tr:not(#rowVacio)').length > 0;
+}
+
+function actualizarBtnSiguiente() {
+    var hay = hayProductos();
+    $('#btnSiguiente').prop('disabled', !hay).toggleClass('btn-secondary', !hay).toggleClass('btn-success', hay);
+    $('#alertSinProductos').toggle(!hay);
+}
+
+$('#btnSiguiente').on('click', function() {
+    if (!hayProductos()) {
+        $('#alertSinProductos').show();
+        return;
+    }
+    window.location.href = $(this).data('url');
+});
+
+// Estado inicial al cargar la página
+actualizarBtnSiguiente();
+
+// Actualizar estado después de cada cambio en el carrito
+var _renderCarritoOrig = renderCarrito;
+renderCarrito = function(resp) {
+    _renderCarritoOrig(resp);
+    actualizarBtnSiguiente();
+};
 
 })(); // fin initStp2
 </script>

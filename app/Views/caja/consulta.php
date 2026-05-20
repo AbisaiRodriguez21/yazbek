@@ -107,7 +107,7 @@ var URL_CANCELAR = '<?= base_url('caja/cancelar/') ?>';
                 var idstatus = parseInt(row.idstatus, 10);
                 var btns = '';
                 /* Botones como <button> para evitar que el SPA los intercepte */
-                if (idstatus !== 5) {
+                if (idstatus !== 5 && idstatus !== 3) {
                     btns += '<button class="btn btn-xs btn-outline-primary mr-1"'
                           + ' onclick="window.location.href=\'' + URL_VER + row.folio + '\'">Ver</button>';
                 }
@@ -115,9 +115,13 @@ var URL_CANCELAR = '<?= base_url('caja/cancelar/') ?>';
                     btns += '<button class="btn btn-xs btn-outline-success mr-1"'
                           + ' onclick="cajaVerificarPago(' + row.folio + ')">Verificar pago</button>';
                 }
-                if (idstatus !== 5) {
-                    btns += '<button class="btn btn-xs btn-outline-danger"'
+                if (idstatus !== 5 && idstatus !== 3) {
+                    btns += '<button class="btn btn-xs btn-outline-danger mr-1"'
                           + ' onclick="cajaCancelarFolio(' + row.folio + ')">Cancelar</button>';
+                }
+                if (idstatus === 3) {
+                    btns += '<button class="btn btn-xs btn-warning"'
+                          + ' onclick="cajaRevivirFolio(' + row.folio + ')">Revivir</button>';
                 }
                 return btns || '<span class="text-muted">—</span>';
               }
@@ -150,6 +154,30 @@ function cajaCancelarFolio(folio) {
     if (confirm('¿Cancelar el folio ' + folio + '?')) {
         window.location.href = URL_CANCELAR + folio;
     }
+}
+
+/* Revivir nota cancelada */
+function cajaRevivirFolio(folio) {
+    if (!confirm('¿Revivir el folio ' + folio + '? Se volverá a descontar el stock de los productos.')) return;
+    var fd = new FormData();
+    fd.append('<?= csrf_token() ?>', '<?= csrf_hash() ?>');
+    fetch('<?= base_url('caja/folio/') ?>' + folio + '/revivir', {
+        method: 'POST', body: fd, credentials: 'same-origin'
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (data.ok) {
+            if (data.advertencias && data.advertencias.length > 0) {
+                alert('⚠ Folio #' + folio + ' revivido, pero hay productos con stock insuficiente:\n\n'
+                    + data.advertencias.join('\n')
+                    + '\n\nLas cantidades se ajustaron al stock disponible.');
+            }
+            $('#tablaCajaConsulta').DataTable().ajax.reload(null, false);
+        } else {
+            alert('No se pudo revivir el folio: ' + (data.error || 'error desconocido'));
+        }
+    })
+    .catch(function() { alert('Error de conexión al revivir.'); });
 }
 
 /* Verificar pago: fetch AJAX, muestra alert y recarga sólo la tabla */

@@ -15,6 +15,12 @@ $routes->post('/login', 'AuthController::login');
 $routes->get('/logout', 'AuthController::logout');
 
 // =============================================================
+// Stock polling — Sincronización de stock en tiempo real (todos los roles)
+// Responde inmediatamente, no bloquea procesos de Apache
+// =============================================================
+$routes->get('stock/poll', 'StockController::poll', ['filter' => 'role:1,2,3,4']);
+
+// =============================================================
 // RUTAS DE ADMIN (acceso = 1)
 // =============================================================
 $routes->group('admin', ['filter' => 'role:1'], function ($routes) {
@@ -106,6 +112,9 @@ $routes->group('admin', ['filter' => 'role:1'], function ($routes) {
     // Liquidar anticipo
     $routes->post('folio/(:num)/liquidar', 'AdminController::liquidarAnticipo/$1');
 
+    // Revivir nota cancelada (solo admin)
+    $routes->post('folio/(:num)/revivir', 'AdminController::revivirNota/$1');
+
     // Pantalla de pago (step 3) accesible desde admin
     $routes->get('venta/(:num)/confirmar',  'MostradorController::ventaStp3/$1');
     $routes->post('venta/(:num)/confirmar', 'MostradorController::ventaStp3Post/$1');
@@ -123,6 +132,9 @@ $routes->group('admin', ['filter' => 'role:1'], function ($routes) {
 
     // ── Cancelar nota desde admin ──
     $routes->get('venta/(:num)/cancelar',    'MostradorController::cancelar/$1');
+
+    // ── Revivir nota cancelada desde mostrador ──
+    $routes->post('folio/(:num)/revivir',    'AdminController::revivirNota/$1');
 
     // ── AJAX compartidos: búsqueda de clientes ──
     $routes->post('clientes/buscar',         'MostradorController::buscarClientes');
@@ -203,6 +215,10 @@ $routes->group('mostrador', ['filter' => 'role:3,4'], function ($routes) {
     $routes->get('consulta/datatable', 'MostradorController::notasDatatable');
     $routes->get('consulta', 'MostradorController::consultaStp1');
     $routes->get('metas', 'MostradorController::metas');
+
+    // ── Modal de detalle de folio (sin botón Pago Verificado) ──
+    $routes->post('folio/ajax', 'MostradorController::folioAjax');
+    $routes->post('folio/cancelar', 'MostradorController::folioAjaxCancelar');
 });
 
 // =============================================================
@@ -238,6 +254,9 @@ $routes->group('caja', ['filter' => 'role:2'], function ($routes) {
 
     // Cancelar nota desde caja
     $routes->get('cancelar/(:num)', 'CajaController::cancelarNota/$1');
+
+    // Revivir nota cancelada desde caja
+    $routes->post('folio/(:num)/revivir', 'AdminController::revivirNota/$1');
 
     // Venta stp 2 desde caja (cobro)
     $routes->get('venta/(:num)', 'CajaController::ventaStp2/$1');

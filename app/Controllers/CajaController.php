@@ -696,18 +696,19 @@ class CajaController extends BaseController
                     LEFT JOIN status s ON s.id = n.status
                     LEFT JOIN (
                         SELECT mn.idNotas,
-                               GROUP_CONCAT(DISTINCT tp.descripcion ORDER BY tp.id SEPARATOR ' / ') AS tipos_pago
+                               GROUP_CONCAT(DISTINCT tp.descripcion ORDER BY tp.id SEPARATOR '<br>') AS tipos_pago
                         FROM montosnotas mn
                         INNER JOIN tipopago tp ON tp.id = mn.idTipoPago
                         GROUP BY mn.idNotas
                     ) pm_direct ON pm_direct.idNotas = n.Id_Notas_1
                     LEFT JOIN (
                         SELECT nc.referencia AS folio_padre,
-                               GROUP_CONCAT(DISTINCT tp.descripcion ORDER BY tp.id SEPARATOR ' / ') AS tipos_pago
+                               GROUP_CONCAT(DISTINCT tp.descripcion ORDER BY tp.id SEPARATOR '<br>') AS tipos_pago
                         FROM notas_1 nc
                         INNER JOIN montosnotas mn ON mn.idNotas = nc.Id_Notas_1
                         INNER JOIN tipopago tp ON tp.id = mn.idTipoPago
                         WHERE COALESCE(nc.referencia, 0) > 0
+                          AND nc.status != 3
                         GROUP BY nc.referencia
                     ) pm_child ON pm_child.folio_padre = n.folio";
 

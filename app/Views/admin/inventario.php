@@ -246,7 +246,8 @@
                             <td><?= esc($p['estilo']) ?> - <?= esc($p['Descripcion_Larga']) ?> - <?= esc($p['Color']) ?> - <?= esc($p['Talla']) ?></td>
                             <td contenteditable="true" id="pMayoreo:<?= $p['id'] ?>"><?= $p['pMayoreo'] ?? 0 ?></td>
                             <td contenteditable="true" id="pMenudeo:<?= $p['id'] ?>"><?= $p['pMenudeo'] ?? 0 ?></td>
-                            <td contenteditable="true" id="piezas:<?= $p['id'] ?>"><?= (int)($p['piezas'] ?? 0) ?></td>
+                            <td contenteditable="true" id="piezas:<?= $p['id'] ?>"
+                                data-stock-sku="<?= esc($p['sku']) ?>"><?= (int)($p['piezas'] ?? 0) ?></td>
                             <td class="text-center">
                                 <button type="button" class="btn btn-xs btn-outline-danger btn-eliminar-producto"
                                         data-id="<?= (int)$p['id'] ?>" data-sku="<?= esc($p['sku']) ?>">

@@ -170,31 +170,44 @@ $(document).ready(function() {
 
 function accionesNota(n) {
     var btns = '';
-    var idstatus  = parseInt(n.idstatus, 10);
+    var idstatus   = parseInt(n.idstatus, 10);
     var referencia = parseInt(n.referencia || 0, 10);
-    var esPadre   = referencia === 0;
-    var BASE_PAGO = '<?= base_url('admin/venta/') ?>';
+    var esPadre    = referencia === 0;
+    var BASE_PAGO  = '<?= base_url('admin/venta/') ?>';
 
+    // Ver / Pagar: folios padre Abiertos o Anticipo
     if ((idstatus === 1 || idstatus === 4) && esPadre) {
-        // Solo folios padre Abiertos/Anticipo: ir a pantalla de pago
         btns += '<a href="' + BASE_PAGO + n.folio + '/confirmar" class="btn btn-xs btn-outline-primary mr-1">Ver / Pagar</a>';
-    } else if (idstatus !== 5) {
-        btns += '<a href="#" class="btn btn-xs btn-outline-primary mr-1"'
+    }
+
+    // Ver modal: folios hijo o notas pagadas/canceladas
+    if (!esPadre || idstatus === 5 || idstatus === 3) {
+        btns += '<a href="#" class="btn btn-xs btn-outline-secondary mr-1"'
               + ' onclick="adminVerFolio(' + n.folio + '); return false;">Ver</a>';
     }
-    // Liquidar: solo en folios padre con status Anticipo
+
+    // Liquidar: solo folios padre con status Anticipo
     if (idstatus === 4 && esPadre) {
         btns += '<a href="#" class="btn btn-xs btn-success mr-1"'
               + ' onclick="adminLiquidarAnticipo(' + n.folio + '); return false;">Liquidar</a>';
     }
-    if (idstatus !== 5) {
-        btns += '<a href="#" class="btn btn-xs btn-outline-danger"'
+
+    // Cancelar: cualquier nota que NO esté cancelada
+    if (idstatus !== 3) {
+        btns += '<a href="#" class="btn btn-xs btn-outline-danger mr-1"'
               + ' onclick="adminCancelarFolio(' + n.folio + '); return false;">Cancelar</a>';
     }
-    // Pagada + padre: mostrar Verificar y Ver Ticket
+
+    // Revivir: notas canceladas (padre e hijo)
+    if (idstatus === 3) {
+        btns += '<a href="#" class="btn btn-xs btn-warning"'
+              + ' onclick="adminRevivirFolio(' + n.folio + '); return false;">Revivir</a>';
+    }
+
+    // Pagada + padre: Liquidar y Ver Ticket
     if (idstatus === 5 && esPadre) {
-        btns += '<a href="#" class="btn btn-xs btn-outline-secondary mr-1"'
-              + ' onclick="adminVerFolio(' + n.folio + '); return false;">Verificar</a>';
+        btns += '<a href="#" class="btn btn-xs btn-success mr-1"'
+              + ' onclick="adminLiquidarAnticipo(' + n.folio + '); return false;">Liquidar</a>';
         btns += '<a href="#" class="btn btn-xs btn-outline-dark">Ver Ticket</a>';
     }
 
@@ -335,6 +348,13 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 });
 
+function fn_liquidar_modal() {
+    var folio = document.getElementById('folio_input') ? document.getElementById('folio_input').value : 0;
+    if (!folio) return;
+    $('#modalVerFolio').modal('hide');
+    adminLiquidarAnticipo(parseInt(folio, 10));
+}
+
 function adminLiquidarAnticipo(folio) {
     if (!confirm('¿Liquidar el anticipo ' + folio + ' y todos sus pagos? Esta acción marcará la nota como Pagada.')) return;
     var fd = new FormData();
@@ -354,8 +374,11 @@ function adminLiquidarAnticipo(folio) {
 }
 
 function adminCancelarFolio(folio) {
-    if (!confirm('¿Cancelar el folio ' + folio + '?')) return;
-    $.post('<?= base_url('admin/caja/cancelar') ?>', { folio: folio }, function(resp) {
+    if (!confirm('¿Cancelar el folio ' + folio + '? Esta acción restaura el inventario.')) return;
+    $.post('<?= base_url('admin/caja/cancelar') ?>', {
+        folio: folio,
+        '<?= csrf_token() ?>': '<?= csrf_hash() ?>'
+    }, function(resp) {
         if (resp === '1') {
             $('#tablaAdminConsulta').DataTable().ajax.reload(null, false);
         } else {
@@ -364,6 +387,35 @@ function adminCancelarFolio(folio) {
     }).fail(function() {
         alert('Error de comunicación al cancelar.');
     });
+}
+
+function adminRevivirFolio(folio) {
+    if (!confirm('¿Revivir el folio ' + folio + '? Se volverá a descontar el stock de los productos.')) return;
+    var fd = new FormData();
+    fd.append('<?= csrf_token() ?>', '<?= csrf_hash() ?>');
+    fetch('<?= base_url('admin/folio/') ?>' + folio + '/revivir', {
+        method: 'POST', body: fd, credentials: 'same-origin'
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (data.ok) {
+            if (data.advertencias && data.advertencias.length > 0) {
+                alert('⚠ Folio #' + folio + ' revivido, pero hay productos con stock insuficiente:\n\n'
+                    + data.advertencias.join('\n')
+                    + '\n\nLas cantidades se ajustaron al stock disponible.');
+            }
+            if (!data.esHijo) {
+                // Nota padre: redirigir a step 2 para revisar/agregar productos
+                window.location.href = '<?= base_url('admin/venta/') ?>' + folio + '/productos';
+            } else {
+                // Nota hijo (anticipo): solo recargar tabla
+                $('#tablaAdminConsulta').DataTable().ajax.reload(null, false);
+            }
+        } else {
+            alert('No se pudo revivir el folio: ' + (data.error || 'error desconocido'));
+        }
+    })
+    .catch(function() { alert('Error de conexión al revivir.'); });
 }
 </script>
 <?= $this->endSection() ?>

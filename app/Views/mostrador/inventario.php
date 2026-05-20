@@ -42,7 +42,8 @@
                         <td class="text-right">$<?= number_format($p['pMayoreo'] ?? 0, 2) ?></td>
                         <td class="text-right">
                             <?php $stock = (int)$p['piezas']; ?>
-                            <span class="badge badge-<?= $stock > 10 ? 'success' : ($stock > 0 ? 'warning' : 'danger') ?>">
+                            <span data-stock-sku="<?= esc($p['sku']) ?>"
+                                  class="badge badge-<?= $stock > 10 ? 'success' : ($stock > 0 ? 'warning' : 'danger') ?>">
                                 <?= $stock ?>
                             </span>
                         </td>
