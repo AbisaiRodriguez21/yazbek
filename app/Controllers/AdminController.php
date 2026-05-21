@@ -68,16 +68,17 @@ class AdminController extends BaseController
                 SUM(status=3) AS cancelado,
                 SUM(status=4) AS anticipo,
                 SUM(status=5) AS pagado,
-                COALESCE(SUM(CASE WHEN status IN (4,5) THEN total ELSE 0 END),0) AS ingresos
+                SUM(status=6) AS liquidado,
+                COALESCE(SUM(CASE WHEN status IN (4,5,6) THEN total ELSE 0 END),0) AS ingresos
              FROM notas_1
              WHERE fecha_inicial >= ? AND fecha_inicial < ?",
             ["{$hoy} 00:00:00", "{$hoy} 23:59:59"]
         )->getRow();
 
-        $totalHoy       = (int)($statsHoy->total    ?? 0);
-        $totalAnticipo  = (int)($statsHoy->anticipo ?? 0);
-        $totalCancelado = (int)($statsHoy->cancelado?? 0);
-        $totalPagado    = (int)($statsHoy->pagado   ?? 0);
+        $totalHoy       = (int)($statsHoy->total      ?? 0);
+        $totalAnticipo  = (int)($statsHoy->anticipo   ?? 0);
+        $totalCancelado = (int)($statsHoy->cancelado  ?? 0);
+        $totalPagado    = (int)($statsHoy->pagado     ?? 0) + (int)($statsHoy->liquidado ?? 0);
         $ingresosHoy    = (float)($statsHoy->ingresos ?? 0);
 
         // ── KPIs de mes y año (1 query) ───────────────────────────
@@ -86,7 +87,7 @@ class AdminController extends BaseController
                 COALESCE(SUM(CASE WHEN fecha_inicial >= ? THEN total ELSE 0 END),0) AS mes,
                 COALESCE(SUM(CASE WHEN fecha_inicial >= ? THEN total ELSE 0 END),0) AS anio
              FROM notas_1
-             WHERE status IN (4,5) AND fecha_inicial >= ? AND fecha_inicial < ?",
+             WHERE status IN (4,5,6) AND fecha_inicial >= ? AND fecha_inicial < ?",
             [$mesInicio, $anioInicio, $anioInicio, $anioFin]
         )->getRow();
 
@@ -104,7 +105,7 @@ class AdminController extends BaseController
                     COALESCE(SUM(total),0) AS total,
                     COUNT(*) AS notas
              FROM notas_1
-             WHERE status IN (4,5)
+             WHERE status IN (4,5,6)
                AND fecha_inicial >= ? AND fecha_inicial < ?
              GROUP BY MONTH(fecha_inicial)
              ORDER BY mes ASC",
@@ -124,9 +125,9 @@ class AdminController extends BaseController
         $ventasAnualesRaw = $db->query(
             "SELECT
                 YEAR(fecha_inicial) AS anio,
-                COALESCE(SUM(CASE WHEN status IN (4,5) THEN total ELSE 0 END),0) AS total,
+                COALESCE(SUM(CASE WHEN status IN (4,5,6) THEN total ELSE 0 END),0) AS total,
                 COUNT(*) AS notas,
-                SUM(CASE WHEN status IN (4,5) THEN 1 ELSE 0 END) AS notas_pagadas
+                SUM(CASE WHEN status IN (4,5,6) THEN 1 ELSE 0 END) AS notas_pagadas
              FROM notas_1
              WHERE fecha_inicial IS NOT NULL
                AND YEAR(fecha_inicial) >= 2000
@@ -145,7 +146,7 @@ class AdminController extends BaseController
         $mesAnteriorInicio = date('Y-m-01 00:00:00', strtotime('-1 month'));
         $mesAnteriorFin    = $mesActualInicio;
 
-        $statusLabels = [1=>'Abierta', 2=>'En proceso', 3=>'Cancelada', 4=>'Anticipo', 5=>'Pagada'];
+        $statusLabels = [1=>'Abierta', 2=>'En proceso', 3=>'Cancelada', 4=>'Anticipo', 5=>'Pagada', 6=>'Liquidado'];
 
         $rawActual   = $db->query(
             "SELECT status, COUNT(*) AS notas, COALESCE(SUM(total),0) AS total
@@ -162,7 +163,7 @@ class AdminController extends BaseController
         )->getResultArray();
 
         $comp = [];
-        foreach ([1,2,3,4,5] as $s) {
+        foreach ([1,2,3,4,5,6] as $s) {
             $comp[$s] = ['label'=>$statusLabels[$s], 'actual_n'=>0, 'actual_t'=>0.0, 'anterior_n'=>0, 'anterior_t'=>0.0];
         }
         foreach ($rawActual   as $r) { $s=(int)$r['status']; if(isset($comp[$s])){ $comp[$s]['actual_n']=(int)$r['notas']; $comp[$s]['actual_t']=round((float)$r['total'],2); } }
@@ -265,7 +266,7 @@ class AdminController extends BaseController
              FROM notas_1 n
              INNER JOIN notas_2 nd ON nd.folio = n.folio
              LEFT  JOIN productosyazbek p ON p.sku = nd.estilo
-             WHERE n.status IN (4,5)
+             WHERE n.status IN (4,5,6)
                AND n.fecha_inicial >= ? AND n.fecha_inicial < ?
              GROUP BY nd.estilo
              ORDER BY piezas DESC
@@ -276,8 +277,8 @@ class AdminController extends BaseController
         // ── Ingresos por vendedor (año) ───────────────────────────
         $ventasVendedor = $db->query(
             "SELECT u.usuario AS vendedor,
-                    COALESCE(SUM(CASE WHEN n.status IN (4,5) THEN n.total ELSE 0 END),0) AS total,
-                    SUM(CASE WHEN n.status IN (4,5) THEN 1 ELSE 0 END) AS notas,
+                    COALESCE(SUM(CASE WHEN n.status IN (4,5,6) THEN n.total ELSE 0 END),0) AS total,
+                    SUM(CASE WHEN n.status IN (4,5,6) THEN 1 ELSE 0 END) AS notas,
                     SUM(CASE WHEN n.status = 3 THEN 1 ELSE 0 END) AS canceladas
              FROM notas_1 n
              INNER JOIN usuarios u ON u.Id = n.idVendedor
@@ -296,7 +297,7 @@ class AdminController extends BaseController
              FROM notas_1 n
              INNER JOIN montosnotas mn ON mn.idNotas = n.Id_Notas_1
              INNER JOIN tipopago tp    ON tp.id = mn.idTipoPago
-             WHERE n.status IN (4,5)
+             WHERE n.status IN (4,5,6)
                AND n.fecha_inicial >= ? AND n.fecha_inicial < ?
              GROUP BY mn.idTipoPago
              ORDER BY total DESC",
@@ -313,7 +314,7 @@ class AdminController extends BaseController
                  FROM notas_1 n
                  INNER JOIN notas_2 nd ON nd.folio = n.folio
                  LEFT  JOIN productosyazbek p ON p.sku = nd.estilo
-                 WHERE n.status IN (4,5)
+                 WHERE n.status IN (4,5,6)
                    AND n.fecha_inicial >= ? AND n.fecha_inicial < ?
                  GROUP BY nd.estilo
                  ORDER BY piezas DESC LIMIT 8",
@@ -325,7 +326,7 @@ class AdminController extends BaseController
         $topMesAnterior = $topMes($mesAnteriorInicio, $mesAnteriorFin);
 
         // ── Comparativa mensual por estatus ───────────────────────
-        $statusLabels = [1=>'Abierta', 2=>'En proceso', 3=>'Cancelada', 4=>'Anticipo', 5=>'Pagada'];
+        $statusLabels = [1=>'Abierta', 2=>'En proceso', 3=>'Cancelada', 4=>'Anticipo', 5=>'Pagada', 6=>'Liquidado'];
         $rawActual   = $db->query(
             "SELECT status, COUNT(*) AS notas, COALESCE(SUM(total),0) AS total
              FROM notas_1 WHERE fecha_inicial >= ? AND fecha_inicial < ? GROUP BY status",
@@ -337,7 +338,7 @@ class AdminController extends BaseController
             [$mesAnteriorInicio, $mesAnteriorFin]
         )->getResultArray();
         $comp = [];
-        foreach ([1,2,3,4,5] as $s) {
+        foreach ([1,2,3,4,5,6] as $s) {
             $comp[$s] = ['label'=>$statusLabels[$s], 'actual_n'=>0, 'actual_t'=>0.0, 'anterior_n'=>0, 'anterior_t'=>0.0];
         }
         foreach ($rawActual   as $r) { $s=(int)$r['status']; if(isset($comp[$s])){ $comp[$s]['actual_n']=(int)$r['notas'];   $comp[$s]['actual_t']=round((float)$r['total'],2); } }
@@ -350,7 +351,7 @@ class AdminController extends BaseController
                     COALESCE(SUM(total),0) AS total,
                     COUNT(*) AS notas
              FROM notas_1
-             WHERE status IN (4,5)
+             WHERE status IN (4,5,6)
                AND fecha_inicial >= ? AND fecha_inicial < ?
              GROUP BY MONTH(fecha_inicial)
              ORDER BY mes ASC",
@@ -369,9 +370,9 @@ class AdminController extends BaseController
         $ventasAnualesRaw = $db->query(
             "SELECT
                 YEAR(fecha_inicial) AS anio,
-                COALESCE(SUM(CASE WHEN status IN (4,5) THEN total ELSE 0 END),0) AS total,
+                COALESCE(SUM(CASE WHEN status IN (4,5,6) THEN total ELSE 0 END),0) AS total,
                 COUNT(*) AS notas,
-                SUM(CASE WHEN status IN (4,5) THEN 1 ELSE 0 END) AS notas_pagadas
+                SUM(CASE WHEN status IN (4,5,6) THEN 1 ELSE 0 END) AS notas_pagadas
              FROM notas_1
              WHERE fecha_inicial IS NOT NULL
                AND YEAR(fecha_inicial) >= 2000
@@ -383,8 +384,8 @@ class AdminController extends BaseController
         $hoy = date('Y-m-d');
         $vendedoresHoy = $db->query(
             "SELECT u.usuario AS vendedor,
-                    COALESCE(SUM(CASE WHEN n.status IN (4,5) THEN n.total ELSE 0 END),0) AS total,
-                    COALESCE(SUM(CASE WHEN n.status IN (4,5) THEN 1 ELSE 0 END),0) AS notas,
+                    COALESCE(SUM(CASE WHEN n.status IN (4,5,6) THEN n.total ELSE 0 END),0) AS total,
+                    COALESCE(SUM(CASE WHEN n.status IN (4,5,6) THEN 1 ELSE 0 END),0) AS notas,
                     COALESCE(SUM(CASE WHEN n.status = 3 THEN 1 ELSE 0 END),0) AS canceladas
              FROM usuarios u
              LEFT JOIN notas_1 n ON n.idVendedor = u.Id
@@ -402,7 +403,7 @@ class AdminController extends BaseController
              FROM notas_1 n
              INNER JOIN montosnotas mn ON mn.idNotas = n.Id_Notas_1
              INNER JOIN tipopago tp    ON tp.id = mn.idTipoPago
-             WHERE n.status IN (4,5)
+             WHERE n.status IN (4,5,6)
                AND DATE(n.fecha_inicial) = ?
              GROUP BY mn.idTipoPago
              ORDER BY total DESC",
@@ -1259,6 +1260,110 @@ class AdminController extends BaseController
         return $this->response->setJSON(['ok' => true, 'mensaje' => "Folio #{$folio} liquidado correctamente."]);
     }
 
+    // ──────────────────────────────────────────────────────────────
+    // GET /admin/folio/:folio/ticket  —  Ticket de impresión (popup)
+    // Equivalente a venta_stp_3.php del sistema original
+    // ──────────────────────────────────────────────────────────────
+    public function verTicket(int $folio): string
+    {
+        $db = \Config\Database::connect();
+
+        $nota = $db->query(
+            "SELECT n.Id_Notas_1, n.fecha_inicial, n.fecha_final,
+                    c.nombre AS NombreCliente, c.direccion, c.telefono, c.mail AS email,
+                    u.usuario AS vendedor,
+                    n.folio, n.referencia, n.factura, n.descuento,
+                    COALESCE(s.nombre, CASE n.status
+                        WHEN 1 THEN 'Abierta' WHEN 2 THEN 'En proceso' WHEN 3 THEN 'Cancelada'
+                        WHEN 4 THEN 'Anticipo' WHEN 5 THEN 'Pagada' WHEN 6 THEN 'Liquidado'
+                        ELSE 'Desconocido' END) AS status,
+                    n.sumaImportes, n.subTotal, n.tipoPago,
+                    n.cargoTarjeta, n.subTotal2, n.iva, n.total,
+                    n.tipoImpresion, n.cargoPorImpresion, n.montoTCTD,
+                    n.montoEfectivo, n.montoEfectivoIva, n.totalPiezas,
+                    n.precioMayoreo
+             FROM notas_1 n
+             LEFT JOIN status   s ON s.id = n.status
+             LEFT JOIN clientes c ON c.id = n.idCliente
+             LEFT JOIN usuarios u ON u.Id = n.idVendedor
+             WHERE n.folio = ?
+             LIMIT 1",
+            [$folio]
+        )->getRowArray();
+
+        if (! $nota) {
+            return '<h3>Folio no encontrado</h3>';
+        }
+
+        $idNota     = (int)$nota['Id_Notas_1'];
+        $referencia = (int)($nota['referencia'] ?? 0);
+
+        // Si es nota hija (referencia != 0) los pagos vienen del padre
+        $idNotaPagos = ($referencia !== 0) ? $referencia : $idNota;
+
+        $pagos = $db->query(
+            "SELECT m.idTipoPago, t.descripcion AS tipopago,
+                    m.monto, m.cargos AS cargo, m.anticipo, m.montoEfectivoIva
+             FROM montosnotas m
+             INNER JOIN tipopago t ON t.id = m.idTipoPago
+             WHERE m.idNotas = ?",
+            [$idNotaPagos]
+        )->getResultArray();
+
+        // Determinar si la nota es mayoreo para elegir el precio correcto
+        $esMayoreoNota = (int)($nota['precioMayoreo'] ?? 0) === 1
+                      || (int)($nota['totalPiezas']   ?? 0)  > 12;
+
+        $productos = $db->query(
+            "SELECT n2.cantidad,
+                    CONCAT(COALESCE(p.estilo,''),'-',COALESCE(p.Descripcion_Larga,''),
+                           '-',COALESCE(p.Talla,''),'-',COALESCE(p.Color,'')) AS descripcion,
+                    n2.pUnitario,
+                    n2.pUnitarioM,
+                    (n2.cantidad * n2.pUnitario)  AS importeMenudeo,
+                    (n2.cantidad * n2.pUnitarioM) AS importeMayoreo
+             FROM notas_2 n2
+             LEFT JOIN productosyazbek p ON p.sku = n2.estilo
+             WHERE n2.folio = ?
+             ORDER BY n2.Id_Notas_2 ASC",
+            [$folio]
+        )->getResultArray();
+
+        // Normalizar precio e importe según tipo de nota
+        foreach ($productos as &$prod) {
+            $useMayoreo = $esMayoreoNota && !empty($prod['pUnitarioM']) && (float)$prod['pUnitarioM'] > 0;
+            $prod['pUnitario'] = $useMayoreo ? (float)$prod['pUnitarioM'] : (float)$prod['pUnitario'];
+            $prod['importe']   = $useMayoreo ? (float)$prod['importeMayoreo'] : (float)$prod['importeMenudeo'];
+        }
+        unset($prod);
+
+        // totalPiezas: calcular desde productos (notas_1 puede tener 0 si fue guardado antes)
+        $totalPiezasCalc = array_sum(array_column($productos, 'cantidad'));
+        if ($totalPiezasCalc > 0 && (int)($nota['totalPiezas'] ?? 0) === 0) {
+            $nota['totalPiezas'] = $totalPiezasCalc;
+        }
+
+        $anticipos = $db->query(
+            "SELECT monto FROM montosnotas WHERE idNotas = ? AND anticipo = 1",
+            [$idNotaPagos]
+        )->getResultArray();
+
+        $letras = '';
+        try {
+            $letras = mb_strtoupper(\App\Libraries\AifLibNumber::toCurrency($nota['total']));
+        } catch (\Throwable $e) {
+            $letras = '';
+        }
+
+        return view('admin/ticket', [
+            'nota'       => $nota,
+            'pagos'      => $pagos,
+            'productos'  => $productos,
+            'anticipos'  => $anticipos,
+            'letras'     => $letras,
+        ]);
+    }
+
     // POST /admin/clientes/restaurar/(:num)  —  Revive un cliente eliminado
     public function restaurarCliente(int $id): \CodeIgniter\HTTP\RedirectResponse
     {
@@ -1525,7 +1630,15 @@ class AdminController extends BaseController
                         c.nombre  AS NombreCliente,
                         u.usuario AS vendedor,
                         n.folio, n.verificado, n.factura, n.descuento,
-                        s.nombre AS status, s.id AS statusId,
+                        COALESCE(s.nombre, CASE n.status
+                            WHEN 1 THEN 'Abierta'
+                            WHEN 2 THEN 'En proceso'
+                            WHEN 3 THEN 'Cancelada'
+                            WHEN 4 THEN 'Anticipo'
+                            WHEN 5 THEN 'Pagada'
+                            WHEN 6 THEN 'Liquidado'
+                            ELSE 'Desconocido' END) AS status,
+                        n.status AS statusId,
                         n.sumaImportes, n.subTotal, n.tipoPago,
                         n.cargoTarjeta, n.subTotal2, n.iva, n.total,
                         n.tipoImpresion, n.cargoPorImpresion,
@@ -1568,7 +1681,7 @@ class AdminController extends BaseController
                 [$folio]
             )->getResultArray();
 
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             log_message('error', 'cajaAjax folio=' . $folio . ': ' . $e->getMessage());
             return '<p class="text-danger">Error al consultar el folio.<br><small>' . esc($e->getMessage()) . '</small></p>';
         }
@@ -1666,11 +1779,13 @@ class AdminController extends BaseController
 
         $html .= '<tr><input type="hidden" id="folio_input" value="' . $nota['folio'] . '" />';
         if ($statusId !== 3) {
-            // Siempre mostrar Cancelar Nota para notas no canceladas (incluyendo Pagada)
+            // Siempre mostrar Cancelar Nota para notas no canceladas
             $html .= '<td></td>';
             $html .= '<td colspan="2" class="text-right no-border"><button type="button" class="btn btn-danger" onclick="fn_modal_calcelar_nota()">Cancelar Nota</button></td>';
-            // Liquidar: aplica para cualquier nota no cancelada
-            $html .= '<td colspan="2" class="text-right no-border"><button type="button" class="btn btn-success" onclick="fn_liquidar_modal()">Liquidar</button></td>';
+            // Liquidar: solo si no está ya liquidada (status 6)
+            if ($statusId !== 6) {
+                $html .= '<td colspan="2" class="text-right no-border"><button type="button" class="btn btn-success" onclick="fn_liquidar_modal()">Liquidar</button></td>';
+            }
         }
         $html .= '</tr></tbody></table></div>';
         $html .= '<script>function blurFnCj(){var p=parseFloat(document.getElementById("pagar2_cj").value)||0;var i=parseFloat(document.getElementById("importe_cj").value)||0;document.getElementById("resultado_cj").value=(i-p).toFixed(2);}</script>';
@@ -1806,18 +1921,22 @@ class AdminController extends BaseController
                         $advertencias[] = "SKU {$p['sku']}: disponible {$stockActual}, necesario {$cantNecesaria}";
                         // Actualizar cantidad e importe en notas_2 al stock real disponible
                         $db->query(
-                            "UPDATE notas_2 SET cantidad = ?, importe = precio * ? WHERE folio = ? AND estilo = ?",
-                            [$stockActual, $stockActual, $folio, $p['sku']]
+                            "UPDATE notas_2 SET cantidad = ? WHERE folio = ? AND estilo = ?",
+                            [$stockActual, $folio, $p['sku']]
                         );
                         if ($stockActual > 0) {
                             $db->query(
                                 "UPDATE productosyazbek SET piezas = 0 WHERE sku = ?",
                                 [$p['sku']]
                             );
-                            $db->query(
-                                "INSERT INTO stock_eventos (sku, nuevo_stock) VALUES (?, 0)",
-                                [$p['sku']]
-                            );
+                            try {
+                                $db->query(
+                                    "INSERT INTO stock_eventos (sku, nuevo_stock) VALUES (?, 0)",
+                                    [$p['sku']]
+                                );
+                            } catch (\Throwable $se) {
+                                log_message('warning', 'stock_eventos INSERT skipped: ' . $se->getMessage());
+                            }
                         }
                     } else {
                         $db->query(
@@ -1828,10 +1947,14 @@ class AdminController extends BaseController
                             "SELECT piezas FROM productosyazbek WHERE sku = ? LIMIT 1",
                             [$p['sku']]
                         )->getRowArray();
-                        $db->query(
-                            "INSERT INTO stock_eventos (sku, nuevo_stock) VALUES (?, ?)",
-                            [$p['sku'], (int)($stockRow['piezas'] ?? 0)]
-                        );
+                        try {
+                            $db->query(
+                                "INSERT INTO stock_eventos (sku, nuevo_stock) VALUES (?, ?)",
+                                [$p['sku'], (int)($stockRow['piezas'] ?? 0)]
+                            );
+                        } catch (\Throwable $se) {
+                            log_message('warning', 'stock_eventos INSERT skipped: ' . $se->getMessage());
+                        }
                     }
                 }
             }
@@ -1846,7 +1969,7 @@ class AdminController extends BaseController
             return $this->response->setContentType('application/json')
                 ->setJSON(['ok' => true, 'folio' => $folio, 'esHijo' => $esHijo, 'advertencias' => $advertencias]);
 
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             log_message('error', 'revivirNota folio=' . $folio . ': ' . $e->getMessage());
             return $this->response->setContentType('application/json')
                 ->setJSON(['ok' => false, 'error' => $e->getMessage()]);

@@ -112,6 +112,9 @@ $routes->group('admin', ['filter' => 'role:1'], function ($routes) {
     // Liquidar anticipo
     $routes->post('folio/(:num)/liquidar', 'AdminController::liquidarAnticipo/$1');
 
+    // Ver Ticket de impresión
+    $routes->get('folio/(:num)/ticket', 'AdminController::verTicket/$1');
+
     // Revivir nota cancelada (solo admin)
     $routes->post('folio/(:num)/revivir', 'AdminController::revivirNota/$1');
 

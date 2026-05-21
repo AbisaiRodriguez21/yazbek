@@ -44,7 +44,7 @@ class ReportesController extends BaseController
              FROM montosnotas mn
              INNER JOIN tipopago  tp ON mn.idTipoPago = tp.id
              INNER JOIN notas_1   n  ON mn.idNotas = n.Id_Notas_1
-             WHERE mn.fecha LIKE ? AND n.status = 5
+             WHERE mn.fecha LIKE ? AND n.status IN (5,6)
              GROUP BY tp.id
              ORDER BY tp.id ASC",
             ["{$fecha}%"]
@@ -66,7 +66,7 @@ class ReportesController extends BaseController
              LEFT JOIN usuarios    u  ON u.Id = n.idVendedor
              LEFT JOIN montosnotas mn ON mn.idNotas = n.Id_Notas_1
              LEFT JOIN tipopago    tp ON mn.idTipoPago = tp.id
-             WHERE n.fecha_inicial LIKE ? AND n.status = 5
+             WHERE n.fecha_inicial LIKE ? AND n.status IN (5,6)
              ORDER BY n.folio ASC",
             ["{$fecha}%"]
         )->getResultArray();
@@ -108,7 +108,7 @@ class ReportesController extends BaseController
              LEFT JOIN  usuarios  u  ON u.Id = n.idVendedor
              LEFT JOIN  montosnotas mn ON mn.idNotas = n.Id_Notas_1
              LEFT JOIN  tipopago  tp ON mn.idTipoPago = tp.id
-             WHERE n.fecha_inicial LIKE ? AND n.status = 5
+             WHERE n.fecha_inicial LIKE ? AND n.status IN (5,6)
              ORDER BY n.folio ASC, n2.Id_Notas_2 ASC",
             ["{$fecha}%"]
         )->getResultArray();
@@ -147,7 +147,7 @@ class ReportesController extends BaseController
              LEFT JOIN usuarios    u  ON u.Id = n.idVendedor
              LEFT JOIN montosnotas mn ON mn.idNotas = n.Id_Notas_1
              LEFT JOIN tipopago    tp ON mn.idTipoPago = tp.id
-             WHERE n.fecha_inicial LIKE ? AND n.status = 5
+             WHERE n.fecha_inicial LIKE ? AND n.status IN (5,6)
              ORDER BY n.folio ASC",
             ["{$fecha}%"]
         )->getResultArray();

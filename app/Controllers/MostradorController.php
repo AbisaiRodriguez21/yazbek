@@ -358,11 +358,6 @@ class MostradorController extends BaseController
             ]
         );
 
-        // ── Si se liquida completamente, marcar padre + todos los hijos como Pagada ──
-        if ($idEstatus === 5) {
-            $this->notaModel->liquidarAnticipo($folioN1);
-        }
-
         // ── Liberar bandera del vendedor ──
         $this->usuarioModel->liberarBandera((int) session()->get('user_id'));
 
@@ -477,13 +472,18 @@ class MostradorController extends BaseController
         }
 
         // ── Broadcast SSE: notificar a todas las pantallas el nuevo stock ──
-        $stockRow = $db->query(
-            "SELECT piezas FROM productosyazbek WHERE sku = ? LIMIT 1", [$sku]
-        )->getRowArray();
-        $db->query(
-            "INSERT INTO stock_eventos (sku, nuevo_stock) VALUES (?, ?)",
-            [$sku, (int)($stockRow['piezas'] ?? 0)]
-        );
+        try {
+            $stockRow = $db->query(
+                "SELECT piezas FROM productosyazbek WHERE sku = ? LIMIT 1", [$sku]
+            )->getRowArray();
+            $db->query(
+                "INSERT INTO stock_eventos (sku, nuevo_stock) VALUES (?, ?)",
+                [$sku, (int)($stockRow['piezas'] ?? 0)]
+            );
+        } catch (\Throwable $e) {
+            // stock_eventos table may not exist — SSE broadcast is optional
+            log_message('warning', 'stock_eventos INSERT skipped: ' . $e->getMessage());
+        }
 
         $esMayoreoForzado = session()->get("nota_{$folio}_tipo") === 'mayoreo';
         $carrito = $this->getCarritoData($folio, $db, $esMayoreoForzado);
@@ -537,13 +537,17 @@ class MostradorController extends BaseController
 
         // ── Broadcast SSE: stock restaurado, avisar a todas las pantallas ──
         if ($skuBroadcast) {
-            $stockRow = $db->query(
-                "SELECT piezas FROM productosyazbek WHERE sku = ? LIMIT 1", [$skuBroadcast]
-            )->getRowArray();
-            $db->query(
-                "INSERT INTO stock_eventos (sku, nuevo_stock) VALUES (?, ?)",
-                [$skuBroadcast, (int)($stockRow['piezas'] ?? 0)]
-            );
+            try {
+                $stockRow = $db->query(
+                    "SELECT piezas FROM productosyazbek WHERE sku = ? LIMIT 1", [$skuBroadcast]
+                )->getRowArray();
+                $db->query(
+                    "INSERT INTO stock_eventos (sku, nuevo_stock) VALUES (?, ?)",
+                    [$skuBroadcast, (int)($stockRow['piezas'] ?? 0)]
+                );
+            } catch (\Throwable $e) {
+                log_message('warning', 'stock_eventos INSERT skipped: ' . $e->getMessage());
+            }
         }
 
         $esMayoreoForzado = session()->get("nota_{$folio}_tipo") === 'mayoreo';
@@ -694,13 +698,17 @@ class MostradorController extends BaseController
                 [$linea['cantidad'], $skuLinea]
             );
             // ── Broadcast SSE: stock restaurado al cancelar nota ──
-            $stockRow = $db->query(
-                "SELECT piezas FROM productosyazbek WHERE sku = ? LIMIT 1", [$skuLinea]
-            )->getRowArray();
-            $db->query(
-                "INSERT INTO stock_eventos (sku, nuevo_stock) VALUES (?, ?)",
-                [$skuLinea, (int)($stockRow['piezas'] ?? 0)]
-            );
+            try {
+                $stockRow = $db->query(
+                    "SELECT piezas FROM productosyazbek WHERE sku = ? LIMIT 1", [$skuLinea]
+                )->getRowArray();
+                $db->query(
+                    "INSERT INTO stock_eventos (sku, nuevo_stock) VALUES (?, ?)",
+                    [$skuLinea, (int)($stockRow['piezas'] ?? 0)]
+                );
+            } catch (\Throwable $e) {
+                log_message('warning', 'stock_eventos INSERT skipped: ' . $e->getMessage());
+            }
         }
 
         $this->notaModel->cambiarStatus($nota['Id_Notas_1'], 3);
@@ -1451,14 +1459,18 @@ class MostradorController extends BaseController
                     [(int)$det['cantidad'], $sku]
                 );
                 // Broadcast del nuevo stock
-                $stockRow = $db->query(
-                    "SELECT piezas FROM productosyazbek WHERE sku = ? LIMIT 1",
-                    [$sku]
-                )->getRowArray();
-                $db->query(
-                    "INSERT INTO stock_eventos (sku, nuevo_stock) VALUES (?, ?)",
-                    [$sku, (int)($stockRow['piezas'] ?? 0)]
-                );
+                try {
+                    $stockRow = $db->query(
+                        "SELECT piezas FROM productosyazbek WHERE sku = ? LIMIT 1",
+                        [$sku]
+                    )->getRowArray();
+                    $db->query(
+                        "INSERT INTO stock_eventos (sku, nuevo_stock) VALUES (?, ?)",
+                        [$sku, (int)($stockRow['piezas'] ?? 0)]
+                    );
+                } catch (\Throwable $e) {
+                    log_message('warning', 'stock_eventos INSERT skipped: ' . $e->getMessage());
+                }
             }
 
             // Cancelar nota

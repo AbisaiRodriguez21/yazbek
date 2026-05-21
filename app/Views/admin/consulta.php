@@ -120,7 +120,8 @@ var STATUS_LABELS = {
     2: '<span class="badge badge-info">En proceso</span>',
     3: '<span class="badge badge-danger">Cancelada</span>',
     4: '<span class="badge badge-warning">Anticipo</span>',
-    5: '<span class="badge badge-success">Pagada</span>'
+    5: '<span class="badge badge-success">Pagada</span>',
+    6: '<span class="badge" style="background-color:#0d6e6e;color:#fff;">Liquidado</span>'
 };
 
 $(document).ready(function() {
@@ -180,20 +181,20 @@ function accionesNota(n) {
         btns += '<a href="' + BASE_PAGO + n.folio + '/confirmar" class="btn btn-xs btn-outline-primary mr-1">Ver / Pagar</a>';
     }
 
-    // Ver modal: folios hijo o notas pagadas/canceladas
-    if (!esPadre || idstatus === 5 || idstatus === 3) {
+    // Ver modal: folios hijo o notas pagadas/liquidadas/canceladas
+    if (!esPadre || idstatus === 5 || idstatus === 6 || idstatus === 3) {
         btns += '<a href="#" class="btn btn-xs btn-outline-secondary mr-1"'
               + ' onclick="adminVerFolio(' + n.folio + '); return false;">Ver</a>';
     }
 
-    // Liquidar: solo folios padre con status Anticipo
-    if (idstatus === 4 && esPadre) {
+    // Liquidar: status Anticipo (4): solo padre. Status Pagada (5): padre e hijos. NO si Liquidado (6)
+    if ((idstatus === 4 && esPadre) || idstatus === 5) {
         btns += '<a href="#" class="btn btn-xs btn-success mr-1"'
               + ' onclick="adminLiquidarAnticipo(' + n.folio + '); return false;">Liquidar</a>';
     }
 
-    // Cancelar: cualquier nota que NO esté cancelada
-    if (idstatus !== 3) {
+    // Cancelar: cualquier nota que NO esté cancelada ni liquidada
+    if (idstatus !== 3 && idstatus !== 6) {
         btns += '<a href="#" class="btn btn-xs btn-outline-danger mr-1"'
               + ' onclick="adminCancelarFolio(' + n.folio + '); return false;">Cancelar</a>';
     }
@@ -204,11 +205,10 @@ function accionesNota(n) {
               + ' onclick="adminRevivirFolio(' + n.folio + '); return false;">Revivir</a>';
     }
 
-    // Pagada + padre: Liquidar y Ver Ticket
-    if (idstatus === 5 && esPadre) {
-        btns += '<a href="#" class="btn btn-xs btn-success mr-1"'
-              + ' onclick="adminLiquidarAnticipo(' + n.folio + '); return false;">Liquidar</a>';
-        btns += '<a href="#" class="btn btn-xs btn-outline-dark">Ver Ticket</a>';
+    // Pagada o Liquidada + padre: Ver Ticket
+    if ((idstatus === 5 || idstatus === 6) && esPadre) {
+        btns += '<a href="#" class="btn btn-xs btn-outline-dark"'
+              + ' onclick="adminVerTicket(' + n.folio + '); return false;">Ver Ticket</a>';
     }
 
     if (!btns) btns = '<span class="text-muted">—</span>';
@@ -356,7 +356,7 @@ function fn_liquidar_modal() {
 }
 
 function adminLiquidarAnticipo(folio) {
-    if (!confirm('¿Liquidar el anticipo ' + folio + ' y todos sus pagos? Esta acción marcará la nota como Pagada.')) return;
+    if (!confirm('¿Liquidar el folio #' + folio + ' y todos sus pagos? Esta acción marcará la nota como Liquidado.')) return;
     var fd = new FormData();
     fd.append('<?= csrf_token() ?>', '<?= csrf_hash() ?>');
     fetch('<?= base_url('admin/folio/') ?>' + folio + '/liquidar', {
@@ -371,6 +371,11 @@ function adminLiquidarAnticipo(folio) {
         }
     })
     .catch(function() { alert('Error de conexión.'); });
+}
+
+function adminVerTicket(folio) {
+    var url = '<?= base_url('admin/folio/') ?>' + folio + '/ticket';
+    window.open(url, '_blank', 'toolbar=yes,scrollbars=yes,resizable=yes,top=100,left=200,width=500,height=600');
 }
 
 function adminCancelarFolio(folio) {
@@ -419,4 +424,4 @@ function adminRevivirFolio(folio) {
 }
 </script>
 <?= $this->endSection() ?>
-                                                                                                                                                                                                                                                                                                                                                                                                       
+                    

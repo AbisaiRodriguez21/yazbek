@@ -438,10 +438,10 @@ class CajaController extends BaseController
             return redirect()->to('/caja/consulta')->with('error', 'Nota no encontrada.');
         }
 
-        // Solo se puede cancelar si no está ya completada (status=5)
-        if ($nota['status'] === 5) {
+        // Solo se puede cancelar si no está ya pagada (5) o liquidada (6)
+        if (in_array((int)$nota['status'], [5, 6])) {
             return redirect()->to('/caja/consulta')
-                             ->with('error', 'No se puede cancelar una nota ya pagada.');
+                             ->with('error', 'No se puede cancelar una nota ya pagada o liquidada.');
         }
 
         $this->notaModel->cambiarStatus($nota['Id_Notas_1'], 3);

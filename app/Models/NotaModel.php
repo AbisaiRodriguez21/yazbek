@@ -288,13 +288,14 @@ class NotaModel extends Model
     }
 
     /**
-     * Liquida el folio padre y todos sus hijos de anticipo (status → 5).
+     * Liquida el folio padre y todos sus hijos (status → 6 Liquidado).
+     * Solo liquida notas que ya estén pagadas (status 4 o 5), no cancela.
      */
     public function liquidarAnticipo(int $foliopadre): void
     {
         $db = \Config\Database::connect();
         $db->query(
-            "UPDATE notas_1 SET status = 5 WHERE folio = ? OR referencia = ?",
+            "UPDATE notas_1 SET status = 6 WHERE (folio = ? OR referencia = ?) AND status != 3",
             [$foliopadre, $foliopadre]
         );
     }

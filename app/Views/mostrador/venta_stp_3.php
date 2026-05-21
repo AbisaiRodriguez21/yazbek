@@ -115,7 +115,6 @@
                         <label>Estatus de la nota <span class="text-danger">*</span></label>
                         <select name="estatus" id="selectEstatus" class="form-control">
                             <option value="1" selected>Abierta</option>
-                            <option value="4">Anticipo</option>
                             <option value="5">Pagada</option>
                         </select>
                         <small id="msgEstatus" class="form-text text-muted"></small>
@@ -264,6 +263,13 @@
 <script>
 var pagos = [];   // solo pagos NUEVOS de esta sesión
 var sinPagarSeleccionado = false;   // true cuando el usuario eligió "Sin Pagar" (a crédito)
+
+// Pre-marcar "Es Anticipo" cada vez que se abre el modal de pago
+$('#modalPago').on('show.bs.modal', function () {
+    $('#modalAnticipo').prop('checked', true);
+    $('#modalTipoPago').val('');
+    $('#modalMonto').val(0);
+});
 var sumaImportes = parseFloat($('#hidSumaImportes').val()) || 0;
 var yaPagado     = parseFloat($('#hidYaPagado').val()) || 0;
 var descuento    = 0;
@@ -334,7 +340,7 @@ $('#btnAgregarPago').on('click', function() {
         $('#modalPago').modal('hide');
         $('#modalTipoPago').val('');
         $('#modalMonto').val(0);
-        $('#modalAnticipo').prop('checked', false);
+        $('#modalAnticipo').prop('checked', true);
         return;
     }
 
@@ -369,7 +375,7 @@ $('#btnAgregarPago').on('click', function() {
     $('#modalPago').modal('hide');
     $('#modalTipoPago').val('');
     $('#modalMonto').val(0);
-    $('#modalAnticipo').prop('checked', false);
+    $('#modalAnticipo').prop('checked', true);
 });
 
 function renderPagos() {
@@ -416,11 +422,15 @@ $('#btnGuardar').on('click', function() {
     }
 
     // Bloquear si hay saldo pendiente y NO eligió "Sin Pagar"
+    // Excepción: si todos los pagos nuevos son anticipos, se permite pago parcial
     if (!sinPagarSeleccionado) {
-        var restanteFinal = total - yaPagado - montoNuevo;
-        if (restanteFinal > 0.005) {
-            alert('Falta por pagar: $' + restanteFinal.toFixed(2) + '\nAgrega el monto restante antes de cerrar la nota.');
-            return;
+        var todosAnticipo = pagos.length > 0 && pagos.every(function(p) { return p.anticipo === 1; });
+        if (!todosAnticipo) {
+            var restanteFinal = total - yaPagado - montoNuevo;
+            if (restanteFinal > 0.005) {
+                alert('Falta por pagar: $' + restanteFinal.toFixed(2) + '\nAgrega el monto restante antes de cerrar la nota.');
+                return;
+            }
         }
     }
 
