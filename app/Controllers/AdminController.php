@@ -1273,17 +1273,13 @@ class AdminController extends BaseController
                     c.nombre AS NombreCliente, c.direccion, c.telefono, c.mail AS email,
                     u.usuario AS vendedor,
                     n.folio, n.referencia, n.factura, n.descuento,
-                    COALESCE(s.nombre, CASE n.status
-                        WHEN 1 THEN 'Abierta' WHEN 2 THEN 'En proceso' WHEN 3 THEN 'Cancelada'
-                        WHEN 4 THEN 'Anticipo' WHEN 5 THEN 'Pagada' WHEN 6 THEN 'Liquidado'
-                        ELSE 'Desconocido' END) AS status,
+                    n.status AS statusId, n.verificado,
                     n.sumaImportes, n.subTotal, n.tipoPago,
                     n.cargoTarjeta, n.subTotal2, n.iva, n.total,
                     n.tipoImpresion, n.cargoPorImpresion, n.montoTCTD,
                     n.montoEfectivo, n.montoEfectivoIva, n.totalPiezas,
                     n.precioMayoreo
              FROM notas_1 n
-             LEFT JOIN status   s ON s.id = n.status
              LEFT JOIN clientes c ON c.id = n.idCliente
              LEFT JOIN usuarios u ON u.Id = n.idVendedor
              WHERE n.folio = ?
@@ -1295,12 +1291,22 @@ class AdminController extends BaseController
             return '<h3>Folio no encontrado</h3>';
         }
 
+        // Mapa de status (independiente del valor en la tabla status de BD)
+        $statusMap = [1=>'Abierta', 2=>'En proceso', 3=>'Cancelada', 4=>'Anticipo', 5=>'Pagada', 6=>'Liquidado'];
+        $statusId  = (int)($nota['statusId'] ?? 0);
+        // Liquidado: status=6 en BD O verificado='Pagado'
+        $esLiquidadoTicket = ($nota['verificado'] === 'Pagado' || $statusId === 6);
+        $statusDisplay     = $esLiquidadoTicket ? 'Liquidado' : ($statusMap[$statusId] ?? 'Desconocido');
+        // Para comparaciones en la vista que usan el string
+        $nota['status'] = $statusDisplay;
+
         $idNota     = (int)$nota['Id_Notas_1'];
         $referencia = (int)($nota['referencia'] ?? 0);
 
         // Si es nota hija (referencia != 0) los pagos vienen del padre
         $idNotaPagos = ($referencia !== 0) ? $referencia : $idNota;
 
+        // Pagos directos del folio (del padre o del hijo si es hijo)
         $pagos = $db->query(
             "SELECT m.idTipoPago, t.descripcion AS tipopago,
                     m.monto, m.cargos AS cargo, m.anticipo, m.montoEfectivoIva
@@ -1310,12 +1316,39 @@ class AdminController extends BaseController
             [$idNotaPagos]
         )->getResultArray();
 
-        // Determinar si la nota es mayoreo para elegir el precio correcto
-        $esMayoreoNota = (int)($nota['precioMayoreo'] ?? 0) === 1
-                      || (int)($nota['totalPiezas']   ?? 0)  > 12;
+        // Folios hijos no cancelados (anticipos) con sus pagos
+        $pagosHijos = [];
+        if ($referencia === 0) {
+            // Solo aplica para notas padre (referencia = 0)
+            $hijos = $db->query(
+                "SELECT n.folio, n.Id_Notas_1
+                 FROM notas_1 n
+                 WHERE n.referencia = ? AND n.status != 3
+                 ORDER BY n.folio ASC",
+                [$folio]
+            )->getResultArray();
+
+            foreach ($hijos as $hijo) {
+                $pgHijo = $db->query(
+                    "SELECT m.monto, m.cargos AS cargo, t.descripcion AS tipopago, m.anticipo
+                     FROM montosnotas m
+                     INNER JOIN tipopago t ON t.id = m.idTipoPago
+                     WHERE m.idNotas = ?",
+                    [$hijo['Id_Notas_1']]
+                )->getResultArray();
+
+                if (! empty($pgHijo)) {
+                    $pagosHijos[] = [
+                        'folio' => $hijo['folio'],
+                        'pagos' => $pgHijo,
+                    ];
+                }
+            }
+        }
 
         $productos = $db->query(
             "SELECT n2.cantidad,
+                    n2.estilo AS sku,
                     CONCAT(COALESCE(p.estilo,''),'-',COALESCE(p.Descripcion_Larga,''),
                            '-',COALESCE(p.Talla,''),'-',COALESCE(p.Color,'')) AS descripcion,
                     n2.pUnitario,
@@ -1329,7 +1362,17 @@ class AdminController extends BaseController
             [$folio]
         )->getResultArray();
 
-        // Normalizar precio e importe según tipo de nota
+        // Determinar qué precio se usó realmente comparando contra sumaImportes guardado.
+        // Esto es confiable tanto para notas históricas (sistema antiguo) como nuevas.
+        $storedSuma = (float)($nota['sumaImportes'] ?? 0);
+        if ($storedSuma > 0) {
+            $sumMenudeo = array_sum(array_map(fn($p) => $p['cantidad'] * (float)$p['pUnitario'], $productos));
+            $sumMayoreo = array_sum(array_map(fn($p) => $p['cantidad'] * (float)($p['pUnitarioM'] ?: $p['pUnitario']), $productos));
+            $esMayoreoNota = abs($sumMayoreo - $storedSuma) < abs($sumMenudeo - $storedSuma);
+        } else {
+            $esMayoreoNota = (int)($nota['precioMayoreo'] ?? 0) === 1;
+        }
+
         foreach ($productos as &$prod) {
             $useMayoreo = $esMayoreoNota && !empty($prod['pUnitarioM']) && (float)$prod['pUnitarioM'] > 0;
             $prod['pUnitario'] = $useMayoreo ? (float)$prod['pUnitarioM'] : (float)$prod['pUnitario'];
@@ -1356,11 +1399,12 @@ class AdminController extends BaseController
         }
 
         return view('admin/ticket', [
-            'nota'       => $nota,
-            'pagos'      => $pagos,
-            'productos'  => $productos,
-            'anticipos'  => $anticipos,
-            'letras'     => $letras,
+            'nota'        => $nota,
+            'pagos'       => $pagos,
+            'pagosHijos'  => $pagosHijos,
+            'productos'   => $productos,
+            'anticipos'   => $anticipos,
+            'letras'      => $letras,
         ]);
     }
 
@@ -1516,7 +1560,7 @@ class AdminController extends BaseController
             $html .= '<td ' . $tdS . '>' . htmlspecialchars($f['fecha_inicial']) . '</td>';
             $html .= '<td ' . $tdS . '>' . htmlspecialchars($f['folio']) . '</td>';
             $html .= '<td ' . $tdS . ' align="center">' . (int)$f['totalPiezas'] . '</td>';
-            $html .= '<td ' . $tdS . ' align="right">$ ' . number_format((float)($f['totalImporte'] ?? 0), 2) . '</td>';
+            $html .= '<td ' . $tdS . ' align="right">$&nbsp;' . number_format((float)($f['totalImporte'] ?? 0), 2) . '</td>';
             $html .= '<td ' . $tdS . '>' . htmlspecialchars($f['vendedor']) . '</td>';
             $html .= '<td ' . $tdS . '>' . htmlspecialchars($f['tipoPago'] ?? '—') . '</td>';
             $html .= '</tr>';
@@ -1538,14 +1582,14 @@ class AdminController extends BaseController
             $pct = $totalDia > 0 ? round($r['total'] / $totalDia * 100, 1) : 0;
             $html .= '<tr>';
             $html .= '<td ' . $tdS . '>' . htmlspecialchars($r['tipo']) . '</td>';
-            $html .= '<td ' . $tdS . ' align="right">$ ' . number_format((float)$r['total'], 2) . '</td>';
+            $html .= '<td ' . $tdS . ' align="right">$&nbsp;' . number_format((float)$r['total'], 2) . '</td>';
             $html .= '<td ' . $tdS . ' align="right">' . $pct . '%</td>';
             $html .= '</tr>';
         }
         // Fila total
         $html .= '<tr>';
         $html .= '<td ' . $tdTot . '>TOTAL</td>';
-        $html .= '<td ' . $tdTot . ' align="right">$ ' . number_format((float)$totalDia, 2) . '</td>';
+        $html .= '<td ' . $tdTot . ' align="right">$&nbsp;' . number_format((float)$totalDia, 2) . '</td>';
         $html .= '<td ' . $tdTot . ' align="right">100%</td>';
         $html .= '</tr>';
         $html .= '</table>';
@@ -1630,21 +1674,12 @@ class AdminController extends BaseController
                         c.nombre  AS NombreCliente,
                         u.usuario AS vendedor,
                         n.folio, n.verificado, n.factura, n.descuento,
-                        COALESCE(s.nombre, CASE n.status
-                            WHEN 1 THEN 'Abierta'
-                            WHEN 2 THEN 'En proceso'
-                            WHEN 3 THEN 'Cancelada'
-                            WHEN 4 THEN 'Anticipo'
-                            WHEN 5 THEN 'Pagada'
-                            WHEN 6 THEN 'Liquidado'
-                            ELSE 'Desconocido' END) AS status,
                         n.status AS statusId,
                         n.sumaImportes, n.subTotal, n.tipoPago,
                         n.cargoTarjeta, n.subTotal2, n.iva, n.total,
                         n.tipoImpresion, n.cargoPorImpresion,
-                        n.montoTCTD, n.totalPiezas
+                        n.montoTCTD, n.totalPiezas, n.precioMayoreo
                  FROM notas_1 n
-                 LEFT JOIN status   s ON n.status    = s.id
                  LEFT JOIN clientes c ON n.idCliente = c.id
                  LEFT JOIN usuarios u ON u.Id        = n.idVendedor
                  WHERE n.folio = ?
@@ -1670,16 +1705,33 @@ class AdminController extends BaseController
                 [$folio, $folio]
             )->getResultArray();
 
-            // Productos: pUnitario=precio real, estilo=sku en notas_2
+            // Productos con precios correctos (mismo criterio que getCarritoData)
             $detalles = $db->query(
                 "SELECT n.cantidad,
+                        n.estilo AS sku,
                         CONCAT(p.estilo,'-',p.Descripcion_Larga,'-',p.Talla,'-',p.Color) AS descripcion,
-                        n.pUnitario, n.importe
+                        COALESCE(NULLIF(n.pUnitario,  0), p.pMenudeo, 0)                      AS pMenudeo,
+                        COALESCE(NULLIF(n.pUnitarioM, 0), p.pMayoreo, n.pUnitario, 0)         AS pMayoreo
                  FROM notas_2 n
                  LEFT JOIN productosyazbek p ON p.sku = n.estilo
                  WHERE n.folio = ?",
                 [$folio]
             )->getResultArray();
+
+            // Determinar qué precio se usó realmente comparando contra sumaImportes guardado.
+            $storedSuma = (float)($nota['sumaImportes'] ?? 0);
+            if ($storedSuma > 0) {
+                $sumMenu = array_sum(array_map(fn($d) => $d['cantidad'] * (float)$d['pMenudeo'], $detalles));
+                $sumMay  = array_sum(array_map(fn($d) => $d['cantidad'] * (float)$d['pMayoreo'],  $detalles));
+                $esMayoreoNota = abs($sumMay - $storedSuma) < abs($sumMenu - $storedSuma);
+            } else {
+                $esMayoreoNota = (int)($nota['precioMayoreo'] ?? 0) === 1;
+            }
+            foreach ($detalles as &$d) {
+                $d['pUnitario'] = $esMayoreoNota ? (float)$d['pMayoreo'] : (float)$d['pMenudeo'];
+                $d['importe']   = $d['cantidad'] * $d['pUnitario'];
+            }
+            unset($d);
 
         } catch (\Throwable $e) {
             log_message('error', 'cajaAjax folio=' . $folio . ': ' . $e->getMessage());
@@ -1696,6 +1748,17 @@ class AdminController extends BaseController
 
         $total = $nota['total'] ?? 0;
 
+        // Mapa de status legibles (independiente de lo que diga la tabla status en BD)
+        $statusMap = [
+            1 => 'Abierta', 2 => 'En proceso', 3 => 'Cancelada',
+            4 => 'Anticipo', 5 => 'Pagada', 6 => 'Liquidado',
+        ];
+        $verificado   = $nota['verificado'] ?? '';
+        $statusId     = (int)($nota['statusId'] ?? 0);
+        $statusNombre = $statusMap[$statusId] ?? 'Desconocido';
+        $esLiquidado  = ($verificado === 'Pagado' || $statusId === 6);
+        $headerStatus = $esLiquidado ? 'Liquidado' : $statusNombre;
+
         // HTML idéntico al original (llamadasAjax.php tipo=3)
         $html  = '<div style="overflow-x:auto"><table style="width:100%"><tr>';
         $html .= '<td><strong>Fecha:&nbsp;</strong></td>';
@@ -1703,7 +1766,7 @@ class AdminController extends BaseController
         $html .= '<td>&nbsp;</td><td><strong>Nombre Cliente:&nbsp;</strong></td>';
         $html .= '<td>' . esc($nota['NombreCliente']) . '</td>';
         $html .= '</tr><tr>';
-        $html .= '<td><strong>Estatus:&nbsp;</strong></td><td>' . esc($nota['status']) . '</td>';
+        $html .= '<td><strong>Estatus:&nbsp;</strong></td><td>' . esc($headerStatus) . '</td>';
         $html .= '<td>&nbsp;</td><td><strong>Folio:&nbsp;</strong></td>';
         $html .= '<td>' . $nota['folio'] . '</td>';
         $html .= '</tr></table></div>';
@@ -1728,62 +1791,68 @@ class AdminController extends BaseController
         $html .= '</tr></thead><tbody>';
         foreach ($detalles as $d) {
             $html .= '<tr><td>' . $d['cantidad'] . '</td>';
-            $html .= '<td>' . esc($d['descripcion'] ?? '') . '</td>';
-            $html .= '<td>$ ' . number_format($d['pUnitario'] ?? 0, 2) . '</td>';
-            $html .= '<td>$ ' . number_format($d['importe']   ?? 0, 2) . '</td></tr>';
+            $html .= '<td><span style="font-size:0.8em;color:#888;font-weight:600;">' . esc($d['sku'] ?? '') . '</span><br>' . esc($d['descripcion'] ?? '') . '</td>';
+            $html .= '<td>$&nbsp;' . number_format($d['pUnitario'] ?? 0, 2) . '</td>';
+            $html .= '<td>$&nbsp;' . number_format($d['importe']   ?? 0, 2) . '</td></tr>';
         }
 
         // Totales
         $ti    = (int)($nota['tipoImpresion'] ?? 0);
         $otros = $ti === 1 ? 'Ninguno' : ($ti === 2 ? 'Impresion' : ($ti === 3 ? 'Bordado' : ''));
         $html .= '<tr><td colspan="3" class="text-right"><strong>Otros</strong></td><td id="cargo">' . $otros . '</td></tr>';
-        $html .= '<tr><td colspan="3" class="text-right"><strong>Cargo por otros</strong></td><td>$ ' . number_format($nota['cargoPorImpresion'] ?? 0, 2) . '</td></tr>';
-        $html .= '<tr><td colspan="3" class="text-right"><strong>Descuento</strong></td><td>$ ' . number_format($nota['descuento'] ?? 0, 2) . '</td></tr>';
-        $html .= '<tr><td colspan="3" class="text-right no-border"><strong>SubTotal</strong></td><td id="subtotal">$ ' . number_format($nota['subTotal'] ?? 0, 2) . '</td></tr>';
-        $html .= '<tr><td colspan="3" class="text-right"><strong>Cargo TC/TD</strong></td><td>$ ' . number_format($nota['montoTCTD'] ?? $nota['cargoTarjeta'] ?? 0, 2) . '</td></tr>';
-        $html .= '<tr><td colspan="3" class="text-right"><strong>SubTotal2</strong></td><td>$ ' . number_format($nota['subTotal2'] ?? 0, 2) . '</td></tr>';
-        $html .= '<tr><td colspan="3" class="text-right"><strong>IVA</strong></td><td>$ ' . number_format($nota['iva'] ?? 0, 2) . '</td></tr>';
-        $html .= '<tr><td colspan="3" class="text-right"><strong>Total</strong></td><td id="total_cj">$ ' . number_format($total, 2) . '</td></tr>';
+        $html .= '<tr><td colspan="3" class="text-right"><strong>Cargo por otros</strong></td><td>$&nbsp;' . number_format($nota['cargoPorImpresion'] ?? 0, 2) . '</td></tr>';
+        $html .= '<tr><td colspan="3" class="text-right"><strong>Descuento</strong></td><td>$&nbsp;' . number_format($nota['descuento'] ?? 0, 2) . '</td></tr>';
+        $html .= '<tr><td colspan="3" class="text-right no-border"><strong>SubTotal</strong></td><td id="subtotal">$&nbsp;' . number_format($nota['subTotal'] ?? 0, 2) . '</td></tr>';
+        $html .= '<tr><td colspan="3" class="text-right"><strong>Cargo TC/TD</strong></td><td>$&nbsp;' . number_format($nota['montoTCTD'] ?? $nota['cargoTarjeta'] ?? 0, 2) . '</td></tr>';
+        $html .= '<tr><td colspan="3" class="text-right"><strong>IVA</strong></td><td>$&nbsp;' . number_format($nota['iva'] ?? 0, 2) . '</td></tr>';
+        $html .= '<tr><td colspan="3" class="text-right"><strong>SubTotal2</strong></td><td>$&nbsp;' . number_format($nota['subTotal2'] ?? 0, 2) . '</td></tr>';
+        $html .= '<tr><td colspan="3" class="text-right"><strong>Total</strong></td><td id="total_cj">$&nbsp;' . number_format($total, 2) . '</td></tr>';
 
         if ($letras) {
             $html .= '<tr><td colspan="4" class="text-right no-border" align="left">';
             $html .= '<strong>Cantidad con letra( ' . esc($letras) . ')</strong></td></tr>';
         }
 
+        // Detectar si hay pagos de folios hijos (distintos al folio padre)
+        $hayFoliosHijos = !empty(array_filter($pagos, fn($p) => (int)($p['folio_pago'] ?? 0) !== $folio));
+
         foreach ($pagos as $p) {
             $html .= '<tr><td colspan="4" class="text-right no-border">';
-            $html .= '<strong>Folio #' . ($p['folio_pago'] ?? '') . '</strong> — ';
+            // Mostrar número de folio solo si el pago viene de un folio hijo diferente
+            if ($hayFoliosHijos && (int)($p['folio_pago'] ?? 0) !== $folio) {
+                $html .= '<strong>Folio #' . $p['folio_pago'] . '</strong> — ';
+            }
             $html .= '<strong>Forma de Pago:</strong> ' . esc($p['tipopago']);
-            $html .= ' <strong>Monto: </strong>$ ' . number_format($p['monto'] ?? 0, 2);
+            $html .= ' <strong>Monto: </strong>$&nbsp;' . number_format($p['monto'] ?? 0, 2);
             if (in_array($p['idTipoPago'] ?? 0, [2, 3])) {
-                $html .= ' <strong>Cargo: </strong>$ ' . number_format($p['cargo'] ?? 0, 2);
+                $html .= ' <strong>Cargo: </strong>$&nbsp;' . number_format($p['cargo'] ?? 0, 2);
             }
             $html .= ' <strong>Es anticipo:</strong> ' . (($p['anticipo'] ?? 0) == 1 ? 'Si' : 'No');
             $html .= '</td></tr>';
         }
 
-        $statusId   = (int)($nota['statusId']  ?? 0);
-        $verificado = $nota['verificado'] ?? '';
-
-        // Si tiene pagos con anticipo y el monto pagado es menor al total → mostrar "Abierta"
+        // Estatus mostrado en el pie del modal (usa mapa, no valor de la BD)
         $sumPagado   = array_sum(array_column($pagos, 'monto'));
         $hayAnticipo = !empty(array_filter($pagos, fn($p) => ($p['anticipo'] ?? 0) == 1));
-        $displayStatus = ($hayAnticipo && $sumPagado < $nota['total'])
-            ? 'Abierta'
-            : esc($nota['status']);
+        if ($esLiquidado) {
+            $displayStatus = 'Liquidado';
+        } elseif ($hayAnticipo && $sumPagado < ($nota['total'] ?? 0)) {
+            $displayStatus = 'Abierta';
+        } else {
+            $displayStatus = $statusNombre;
+        }
 
         $html .= '<tr><td colspan="2" class="text-right no-border" align="left"><strong>Estatus:</strong></td>';
-        $html .= '<td colspan="2" align="left" id="estatusPago">' . $displayStatus . '</td></tr>';
+        $html .= '<td colspan="2" align="left" id="estatusPago">' . esc($displayStatus) . '</td></tr>';
         $html .= '<tr><td colspan="2" class="text-right no-border" align="left"><strong>Factura:</strong></td>';
         $html .= '<td colspan="2" align="left">' . (($nota['factura'] ?? 0) == 1 ? 'Si requiere' : 'No requiere') . '</td></tr>';
 
         $html .= '<tr><input type="hidden" id="folio_input" value="' . $nota['folio'] . '" />';
         if ($statusId !== 3) {
-            // Siempre mostrar Cancelar Nota para notas no canceladas
             $html .= '<td></td>';
             $html .= '<td colspan="2" class="text-right no-border"><button type="button" class="btn btn-danger" onclick="fn_modal_calcelar_nota()">Cancelar Nota</button></td>';
-            // Liquidar: solo si no está ya liquidada (status 6)
-            if ($statusId !== 6) {
+            // Botón Liquidar: oculto si ya fue liquidada (status=6 o verificado=Pagado)
+            if (! $esLiquidado) {
                 $html .= '<td colspan="2" class="text-right no-border"><button type="button" class="btn btn-success" onclick="fn_liquidar_modal()">Liquidar</button></td>';
             }
         }
@@ -1884,7 +1953,7 @@ class AdminController extends BaseController
             $db = \Config\Database::connect();
 
             $nota = $db->query(
-                "SELECT Id_Notas_1, status, referencia FROM notas_1 WHERE folio = ? LIMIT 1",
+                "SELECT Id_Notas_1, status, referencia, tipoPago FROM notas_1 WHERE folio = ? LIMIT 1",
                 [$folio]
             )->getRowArray();
 
@@ -1895,6 +1964,19 @@ class AdminController extends BaseController
             if ((int)$nota['status'] !== 3) {
                 return $this->response->setContentType('application/json')
                     ->setJSON(['ok' => false, 'error' => 'La nota no está cancelada']);
+            }
+
+            // Validar que el tipo de pago permite revivir
+            $tipoPagoLower = mb_strtolower(trim($nota['tipoPago'] ?? ''));
+            $bloqueado = (
+                str_contains($tipoPagoLower, 'sin pagar') ||
+                str_contains($tipoPagoLower, 'crédito')   ||
+                str_contains($tipoPagoLower, 'credito')   ||
+                str_contains($tipoPagoLower, 'tarjeta')
+            );
+            if ($bloqueado) {
+                return $this->response->setContentType('application/json')
+                    ->setJSON(['ok' => false, 'error' => 'No se puede revivir una nota con método de pago "' . $nota['tipoPago'] . '". Solo se permiten: Contado, Cheque, Transferencia, Depósito, etc.']);
             }
 
             $advertencias = [];
@@ -2037,7 +2119,7 @@ class AdminController extends BaseController
                 ];
             }
             if ($row['tipopago']) {
-                $monto = $row['total'] != '' ? '$ ' . number_format($row['total'], 2) : '';
+                $monto = $row['total'] != '' ? '$&nbsp;' . number_format($row['total'], 2) : '';
                 $agrupadas[$f]['pagos'][] = $row['tipopago'] . ' / ' . $monto;
                 if (in_array($row['tipopago'], ['T.Credito','T.Debito']) && $row['cargos']) {
                     $agrupadas[$f]['pagos'][] = 'Cargo / $' . number_format($row['cargos'], 2);

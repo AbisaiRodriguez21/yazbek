@@ -173,10 +173,10 @@ $('#btnBuscar').on('click', function() {
             +   '<td>$ ' + parseFloat(n.subTotal || 0).toFixed(2) + '</td></tr>'
             + '<tr><td colspan="3" class="text-right"><strong>Cargo TC/TD</strong></td>'
             +   '<td>$ ' + parseFloat(n.cargoTarjeta || 0).toFixed(2) + '</td></tr>'
-            + '<tr><td colspan="3" class="text-right"><strong>SubTotal2</strong></td>'
-            +   '<td>$ ' + parseFloat(n.subTotal2 || 0).toFixed(2) + '</td></tr>'
             + '<tr><td colspan="3" class="text-right"><strong>IVA</strong></td>'
             +   '<td>$ ' + parseFloat(n.iva || 0).toFixed(2) + '</td></tr>'
+            + '<tr><td colspan="3" class="text-right"><strong>SubTotal2</strong></td>'
+            +   '<td>$ ' + parseFloat(n.subTotal2 || 0).toFixed(2) + '</td></tr>'
             + '<tr><td colspan="3" class="text-right"><strong>Total</strong></td>'
             +   '<td class="text-success font-weight-bold">$ ' + parseFloat(n.total || 0).toFixed(2) + '</td></tr>'
             + '</table>';

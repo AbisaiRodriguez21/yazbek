@@ -93,7 +93,10 @@
         <!-- Productos -->
         <?php foreach ($productos as $prod): ?>
         <tr class="sep">
-            <td colspan="4"><?= esc($prod['descripcion'] ?? '') ?></td>
+            <td colspan="4">
+                <span style="font-size:11px; color:#555;">SKU: <strong><?= esc($prod['sku'] ?? '') ?></strong></span><br>
+                <?= esc($prod['descripcion'] ?? '') ?>
+            </td>
         </tr>
         <tr>
             <td style="width:30%; text-align:right;">
@@ -146,12 +149,12 @@
             <td colspan="2" class="right">$ <?= number_format($nota['subTotal'] ?? 0, 2) ?></td>
         </tr>
         <tr class="sep">
-            <td colspan="2" class="right">SubTotal2:&nbsp;</td>
-            <td colspan="2" class="right">$ <?= number_format($nota['subTotal2'] ?? 0, 2) ?></td>
-        </tr>
-        <tr class="sep">
             <td colspan="2" class="right">IVA:&nbsp;</td>
             <td colspan="2" class="right">$ <?= number_format($nota['iva'] ?? 0, 2) ?></td>
+        </tr>
+        <tr class="sep">
+            <td colspan="2" class="right">SubTotal2:&nbsp;</td>
+            <td colspan="2" class="right">$ <?= number_format($nota['subTotal2'] ?? 0, 2) ?></td>
         </tr>
         <tr class="sep">
             <td colspan="2" class="right red">Total:&nbsp;</td>
@@ -159,6 +162,28 @@
         </tr>
 
         <tr><td colspan="4">&nbsp;</td></tr>
+
+        <?php if (! empty($pagosHijos)): ?>
+        <!-- Folio padre con hijos: mostrar pagos de cada folio hijo -->
+        <tr class="sep">
+            <td colspan="4" class="strong">Pagos de Anticipo</td>
+        </tr>
+        <?php foreach ($pagosHijos as $hijo): ?>
+        <tr class="sep">
+            <td colspan="4" class="strong">Folio #<?= $hijo['folio'] ?></td>
+        </tr>
+        <?php foreach ($hijo['pagos'] as $p): ?>
+        <tr>
+            <td colspan="4">&nbsp;&nbsp;Forma de Pago: <?= esc($p['tipopago']) ?></td>
+        </tr>
+        <tr>
+            <td colspan="4">&nbsp;&nbsp;Monto: $ <?= number_format($p['monto'], 2) ?></td>
+        </tr>
+        <?php endforeach; ?>
+        <?php endforeach; ?>
+
+        <?php else: ?>
+        <!-- Sin folios hijos: mostrar pagos directos del folio -->
 
         <!-- Anticipos desglosados (si hay más de 1) -->
         <?php if (count($anticipos) > 1 && empty($nota['referencia'])): ?>
@@ -173,8 +198,10 @@
         <tr><td colspan="4">&nbsp;</td></tr>
         <?php endif; ?>
 
-        <!-- Formas de pago -->
-        <?php foreach ($pagos as $p): ?>
+        <?php foreach ($pagos as $idx => $p): ?>
+        <?php if ($idx > 0): ?>
+        <tr class="sep"><td colspan="4">&nbsp;</td></tr>
+        <?php endif; ?>
         <tr>
             <td colspan="4">Forma de Pago: <?= esc($p['tipopago']) ?></td>
         </tr>
@@ -201,6 +228,8 @@
             <td colspan="4">Es anticipo: <?= ($p['anticipo'] ?? 0) == 1 ? 'Si' : 'No' ?></td>
         </tr>
         <?php endforeach; ?>
+
+        <?php endif; /* fin if pagosHijos */ ?>
 
         <tr><td colspan="4">&nbsp;</td></tr>
 

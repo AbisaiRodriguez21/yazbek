@@ -111,6 +111,15 @@ $(document).ready(function() {
     });
 });
 
+function puedeRevivir(tipopago) {
+    if (!tipopago) return false;
+    var tp = (tipopago + '').toLowerCase();
+    if (tp.indexOf('sin pagar') >= 0) return false;
+    if (tp.indexOf('crédito') >= 0 || tp.indexOf('credito') >= 0) return false;
+    if (tp.indexOf('tarjeta') >= 0) return false;
+    return true;
+}
+
 function accionesNota(n) {
     var btns = '';
     var idstatus   = parseInt(n.idstatus, 10);
@@ -126,10 +135,7 @@ function accionesNota(n) {
             btns += '<a href="#" class="btn btn-xs btn-outline-danger mr-1"'
                   + ' onclick="mostradorCancelarFolioBtn(' + n.folio + '); return false;">Cancelar</a>';
         }
-        if (idstatus === 3) {
-            btns += '<a href="#" class="btn btn-xs btn-warning"'
-                  + ' onclick="mostradorRevivirFolio(' + n.folio + '); return false;">Revivir</a>';
-        }
+        // Los folios hijo no se pueden revivir de forma independiente
     } else {
         // Folio padre
         if (idstatus === 1 || idstatus === 4) {
@@ -138,6 +144,8 @@ function accionesNota(n) {
         if (idstatus === 5) {
             btns += '<a href="#" class="btn btn-xs btn-outline-secondary mr-1"'
                   + ' onclick="mostradorVerFolio(' + n.folio + '); return false;">Ver</a>';
+            btns += '<a href="#" class="btn btn-xs btn-outline-dark mr-1"'
+                  + ' onclick="mostradorVerTicket(' + n.folio + '); return false;">Ver Ticket</a>';
         }
         if (idstatus === 1) {
             btns += '<a href="' + BASE + n.folio + '/productos" class="btn btn-xs btn-outline-secondary mr-1">Editar</a>';
@@ -147,7 +155,7 @@ function accionesNota(n) {
             btns += '<a href="#" class="btn btn-xs btn-outline-danger mr-1"'
                   + ' onclick="mostradorCancelarFolioBtn(' + n.folio + '); return false;">Cancelar</a>';
         }
-        if (idstatus === 3) {
+        if (idstatus === 3 && puedeRevivir(n.tipopago)) {
             btns += '<a href="#" class="btn btn-xs btn-warning"'
                   + ' onclick="mostradorRevivirFolio(' + n.folio + '); return false;">Revivir</a>';
         }
@@ -155,6 +163,12 @@ function accionesNota(n) {
 
     if (!btns) btns = '<span class="text-muted">—</span>';
     return btns;
+}
+
+// Abrir ticket en ventana nueva
+function mostradorVerTicket(folio) {
+    window.open('<?= base_url('mostrador/folio/') ?>' + folio + '/ticket', '_blank',
+        'toolbar=yes,scrollbars=yes,resizable=yes,top=100,left=200,width=500,height=600');
 }
 
 // Abrir modal con detalle del folio

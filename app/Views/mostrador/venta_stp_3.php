@@ -14,7 +14,7 @@
             </nav>
         </div>
         <div class="pt-2">
-            <a href="<?= base_url('mostrador/venta/' . (int)$nota['folio'] . '/productos') ?>"
+            <a href="<?= base_url(($base ?? 'mostrador') . '/venta/' . (int)$nota['folio'] . '/productos') ?>"
                class="btn btn-outline-secondary">
                 <i class="iconsminds-arrow-left"></i> Volver
             </a>
@@ -191,7 +191,7 @@
                             </span></strong><br>
                             <?php endif; ?>
                             <strong>Nuevo pago: <span id="spMontoPagado" class="text-success">$0.00</span></strong><br>
-                            <strong>Restante: <span id="spRestante" class="text-danger">$0.00</span></strong>
+                            <strong id="lblRestante">Restante: </strong><span id="spRestante" class="text-danger font-weight-bold">$0.00</span>
                         </div>
                     </div>
 
@@ -264,16 +264,42 @@
 var pagos = [];   // solo pagos NUEVOS de esta sesión
 var sinPagarSeleccionado = false;   // true cuando el usuario eligió "Sin Pagar" (a crédito)
 
-// Pre-marcar "Es Anticipo" cada vez que se abre el modal de pago
+// ¿Es folio hijo? (tiene referencia al padre)
+var esHijo = <?= (int)($nota['referencia'] ?? 0) > 0 ? 'true' : 'false' ?>;
+
+// Estado default del checkbox: solo los folios hijo (anticipo) lo activan por default
+var defaultAnticipo = esHijo;
+
+// ID del tipo de pago "Sin Pagar" (busca por texto en el select)
+function getSinPagarId() {
+    var id = '';
+    $('#modalTipoPago option').each(function() {
+        if ($(this).text().trim() === 'Sin Pagar') { id = $(this).val(); }
+    });
+    return id;
+}
+
+// Al abrir el modal: anticipo según el tipo de folio; reset campos
 $('#modalPago').on('show.bs.modal', function () {
-    $('#modalAnticipo').prop('checked', true);
+    $('#modalAnticipo').prop('checked', defaultAnticipo);
     $('#modalTipoPago').val('');
     $('#modalMonto').val(0);
+});
+
+// Al cambiar tipo de pago:
+// "Sin Pagar" → forzar anticipo ON
+// Otro método → volver al default del folio (no forzar OFF en folios con pagos previos)
+$('#modalTipoPago').on('change', function () {
+    var sinPagarId = getSinPagarId();
+    if ($(this).val() === sinPagarId && sinPagarId !== '') {
+        $('#modalAnticipo').prop('checked', true);
+    } else {
+        $('#modalAnticipo').prop('checked', defaultAnticipo);
+    }
 });
 var sumaImportes = parseFloat($('#hidSumaImportes').val()) || 0;
 var yaPagado     = parseFloat($('#hidYaPagado').val()) || 0;
 var descuento    = 0;
-
 function recalcular() {
     var desc     = parseFloat($('#inputDescuento').val()) || 0;
     descuento    = desc;
@@ -295,21 +321,39 @@ function recalcular() {
 
     // Monto de los pagos nuevos en esta sesión
     var montoNuevo = pagos.reduce(function(acc, p) { return acc + parseFloat(p.monto); }, 0);
+    
     // Restante = total - ya pagado antes - nuevos pagos ahora
     var restante = total - yaPagado - montoNuevo;
-    var liquidado = restante <= 0;
+    var liquidado = restante <= 0.005;
+    var cambio    = restante < -0.005 ? Math.abs(restante) : 0;
 
     $('#spMontoPagado').text('$' + montoNuevo.toFixed(2));
-    $('#spRestante').text('$' + Math.max(0, restante).toFixed(2));
+
+    // --- MODIFICACIÓN VISUAL AQUÍ ---
+    if (liquidado) {
+        // Si está pagado (ya sea exacto o con sobrante), forzamos a mostrar $0.00
+        $('#lblRestante').text('Restante: ');
+        $('#spRestante').text('$0.00')
+                        .removeClass('text-danger').addClass('text-success');
+    } else {
+        // Saldo pendiente
+        $('#lblRestante').text('Restante: ');
+        $('#spRestante').text('$' + restante.toFixed(2))
+                        .removeClass('text-success').addClass('text-danger');
+    }
+    // --------------------------------
 
     if (liquidado) {
         // Liquidado: poner Pagada automáticamente
-        $('#spRestante').removeClass('text-danger').addClass('text-success');
         $('#selectEstatus').val('5');
-        $('#msgEstatus').text('✔ Nota liquidada — se marcará como Pagada.');
+        if (cambio > 0) {
+            // Se mantiene tu mensaje útil en la parte inferior sobre cuánto cambio dar
+            $('#msgEstatus').text('✔ Nota cubierta — cambio a entregar al cliente: $' + cambio.toFixed(2));
+        } else {
+            $('#msgEstatus').text('✔ Nota liquidada — se marcará como Pagada.');
+        }
     } else {
         // Hay saldo pendiente: poner Abierta automáticamente
-        $('#spRestante').removeClass('text-success').addClass('text-danger');
         $('#selectEstatus').val('1');
         $('#msgEstatus').text('⚠ Hay saldo pendiente — se guardará como Abierta. Cambia a Anticipo si aplica.');
     }
@@ -340,7 +384,7 @@ $('#btnAgregarPago').on('click', function() {
         $('#modalPago').modal('hide');
         $('#modalTipoPago').val('');
         $('#modalMonto').val(0);
-        $('#modalAnticipo').prop('checked', true);
+        $('#modalAnticipo').prop('checked', defaultAnticipo);  // reset según tipo de folio
         return;
     }
 
@@ -375,7 +419,7 @@ $('#btnAgregarPago').on('click', function() {
     $('#modalPago').modal('hide');
     $('#modalTipoPago').val('');
     $('#modalMonto').val(0);
-    $('#modalAnticipo').prop('checked', true);
+    $('#modalAnticipo').prop('checked', esHijo);  // reset según tipo de folio
 });
 
 function renderPagos() {

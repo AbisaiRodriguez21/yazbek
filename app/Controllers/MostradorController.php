@@ -198,6 +198,9 @@ class MostradorController extends BaseController
             [$folio, $folio]
         )->getResultArray();
 
+        // Detectar si se accede desde admin o mostrador para las URLs de navegación
+        $base = $this->request->getUri()->getSegment(1) === 'admin' ? 'admin' : 'mostrador';
+
         return view('mostrador/venta_stp_3', [
             'usuario'         => $this->getUsuarioSesion(),
             'nota'            => $nota,
@@ -208,6 +211,7 @@ class MostradorController extends BaseController
             'esMayoreo'       => $carrito['esMayoreo'],
             'tipoPagos'       => $tipoPagos,
             'pagosExistentes' => $pagosExistentes,
+            'base'            => $base,
         ]);
     }
 
@@ -711,7 +715,12 @@ class MostradorController extends BaseController
             }
         }
 
+        // Cancelar nota padre + todos sus hijos (anticipos) si los hubiera
         $this->notaModel->cambiarStatus($nota['Id_Notas_1'], 3);
+        $db->query(
+            "UPDATE notas_1 SET status = 3 WHERE referencia = ? AND status != 3",
+            [$folio]
+        );
         $this->usuarioModel->liberarBandera((int) session()->get('user_id'));
 
         return redirect()->to('/mostrador')->with('success', "Nota #{$folio} cancelada.");
@@ -1282,13 +1291,12 @@ class MostradorController extends BaseController
                         c.nombre  AS NombreCliente,
                         u.usuario AS vendedor,
                         n.folio, n.verificado, n.factura, n.descuento,
-                        s.nombre AS status, s.id AS statusId,
+                        n.status AS statusId,
                         n.sumaImportes, n.subTotal, n.tipoPago,
                         n.cargoTarjeta, n.subTotal2, n.iva, n.total,
                         n.tipoImpresion, n.cargoPorImpresion,
-                        n.montoTCTD, n.totalPiezas
+                        n.montoTCTD, n.totalPiezas, n.precioMayoreo
                  FROM notas_1 n
-                 LEFT JOIN status   s ON n.status    = s.id
                  LEFT JOIN clientes c ON n.idCliente = c.id
                  LEFT JOIN usuarios u ON u.Id        = n.idVendedor
                  WHERE n.folio = ?
@@ -1313,15 +1321,33 @@ class MostradorController extends BaseController
                 [$folio, $folio]
             )->getResultArray();
 
+            // Productos con precios correctos (mismo criterio que getCarritoData)
             $detalles = $db->query(
                 "SELECT n.cantidad,
+                        n.estilo AS sku,
                         CONCAT(p.estilo,'-',p.Descripcion_Larga,'-',p.Talla,'-',p.Color) AS descripcion,
-                        n.pUnitario, n.importe
+                        COALESCE(NULLIF(n.pUnitario,  0), p.pMenudeo, 0)                      AS pMenudeo,
+                        COALESCE(NULLIF(n.pUnitarioM, 0), p.pMayoreo, n.pUnitario, 0)         AS pMayoreo
                  FROM notas_2 n
                  LEFT JOIN productosyazbek p ON p.sku = n.estilo
                  WHERE n.folio = ?",
                 [$folio]
             )->getResultArray();
+
+            // Determinar qué precio se usó realmente comparando contra sumaImportes guardado.
+            $storedSuma = (float)($nota['sumaImportes'] ?? 0);
+            if ($storedSuma > 0) {
+                $sumMenu = array_sum(array_map(fn($d) => $d['cantidad'] * (float)$d['pMenudeo'], $detalles));
+                $sumMay  = array_sum(array_map(fn($d) => $d['cantidad'] * (float)$d['pMayoreo'],  $detalles));
+                $esMayoreoNota = abs($sumMay - $storedSuma) < abs($sumMenu - $storedSuma);
+            } else {
+                $esMayoreoNota = (int)($nota['precioMayoreo'] ?? 0) === 1;
+            }
+            foreach ($detalles as &$d) {
+                $d['pUnitario'] = $esMayoreoNota ? (float)$d['pMayoreo'] : (float)$d['pMenudeo'];
+                $d['importe']   = $d['cantidad'] * $d['pUnitario'];
+            }
+            unset($d);
 
         } catch (\Exception $e) {
             log_message('error', 'folioAjax folio=' . $folio . ': ' . $e->getMessage());
@@ -1335,6 +1361,14 @@ class MostradorController extends BaseController
 
         $total = $nota['total'] ?? 0;
 
+        // Mapa de status legibles (independiente del valor en la tabla status de BD)
+        $statusMap    = [1=>'Abierta', 2=>'En proceso', 3=>'Cancelada', 4=>'Anticipo', 5=>'Pagada', 6=>'Liquidado'];
+        $verificado   = $nota['verificado'] ?? '';
+        $statusId     = (int)($nota['statusId'] ?? 0);
+        $statusNombre = $statusMap[$statusId] ?? 'Desconocido';
+        $esLiquidado  = ($verificado === 'Pagado' || $statusId === 6);
+        $headerStatus = $esLiquidado ? 'Liquidado' : $statusNombre;
+
         // Cabecera
         $html  = '<div style="overflow-x:auto"><table style="width:100%"><tr>';
         $html .= '<td><strong>Fecha:&nbsp;</strong></td>';
@@ -1342,7 +1376,7 @@ class MostradorController extends BaseController
         $html .= '<td>&nbsp;</td><td><strong>Nombre Cliente:&nbsp;</strong></td>';
         $html .= '<td>' . esc($nota['NombreCliente']) . '</td>';
         $html .= '</tr><tr>';
-        $html .= '<td><strong>Estatus:&nbsp;</strong></td><td>' . esc($nota['status']) . '</td>';
+        $html .= '<td><strong>Estatus:&nbsp;</strong></td><td>' . esc($headerStatus) . '</td>';
         $html .= '<td>&nbsp;</td><td><strong>Folio:&nbsp;</strong></td>';
         $html .= '<td>' . $nota['folio'] . '</td>';
         $html .= '</tr></table></div>';
@@ -1367,51 +1401,64 @@ class MostradorController extends BaseController
         $html .= '</tr></thead><tbody>';
         foreach ($detalles as $d) {
             $html .= '<tr><td>' . $d['cantidad'] . '</td>';
-            $html .= '<td>' . esc($d['descripcion'] ?? '') . '</td>';
-            $html .= '<td>$ ' . number_format($d['pUnitario'] ?? 0, 2) . '</td>';
-            $html .= '<td>$ ' . number_format($d['importe']   ?? 0, 2) . '</td></tr>';
+            $html .= '<td><span style="font-size:0.8em;color:#888;font-weight:600;">' . esc($d['sku'] ?? '') . '</span><br>' . esc($d['descripcion'] ?? '') . '</td>';
+            $html .= '<td>$&nbsp;' . number_format($d['pUnitario'] ?? 0, 2) . '</td>';
+            $html .= '<td>$&nbsp;' . number_format($d['importe']   ?? 0, 2) . '</td></tr>';
         }
 
         // Totales
         $ti    = (int)($nota['tipoImpresion'] ?? 0);
         $otros = $ti === 1 ? 'Ninguno' : ($ti === 2 ? 'Impresion' : ($ti === 3 ? 'Bordado' : ''));
         $html .= '<tr><td colspan="3" class="text-right"><strong>Otros</strong></td><td>' . $otros . '</td></tr>';
-        $html .= '<tr><td colspan="3" class="text-right"><strong>Cargo por otros</strong></td><td>$ ' . number_format($nota['cargoPorImpresion'] ?? 0, 2) . '</td></tr>';
-        $html .= '<tr><td colspan="3" class="text-right"><strong>Descuento</strong></td><td>$ ' . number_format($nota['descuento'] ?? 0, 2) . '</td></tr>';
-        $html .= '<tr><td colspan="3" class="text-right no-border"><strong>SubTotal</strong></td><td>$ ' . number_format($nota['subTotal'] ?? 0, 2) . '</td></tr>';
-        $html .= '<tr><td colspan="3" class="text-right"><strong>Cargo TC/TD</strong></td><td>$ ' . number_format($nota['montoTCTD'] ?? $nota['cargoTarjeta'] ?? 0, 2) . '</td></tr>';
-        $html .= '<tr><td colspan="3" class="text-right"><strong>SubTotal2</strong></td><td>$ ' . number_format($nota['subTotal2'] ?? 0, 2) . '</td></tr>';
-        $html .= '<tr><td colspan="3" class="text-right"><strong>IVA</strong></td><td>$ ' . number_format($nota['iva'] ?? 0, 2) . '</td></tr>';
-        $html .= '<tr><td colspan="3" class="text-right"><strong>Total</strong></td><td>$ ' . number_format($total, 2) . '</td></tr>';
+        $html .= '<tr><td colspan="3" class="text-right"><strong>Cargo por otros</strong></td><td>$&nbsp;' . number_format($nota['cargoPorImpresion'] ?? 0, 2) . '</td></tr>';
+        $html .= '<tr><td colspan="3" class="text-right"><strong>Descuento</strong></td><td>$&nbsp;' . number_format($nota['descuento'] ?? 0, 2) . '</td></tr>';
+        $html .= '<tr><td colspan="3" class="text-right no-border"><strong>SubTotal</strong></td><td>$&nbsp;' . number_format($nota['subTotal'] ?? 0, 2) . '</td></tr>';
+        $html .= '<tr><td colspan="3" class="text-right"><strong>Cargo TC/TD</strong></td><td>$&nbsp;' . number_format($nota['montoTCTD'] ?? $nota['cargoTarjeta'] ?? 0, 2) . '</td></tr>';
+        $html .= '<tr><td colspan="3" class="text-right"><strong>IVA</strong></td><td>$&nbsp;' . number_format($nota['iva'] ?? 0, 2) . '</td></tr>';
+        $html .= '<tr><td colspan="3" class="text-right"><strong>SubTotal2</strong></td><td>$&nbsp;' . number_format($nota['subTotal2'] ?? 0, 2) . '</td></tr>';
+        $html .= '<tr><td colspan="3" class="text-right"><strong>Total</strong></td><td>$&nbsp;' . number_format($total, 2) . '</td></tr>';
 
         if ($letras) {
             $html .= '<tr><td colspan="4" class="text-right no-border" align="left">';
             $html .= '<strong>Cantidad con letra( ' . esc($letras) . ')</strong></td></tr>';
         }
 
+        // Mostrar folio en pagos solo si hay hijos (pagos de folios distintos al padre)
+        $hayFoliosHijos = !empty(array_filter($pagos, fn($p) => (int)($p['folio_pago'] ?? 0) !== $folio));
+
         foreach ($pagos as $p) {
             $html .= '<tr><td colspan="4" class="text-right no-border">';
-            $html .= '<strong>Folio #' . ($p['folio_pago'] ?? '') . '</strong> — ';
+            if ($hayFoliosHijos && (int)($p['folio_pago'] ?? 0) !== $folio) {
+                $html .= '<strong>Folio #' . $p['folio_pago'] . '</strong> — ';
+            }
             $html .= '<strong>Forma de Pago:</strong> ' . esc($p['tipopago']);
-            $html .= ' <strong>Monto: </strong>$ ' . number_format($p['monto'] ?? 0, 2);
+            $html .= ' <strong>Monto: </strong>$&nbsp;' . number_format($p['monto'] ?? 0, 2);
             if (in_array($p['idTipoPago'] ?? 0, [2, 3])) {
-                $html .= ' <strong>Cargo: </strong>$ ' . number_format($p['cargo'] ?? 0, 2);
+                $html .= ' <strong>Cargo: </strong>$&nbsp;' . number_format($p['cargo'] ?? 0, 2);
             }
             $html .= ' <strong>Es anticipo:</strong> ' . (($p['anticipo'] ?? 0) == 1 ? 'Si' : 'No');
             $html .= '</td></tr>';
         }
 
-        $statusId   = (int)($nota['statusId']  ?? 0);
-        $verificado = $nota['verificado'] ?? '';
+        // Estatus en pie de modal (usa mapa, no valor de BD)
+        $sumPagado   = array_sum(array_column($pagos, 'monto'));
+        $hayAnticipo = !empty(array_filter($pagos, fn($p) => ($p['anticipo'] ?? 0) == 1));
+        if ($esLiquidado) {
+            $displayStatus = 'Liquidado';
+        } elseif ($hayAnticipo && $sumPagado < ($nota['total'] ?? 0)) {
+            $displayStatus = 'Abierta';
+        } else {
+            $displayStatus = $statusNombre;
+        }
 
         $html .= '<tr><td colspan="2" class="text-right no-border" align="left"><strong>Estatus:</strong></td>';
-        $html .= '<td colspan="2" align="left">' . esc($nota['status']) . '</td></tr>';
+        $html .= '<td colspan="2" align="left">' . esc($displayStatus) . '</td></tr>';
         $html .= '<tr><td colspan="2" class="text-right no-border" align="left"><strong>Factura:</strong></td>';
         $html .= '<td colspan="2" align="left">' . (($nota['factura'] ?? 0) == 1 ? 'Si requiere' : 'No requiere') . '</td></tr>';
 
-        // Solo botón Cancelar Nota — sin "Pago Verificado" en mostrador
+        // Solo botón Cancelar Nota — sin Liquidar en mostrador; ocultar si ya liquidado o cancelado
         $html .= '<tr><input type="hidden" id="folio_input_m" value="' . $nota['folio'] . '" />';
-        if ($statusId !== 3 && $statusId !== 5 && $verificado !== 'Pagado') {
+        if ($statusId !== 3 && ! $esLiquidado) {
             $html .= '<td colspan="4" class="text-right no-border">';
             $html .= '<button type="button" class="btn btn-danger" onclick="fnCancelarFolioMostrador()">Cancelar Nota</button>';
             $html .= '</td>';
@@ -1473,8 +1520,11 @@ class MostradorController extends BaseController
                 }
             }
 
-            // Cancelar nota
-            $db->query("UPDATE notas_1 SET status = 3 WHERE folio = ?", [$folio]);
+            // Cancelar nota padre + todos sus hijos (anticipos) no cancelados
+            $db->query(
+                "UPDATE notas_1 SET status = 3 WHERE folio = ? OR (referencia = ? AND status != 3)",
+                [$folio, $folio]
+            );
 
             return $this->response->setContentType('application/json')->setJSON(['ok' => true]);
 

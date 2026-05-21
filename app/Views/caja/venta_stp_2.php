@@ -118,10 +118,13 @@
                     <input type="hidden" name="folio" value="<?= (int)$folio ?>">
                     <div class="form-group">
                         <label>Tipo de Pago <span class="text-danger">*</span></label>
-                        <select name="tipoPago" class="form-control" required>
+                        <select name="tipoPago" id="cajaTipoPago" class="form-control" required>
                             <option value="">— Selecciona —</option>
                             <?php foreach ($tipoPagos as $tp): ?>
-                            <option value="<?= (int)$tp['id'] ?>"><?= esc($tp['descripcion']) ?></option>
+                            <option value="<?= (int)$tp['id'] ?>"
+                                    data-desc="<?= esc($tp['descripcion']) ?>">
+                                <?= esc($tp['descripcion']) ?>
+                            </option>
                             <?php endforeach; ?>
                         </select>
                     </div>
@@ -143,6 +146,13 @@
                                 <span class="input-group-text">$</span>
                             </div>
                             <input type="number" name="cargos" class="form-control" min="0" step="0.01" value="0">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <div class="custom-control custom-checkbox">
+                            <input type="checkbox" class="custom-control-input" id="cajaAnticipo" name="anticipo" value="1"
+                                   <?= (int)($nota['referencia'] ?? 0) > 0 ? 'checked' : '' ?>>
+                            <label class="custom-control-label" for="cajaAnticipo">Es Anticipo</label>
                         </div>
                     </div>
                     <div class="text-right">
@@ -176,6 +186,25 @@
 
 <?= $this->section('page_scripts') ?>
 <script>
+(function() {
+    // Lógica del checkbox "Es Anticipo"
+    var esHijo     = <?= (int)($nota['referencia'] ?? 0) > 0 ? 'true' : 'false' ?>;
+    var selectPago = document.getElementById('cajaTipoPago');
+    var chkAntic   = document.getElementById('cajaAnticipo');
+
+    if (selectPago && chkAntic) {
+        selectPago.addEventListener('change', function () {
+            var desc = this.options[this.selectedIndex]
+                           ? this.options[this.selectedIndex].getAttribute('data-desc') : '';
+            if (desc === 'Sin Pagar') {
+                chkAntic.checked = true;
+            } else {
+                chkAntic.checked = false;
+            }
+        });
+    }
+})();
+
 (function() {
     var btn = document.getElementById('btnPagoVerificado');
     if (!btn) return;

@@ -57,6 +57,16 @@
 <?= $this->section('page_scripts') ?>
 <script>
 /* DataTables JS ya cargado en el layout — no importar de nuevo */
+
+function puedeRevivir(tipopago) {
+    if (!tipopago) return false;
+    var tp = (tipopago + '').toLowerCase();
+    if (tp.indexOf('sin pagar') >= 0) return false;
+    if (tp.indexOf('crédito') >= 0 || tp.indexOf('credito') >= 0) return false;
+    if (tp.indexOf('tarjeta') >= 0) return false;
+    return true;
+}
+
 var STATUS_LABELS = {
     1: '<span class="badge badge-primary">Abierta</span>',
     2: '<span class="badge badge-info">En proceso</span>',
@@ -105,6 +115,7 @@ var URL_CANCELAR = '<?= base_url('caja/cancelar/') ?>';
             { data: null, orderable: false, searchable: false,
               render: function(data, type, row) {
                 var idstatus = parseInt(row.idstatus, 10);
+                var esPadre  = parseInt(row.referencia || 0, 10) === 0;
                 var btns = '';
                 /* Botones como <button> para evitar que el SPA los intercepte */
                 if (idstatus !== 5 && idstatus !== 3) {
@@ -119,9 +130,14 @@ var URL_CANCELAR = '<?= base_url('caja/cancelar/') ?>';
                     btns += '<button class="btn btn-xs btn-outline-danger mr-1"'
                           + ' onclick="cajaCancelarFolio(' + row.folio + ')">Cancelar</button>';
                 }
-                if (idstatus === 3) {
+                // Revivir: solo folios PADRE cancelados con método de pago permitido
+                if (idstatus === 3 && esPadre && puedeRevivir(row.tipopago)) {
                     btns += '<button class="btn btn-xs btn-warning"'
                           + ' onclick="cajaRevivirFolio(' + row.folio + ')">Revivir</button>';
+                }
+                if (idstatus === 5) {
+                    btns += '<button class="btn btn-xs btn-outline-dark mr-1"'
+                          + ' onclick="cajaVerTicket(' + row.folio + ')">Ver Ticket</button>';
                 }
                 return btns || '<span class="text-muted">—</span>';
               }
@@ -150,6 +166,12 @@ var URL_CANCELAR = '<?= base_url('caja/cancelar/') ?>';
 
 /* Cancelar: navegación completa para que la redirección del servidor funcione
    sin interferencia del SPA */
+/* Ver Ticket de impresión */
+function cajaVerTicket(folio) {
+    window.open('<?= base_url('caja/folio/') ?>' + folio + '/ticket', '_blank',
+        'toolbar=yes,scrollbars=yes,resizable=yes,top=100,left=200,width=500,height=600');
+}
+
 function cajaCancelarFolio(folio) {
     if (confirm('¿Cancelar el folio ' + folio + '?')) {
         window.location.href = URL_CANCELAR + folio;

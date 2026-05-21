@@ -169,6 +169,15 @@ $(document).ready(function() {
     });
 });
 
+function puedeRevivir(tipopago) {
+    if (!tipopago) return false;
+    var tp = (tipopago + '').toLowerCase();
+    if (tp.indexOf('sin pagar') >= 0) return false;
+    if (tp.indexOf('crédito') >= 0 || tp.indexOf('credito') >= 0) return false;
+    if (tp.indexOf('tarjeta') >= 0) return false;
+    return true;
+}
+
 function accionesNota(n) {
     var btns = '';
     var idstatus   = parseInt(n.idstatus, 10);
@@ -199,8 +208,8 @@ function accionesNota(n) {
               + ' onclick="adminCancelarFolio(' + n.folio + '); return false;">Cancelar</a>';
     }
 
-    // Revivir: notas canceladas (padre e hijo)
-    if (idstatus === 3) {
+    // Revivir: solo folios PADRE cancelados con método de pago permitido
+    if (idstatus === 3 && esPadre && puedeRevivir(n.tipopago)) {
         btns += '<a href="#" class="btn btn-xs btn-warning"'
               + ' onclick="adminRevivirFolio(' + n.folio + '); return false;">Revivir</a>';
     }
@@ -215,29 +224,8 @@ function accionesNota(n) {
     return btns;
 }
 
-function fn_muestra_modal() {
-    var folio = document.getElementById('folio_input') ? document.getElementById('folio_input').value : 0;
-    if (!folio) return;
-    if (!confirm('¿Marcar el folio ' + folio + ' como Pago Verificado?')) return;
-    var csrfName = '<?= csrf_token() ?>';
-    var csrfHash = '<?= csrf_hash() ?>';
-    var fd = new FormData();
-    fd.append(csrfName, csrfHash);
-    fd.append('folio', folio);
-    fetch('<?= base_url('admin/caja/verificar') ?>', {
-        method: 'POST', body: fd, credentials: 'same-origin'
-    })
-    .then(function(r) { return r.text(); })
-    .then(function(resp) {
-        if (resp === 'bien') {
-            $('#modalVerFolio').modal('hide');
-            $('#tablaAdminConsulta').DataTable().ajax.reload(null, false);
-        } else {
-            alert('No se pudo verificar el pago.');
-        }
-    })
-    .catch(function() { alert('Error de conexión.'); });
-}
+// fn_muestra_modal: alias legacy conservado por compatibilidad
+function fn_muestra_modal() { fn_liquidar_modal(); }
 
 function fn_modal_calcelar_nota() {
     var folio = document.getElementById('folio_input') ? document.getElementById('folio_input').value : 0;

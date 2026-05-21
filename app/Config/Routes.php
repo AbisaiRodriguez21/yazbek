@@ -222,6 +222,12 @@ $routes->group('mostrador', ['filter' => 'role:3,4'], function ($routes) {
     // ── Modal de detalle de folio (sin botón Pago Verificado) ──
     $routes->post('folio/ajax', 'MostradorController::folioAjax');
     $routes->post('folio/cancelar', 'MostradorController::folioAjaxCancelar');
+
+    // Revivir nota cancelada desde mostrador
+    $routes->post('folio/(:num)/revivir', 'AdminController::revivirNota/$1');
+
+    // Ver Ticket de impresión (reutiliza el mismo método de admin)
+    $routes->get('folio/(:num)/ticket', 'AdminController::verTicket/$1');
 });
 
 // =============================================================
@@ -260,6 +266,9 @@ $routes->group('caja', ['filter' => 'role:2'], function ($routes) {
 
     // Revivir nota cancelada desde caja
     $routes->post('folio/(:num)/revivir', 'AdminController::revivirNota/$1');
+
+    // Ver Ticket de impresión (reutiliza el mismo método de admin)
+    $routes->get('folio/(:num)/ticket', 'AdminController::verTicket/$1');
 
     // Venta stp 2 desde caja (cobro)
     $routes->get('venta/(:num)', 'CajaController::ventaStp2/$1');

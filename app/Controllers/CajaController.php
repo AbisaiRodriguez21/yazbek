@@ -164,6 +164,7 @@ class CajaController extends BaseController
         $tipoPago = (int)   $this->request->getPost('tipoPago');
         $monto    = (float) $this->request->getPost('monto');
         $cargos   = (float) $this->request->getPost('cargos');
+        $anticipo = $this->request->getPost('anticipo') ? 1 : 0;
 
         $nota = $this->notaModel->getPorFolio($folio);
 
@@ -175,8 +176,8 @@ class CajaController extends BaseController
 
         // Registrar el pago en montosnotas
         $db->query(
-            "INSERT INTO montosnotas (idNotas, idTipoPago, monto, cargos, fecha) VALUES (?, ?, ?, ?, ?)",
-            [$nota['Id_Notas_1'], $tipoPago, $monto, $cargos, date('Y-m-d H:i:s')]
+            "INSERT INTO montosnotas (idNotas, idTipoPago, monto, cargos, anticipo, fecha) VALUES (?, ?, ?, ?, ?, ?)",
+            [$nota['Id_Notas_1'], $tipoPago, $monto, $cargos, $anticipo, date('Y-m-d H:i:s')]
         );
 
         // Verificar si la suma de pagos cubre el total de la nota
@@ -739,7 +740,7 @@ class CajaController extends BaseController
                     COALESCE(pm_direct.tipos_pago, pm_child.tipos_pago, NULLIF(TRIM(n.tipoPago), ''), 'A Crédito') AS tipopago,
                     n.total, n.status AS idstatus,
                     COALESCE(s.nombre, '')                   AS status_nombre,
-                    n.verificado
+                    n.verificado, n.referencia
              {$baseSql} {$where}
              ORDER BY {$orderCol} {$orderDir}
              LIMIT ? OFFSET ?",
