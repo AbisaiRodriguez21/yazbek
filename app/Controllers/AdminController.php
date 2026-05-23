@@ -7,6 +7,7 @@ use App\Models\NotaDetalleModel;
 use App\Models\NotaModel;
 use App\Models\ProductoModel;
 use App\Models\UsuarioModel;
+use App\Libraries\AuditService;
 
 /**
  * AdminController
@@ -282,7 +283,7 @@ class AdminController extends BaseController
                     SUM(CASE WHEN n.status = 3 THEN 1 ELSE 0 END) AS canceladas
              FROM notas_1 n
              INNER JOIN usuarios u ON u.Id = n.idVendedor
-             WHERE n.status IN (3,4,5)
+             WHERE n.status IN (3,4,5,6)
                AND n.fecha_inicial >= ? AND n.fecha_inicial < ?
              GROUP BY n.idVendedor
              ORDER BY total DESC
@@ -380,18 +381,19 @@ class AdminController extends BaseController
              ORDER BY anio ASC"
         )->getResultArray();
 
-        // ── Vendedores hoy (todos los activos, ingresos + canceladas) ─
+        // ── Vendedores hoy (solo los que tienen actividad hoy) ────────
         $hoy = date('Y-m-d');
         $vendedoresHoy = $db->query(
             "SELECT u.usuario AS vendedor,
                     COALESCE(SUM(CASE WHEN n.status IN (4,5,6) THEN n.total ELSE 0 END),0) AS total,
                     COALESCE(SUM(CASE WHEN n.status IN (4,5,6) THEN 1 ELSE 0 END),0) AS notas,
                     COALESCE(SUM(CASE WHEN n.status = 3 THEN 1 ELSE 0 END),0) AS canceladas
-             FROM usuarios u
-             LEFT JOIN notas_1 n ON n.idVendedor = u.Id
-                                 AND DATE(n.fecha_inicial) = ?
-             WHERE u.eliminado = 0
+             FROM notas_1 n
+             INNER JOIN usuarios u ON u.Id = n.idVendedor
+             WHERE DATE(n.fecha_inicial) = ?
+               AND n.status IN (3,4,5,6)
              GROUP BY u.Id, u.usuario
+             HAVING total > 0 OR canceladas > 0
              ORDER BY total DESC",
             [$hoy]
         )->getResultArray();
@@ -476,14 +478,18 @@ class AdminController extends BaseController
                              ->with('error', implode(', ', $this->validator->getErrors()));
         }
 
+        $nombre = $this->request->getPost('nombre');
+        $mail   = $this->request->getPost('mail');
+        $acceso = $this->request->getPost('acceso');
         $this->usuarioModel->insert([
-            'nombre'  => $this->request->getPost('nombre'),
-            'usuario' => $this->request->getPost('nombre'),
-            'mail'    => $this->request->getPost('mail'),
+            'nombre'  => $nombre,
+            'usuario' => $nombre,
+            'mail'    => $mail,
             'pass'    => $this->request->getPost('pass'),
-            'acceso'  => $this->request->getPost('acceso'),
+            'acceso'  => $acceso,
         ]);
-
+        AuditService::log(AuditService::USUARIO_CREADO, 'usuarios', null,
+            "Usuario creado: {$nombre}, correo: {$mail}, rol: {$acceso}");
         return redirect()->to('/admin/usuarios')->with('success', 'Usuario creado correctamente.');
     }
 
@@ -493,6 +499,8 @@ class AdminController extends BaseController
     public function eliminarUsuario(int $id): \CodeIgniter\HTTP\RedirectResponse
     {
         $this->usuarioModel->softDelete($id);
+        AuditService::log(AuditService::USUARIO_ELIMINADO, 'usuarios', $id,
+            "Usuario {$id} eliminado");
         return redirect()->to('/admin/usuarios')->with('success', 'Usuario eliminado.');
     }
 
@@ -513,6 +521,8 @@ class AdminController extends BaseController
         }
 
         $this->usuarioModel->update($id, $data);
+        AuditService::log(AuditService::USUARIO_EDITADO, 'usuarios', $id,
+            "Usuario {$id} actualizado: {$data['nombre']} / {$data['mail']} / rol {$data['acceso']}");
         return redirect()->to('/admin/usuarios')->with('success', 'Usuario actualizado correctamente.');
     }
 
@@ -553,6 +563,8 @@ class AdminController extends BaseController
     public function restaurarUsuario(int $id): \CodeIgniter\HTTP\RedirectResponse
     {
         $this->usuarioModel->restaurar($id);
+        AuditService::log(AuditService::USUARIO_RESTAURADO, 'usuarios', $id,
+            "Usuario {$id} restaurado");
         return redirect()->to('/admin/usuarios/eliminados')->with('success', 'Usuario restaurado correctamente.');
     }
 
@@ -564,6 +576,8 @@ class AdminController extends BaseController
         $db = \Config\Database::connect();
         try {
             $db->query("DELETE FROM usuarios WHERE Id = ? AND eliminado = 1", [$id]);
+            AuditService::log(AuditService::USUARIO_ELIMINADO, 'usuarios', $id,
+                "Usuario {$id} ELIMINADO DEFINITIVAMENTE");
             return $this->response->setJSON(['ok' => true]);
         } catch (\Exception $e) {
             return $this->response->setJSON(['ok' => false, 'error' => $e->getMessage()]);
@@ -577,6 +591,8 @@ class AdminController extends BaseController
     public function liberarUsuario(int $id): \CodeIgniter\HTTP\RedirectResponse
     {
         $this->usuarioModel->liberarBandera($id);
+        AuditService::log(AuditService::USUARIO_LIBERADO, 'usuarios', $id,
+            "Bandera liberada para usuario {$id}");
         return redirect()->to('/admin/usuarios')->with('success', 'Usuario liberado correctamente.');
     }
 
@@ -602,6 +618,8 @@ class AdminController extends BaseController
             // Solo se permite editar el campo 'pass'
             if ($campo === 'pass' && $userId > 0 && $val !== '') {
                 $this->usuarioModel->cambiarPass($userId, $val);
+                AuditService::log(AuditService::PASSWORD_CAMBIADO, 'usuarios', $userId,
+                    "Contraseña cambiada para usuario {$userId}");
                 return $this->response->setBody('Contraseña actualizada');
             }
         }
@@ -719,6 +737,13 @@ class AdminController extends BaseController
                     $id,
                 ]
             );
+            AuditService::log(AuditService::PRODUCTO_ACTUALIZADO, 'productosyazbek', $id,
+                "Producto id={$id} actualizado desde admin",
+                null,
+                ['estilo'=>trim($this->request->getPost('estilo') ?? ''),
+                 'pMayoreo'=>(float)$this->request->getPost('pMayoreo'),
+                 'pMenudeo'=>(float)$this->request->getPost('pMenudeo'),
+                 'piezas'=>(int)$this->request->getPost('piezas')]);
             return $this->response->setJSON(['ok' => true, 'msg' => 'Producto actualizado correctamente.']);
         } catch (\Exception $e) {
             return $this->response->setJSON(['ok' => false, 'error' => $e->getMessage()]);
@@ -737,6 +762,8 @@ class AdminController extends BaseController
         $db = \Config\Database::connect();
         try {
             $db->query("DELETE FROM productosyazbek WHERE id = ?", [$id]);
+            AuditService::log(AuditService::PRODUCTO_ELIMINADO, 'productosyazbek', $id,
+                "Producto id={$id} eliminado del catálogo");
             return $this->response->setJSON(['ok' => true]);
         } catch (\Exception $e) {
             return $this->response->setJSON(['ok' => false, 'error' => $e->getMessage()]);
@@ -885,7 +912,8 @@ class AdminController extends BaseController
 
         fclose($handle);
         unlink($ruta);
-
+        AuditService::log(AuditService::PRODUCTOS_IMPORTADOS, 'productosyazbek', null,
+            "Importación CSV productos: {$insertados} insertados, {$omitidos} omitidos, {$errores} errores");
         return redirect()->to('/admin/inventario')
             ->with('success', "Productos nuevos insertados: {$insertados}. Omitidos (SKU ya existe): {$omitidos}. Errores: {$errores}.");
     }
@@ -932,7 +960,8 @@ class AdminController extends BaseController
 
         fclose($handle);
         unlink($ruta);
-
+        AuditService::log(AuditService::PRECIOS_IMPORTADOS, 'productosyazbek', null,
+            "Importación CSV precios: {$actualizados} actualizados, {$noEncontrados} no encontrados");
         return redirect()->to('/admin/inventario')
             ->with('success', "Precios actualizados: {$actualizados}. SKUs no encontrados: {$noEncontrados}.");
     }
@@ -978,6 +1007,9 @@ class AdminController extends BaseController
 
         fclose($handle);
         unlink($ruta);
+
+        AuditService::log(AuditService::STOCK_IMPORTADO, 'productosyazbek', null,
+            "Importación CSV stock: {$actualizados} actualizados, {$noEncontrados} no encontrados");
 
         return redirect()->to('/admin/inventario')
             ->with('success', "Stock actualizado: {$actualizados} productos. SKUs no encontrados: {$noEncontrados}.");
@@ -1038,8 +1070,12 @@ class AdminController extends BaseController
 
         if ($id) {
             $this->mensajeModel->update((int) $id, $datos);
+            AuditService::log(AuditService::MENSAJE_GUARDADO, 'mensajes', $id,
+                "Mensaje actualizado: ID {$id}");
         } else {
             $this->mensajeModel->insert($datos);
+            AuditService::log(AuditService::MENSAJE_GUARDADO, 'mensajes', null,
+                "Nuevo mensaje creado: {$datos['t_mensaje']}");
         }
 
         return redirect()->to('/admin/mensajes')->with('success', 'Mensaje guardado.');
@@ -1094,6 +1130,8 @@ class AdminController extends BaseController
     public function eliminarMensaje(int $id): \CodeIgniter\HTTP\RedirectResponse
     {
         $this->mensajeModel->delete($id);
+        AuditService::log(AuditService::MENSAJE_ELIMINADO, 'mensajes', $id,
+            "Mensaje eliminado: ID {$id}");
         return redirect()->to('/admin/mensajes')->with('success', 'Mensaje eliminado.');
     }
 
@@ -1150,6 +1188,9 @@ class AdminController extends BaseController
             'comoNosConoce' => $this->request->getPost('comoNosConoce'),
             'fechaIngreso'  => date('Y-m-d'),
         ]);
+        $nombreCliente = strtoupper(trim($this->request->getPost('nombre') ?? ''));
+        AuditService::log(AuditService::CLIENTE_CREADO, 'clientes', null,
+            "Cliente creado: {$nombreCliente}");
 
         return redirect()->to('/admin/clientes')->with('success', 'Cliente registrado correctamente.');
     }
@@ -1173,6 +1214,8 @@ class AdminController extends BaseController
             'razonSocial'   => strtoupper(trim($this->request->getPost('razonSocial') ?? '')),
             'comoNosConoce' => $this->request->getPost('comoNosConoce'),
         ]);
+        AuditService::log(AuditService::CLIENTE_EDITADO, 'clientes', $id,
+            "Cliente actualizado: ID {$id}");
 
         return redirect()->to('/admin/clientes')->with('success', 'Cliente actualizado.');
     }
@@ -1184,6 +1227,8 @@ class AdminController extends BaseController
         if ($id) {
             $clienteModel = new \App\Models\ClienteModel();
             $clienteModel->softDelete($id);
+            AuditService::log(AuditService::CLIENTE_ELIMINADO, 'clientes', $id,
+                "Cliente eliminado: ID {$id}");
         }
         return redirect()->to('/admin/clientes')->with('success', 'Cliente eliminado.');
     }
@@ -1257,6 +1302,8 @@ class AdminController extends BaseController
         }
 
         $notaModel->liquidarAnticipo($folio);
+        AuditService::log(AuditService::VENTA_LIQUIDADA, 'notas_1', $folio,
+            "Folio #{$folio} liquidado por admin");
         return $this->response->setJSON(['ok' => true, 'mensaje' => "Folio #{$folio} liquidado correctamente."]);
     }
 
@@ -1405,6 +1452,7 @@ class AdminController extends BaseController
             'productos'   => $productos,
             'anticipos'   => $anticipos,
             'letras'      => $letras,
+            'config'      => $this->getTicketConfig(),
         ]);
     }
 
@@ -1413,6 +1461,8 @@ class AdminController extends BaseController
     {
         $clienteModel = new \App\Models\ClienteModel();
         $clienteModel->restaurar($id);
+        AuditService::log(AuditService::CLIENTE_RESTAURADO, 'clientes', $id,
+            "Cliente restaurado: ID {$id}");
         return redirect()->to('/admin/clientes/eliminados')->with('success', 'Cliente restaurado correctamente.');
     }
 
@@ -1430,6 +1480,8 @@ class AdminController extends BaseController
                 $db->query("DELETE FROM notas_2 WHERE folio = ?", [$folio]);
                 $db->query("DELETE FROM montosnotas WHERE idNotas = ?", [$nota['Id_Notas_1']]);
                 $db->query("DELETE FROM notas_1 WHERE folio = ?", [$folio]);
+                AuditService::log(AuditService::VENTA_ELIMINADA, 'notas_1', $folio,
+                    "Nota eliminada definitivamente (cliente eliminado): folio {$folio}");
             }
             return $this->response->setJSON(['ok' => true]);
         } catch (\Exception $e) {
@@ -1454,6 +1506,8 @@ class AdminController extends BaseController
 
         try {
             $db->query("DELETE FROM clientes WHERE id = ?", [$id]);
+            AuditService::log(AuditService::CLIENTE_ELIMINADO, 'clientes', $id,
+                "Cliente eliminado definitivamente: ID {$id}");
             return $this->response->setJSON(['ok' => true]);
         } catch (\Exception $e) {
             return $this->response->setJSON(['ok' => false, 'error' => $e->getMessage()]);
@@ -1696,7 +1750,8 @@ class AdminController extends BaseController
             $pagos = $db->query(
                 "SELECT m.idTipoPago, t.descripcion AS tipopago,
                         m.monto, m.cargos AS cargo, m.anticipo,
-                        n2.folio AS folio_pago
+                        n2.folio AS folio_pago,
+                        n2.status AS folio_status
                  FROM notas_1 n2
                  INNER JOIN montosnotas m ON m.idNotas = n2.Id_Notas_1
                  INNER JOIN tipopago t ON t.id = m.idTipoPago
@@ -1817,10 +1872,16 @@ class AdminController extends BaseController
         $hayFoliosHijos = !empty(array_filter($pagos, fn($p) => (int)($p['folio_pago'] ?? 0) !== $folio));
 
         foreach ($pagos as $p) {
-            $html .= '<tr><td colspan="4" class="text-right no-border">';
+            $esCancelado = (int)($p['folio_status'] ?? 0) === 3;
+            $rowStyle    = $esCancelado ? 'opacity:.45;text-decoration:line-through;' : '';
+            $html .= '<tr style="' . $rowStyle . '"><td colspan="4" class="text-right no-border">';
             // Mostrar número de folio solo si el pago viene de un folio hijo diferente
             if ($hayFoliosHijos && (int)($p['folio_pago'] ?? 0) !== $folio) {
-                $html .= '<strong>Folio #' . $p['folio_pago'] . '</strong> — ';
+                $html .= '<strong>Folio #' . $p['folio_pago'] . '</strong>';
+                if ($esCancelado) {
+                    $html .= ' <span style="background:#dc3545;color:#fff;font-size:.7em;padding:1px 6px;border-radius:4px;text-decoration:none;vertical-align:middle;">CANCELADO</span>';
+                }
+                $html .= ' — ';
             }
             $html .= '<strong>Forma de Pago:</strong> ' . esc($p['tipopago']);
             $html .= ' <strong>Monto: </strong>$&nbsp;' . number_format($p['monto'] ?? 0, 2);
@@ -1831,9 +1892,10 @@ class AdminController extends BaseController
             $html .= '</td></tr>';
         }
 
-        // Estatus mostrado en el pie del modal (usa mapa, no valor de la BD)
-        $sumPagado   = array_sum(array_column($pagos, 'monto'));
-        $hayAnticipo = !empty(array_filter($pagos, fn($p) => ($p['anticipo'] ?? 0) == 1));
+        // Estatus mostrado en el pie del modal (ignorar pagos de folios cancelados)
+        $pagosActivos = array_filter($pagos, fn($p) => (int)($p['folio_status'] ?? 0) !== 3);
+        $sumPagado    = array_sum(array_column($pagosActivos, 'monto'));
+        $hayAnticipo  = !empty(array_filter($pagosActivos, fn($p) => ($p['anticipo'] ?? 0) == 1));
         if ($esLiquidado) {
             $displayStatus = 'Liquidado';
         } elseif ($hayAnticipo && $sumPagado < ($nota['total'] ?? 0)) {
@@ -1874,8 +1936,10 @@ class AdminController extends BaseController
         try {
             $db = \Config\Database::connect();
             $db->query("UPDATE notas_1 SET verificado = 'Pagado' WHERE folio = ?", [$folio]);
+            AuditService::log(AuditService::VENTA_VERIFICADA, 'notas_1', $folio,
+                "Folio #{$folio} marcado como verificado/pagado");
             return $this->response->setBody('bien');
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             log_message('error', 'cajaVerificar folio=' . $folio . ': ' . $e->getMessage());
             return $this->response->setBody('mal');
         }
@@ -1908,6 +1972,8 @@ class AdminController extends BaseController
                 "UPDATE notas_1 SET status = 3 WHERE folio = ? OR referencia = ?",
                 [$folio, $folio]
             );
+            AuditService::log(AuditService::VENTA_CANCELADA, 'notas_1', $folio,
+                "Folio #{$folio} cancelado");
 
             // Restaurar stock del folio padre (notas_2 usa columna 'folio', no 'Id_Notas_1')
             // Solo el padre tiene productos — los hijos (anticipos) no tienen notas_2
@@ -1929,15 +1995,19 @@ class AdminController extends BaseController
                         "SELECT piezas FROM productosyazbek WHERE sku = ? LIMIT 1",
                         [$p['sku']]
                     )->getRowArray();
-                    $db->query(
-                        "INSERT INTO stock_eventos (sku, nuevo_stock) VALUES (?, ?)",
-                        [$p['sku'], (int)($stockRow['piezas'] ?? 0)]
-                    );
+                    try {
+                        $db->query(
+                            "INSERT INTO stock_eventos (sku, nuevo_stock) VALUES (?, ?)",
+                            [$p['sku'], (int)($stockRow['piezas'] ?? 0)]
+                        );
+                    } catch (\Throwable $se) {
+                        log_message('warning', 'stock_eventos INSERT skipped: ' . $se->getMessage());
+                    }
                 }
             }
 
             return $this->response->setBody('1');
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             log_message('error', 'cajaCancelar folio=' . $folio . ': ' . $e->getMessage());
             return $this->response->setBody('0');
         }
@@ -2047,6 +2117,8 @@ class AdminController extends BaseController
                 "UPDATE notas_1 SET status = 1 WHERE folio = ? OR (referencia = ? AND status = 3)",
                 [$folio, $folio]
             );
+            AuditService::log(AuditService::VENTA_REACTIVADA, 'notas_1', $folio,
+                "Folio #{$folio} reactivado");
 
             return $this->response->setContentType('application/json')
                 ->setJSON(['ok' => true, 'folio' => $folio, 'esHijo' => $esHijo, 'advertencias' => $advertencias]);
@@ -2561,9 +2633,192 @@ class AdminController extends BaseController
         }
     }
 
+
     // ──────────────────────────────────────────────────────────────
+    // GET /admin/auditoria  —  Vista de auditoría del sistema
+    // ──────────────────────────────────────────────────────────────
+    public function auditoria(): string
+    {
+        $db       = \Config\Database::connect();
+        $usuarios = $db->query("SELECT Id, nombre FROM usuarios ORDER BY nombre ASC")->getResultArray();
+        $acciones = $db->query("SELECT DISTINCT accion FROM audit_log ORDER BY accion ASC")->getResultArray();
+
+        return view('admin/auditoria', [
+            'usuario'  => $this->getUsuarioSesion(),
+            'usuarios' => $usuarios,
+            'acciones' => array_column($acciones, 'accion'),
+        ]);
+    }
+
+    // GET /admin/auditoria/datatable  —  AJAX server-side para DataTable
+    public function auditoriaDatatable(): \CodeIgniter\HTTP\Response
+    {
+        $db     = \Config\Database::connect();
+        $draw   = (int) $this->request->getGet('draw');
+        $start  = (int) $this->request->getGet('start');
+        $length = (int) $this->request->getGet('length');
+        $search = trim($this->request->getGet('search')['value'] ?? '');
+
+        $filtroAccion  = trim($this->request->getGet('accion')     ?? '');
+        $filtroUsuario = (int) $this->request->getGet('usuario_id');
+        $filtroDesde   = trim($this->request->getGet('desde')      ?? '');
+        $filtroHasta   = trim($this->request->getGet('hasta')      ?? '');
+
+        $where  = "WHERE 1=1";
+        $params = [];
+
+        if ($search !== '') {
+            $where .= " AND (descripcion LIKE ? OR usuario_nombre LIKE ? OR registro_id LIKE ? OR tabla LIKE ?)";
+            $params[] = "%{$search}%";
+            $params[] = "%{$search}%";
+            $params[] = "%{$search}%";
+            $params[] = "%{$search}%";
+        }
+        if ($filtroAccion !== '') {
+            $where .= " AND accion = ?";
+            $params[] = $filtroAccion;
+        }
+        if ($filtroUsuario > 0) {
+            $where .= " AND usuario_id = ?";
+            $params[] = $filtroUsuario;
+        }
+        if ($filtroDesde !== '') {
+            $where .= " AND fecha >= ?";
+            $params[] = $filtroDesde . ' 00:00:00';
+        }
+        if ($filtroHasta !== '') {
+            $where .= " AND fecha <= ?";
+            $params[] = $filtroHasta . ' 23:59:59';
+        }
+
+        $total    = (int) $db->query("SELECT COUNT(*) AS c FROM audit_log")->getRow()->c;
+        $filtered = (int) $db->query("SELECT COUNT(*) AS c FROM audit_log {$where}", $params)->getRow()->c;
+
+        $rows = $db->query(
+            "SELECT id, fecha, usuario_nombre, rol, accion, tabla, registro_id,
+                    descripcion, datos_antes, datos_despues
+             FROM audit_log {$where}
+             ORDER BY id DESC
+             LIMIT ? OFFSET ?",
+            array_merge($params, [$length, $start])
+        )->getResultArray();
+
+        $rolMap = [0=>'Sistema',1=>'Admin',2=>'Caja',3=>'Mostrador',4=>'G.Ventas'];
+        $accionColor = [
+            'LOGIN_OK'=>'success','LOGIN_FAIL'=>'danger','LOGOUT'=>'secondary',
+            'VENTA_CREADA'=>'primary','VENTA_CERRADA'=>'success','VENTA_CANCELADA'=>'danger',
+            'VENTA_REACTIVADA'=>'warning','VENTA_DUPLICADA'=>'info','VENTA_ELIMINADA'=>'dark',
+            'VENTA_LIQUIDADA'=>'success','VENTA_VERIFICADA'=>'success',
+            'PAGO_REGISTRADO'=>'primary','PAGO_CANCELADO'=>'danger','ANTICIPO_CREADO'=>'info',
+            'PRODUCTO_AGREGADO'=>'primary','PRODUCTO_QUITADO'=>'warning',
+            'CLIENTE_CREADO'=>'primary','CLIENTE_EDITADO'=>'info',
+            'CLIENTE_ELIMINADO'=>'danger','CLIENTE_RESTAURADO'=>'success',
+            'USUARIO_CREADO'=>'primary','USUARIO_EDITADO'=>'info',
+            'USUARIO_ELIMINADO'=>'danger','USUARIO_RESTAURADO'=>'success',
+            'USUARIO_LIBERADO'=>'warning','PASSWORD_CAMBIADO'=>'warning',
+            'MENSAJE_GUARDADO'=>'secondary','MENSAJE_ELIMINADO'=>'danger',
+            'PRODUCTO_CREADO'=>'primary','PRODUCTO_ACTUALIZADO'=>'info',
+            'PRODUCTO_ELIMINADO'=>'danger','STOCK_IMPORTADO'=>'success',
+            'PRECIOS_IMPORTADOS'=>'success','PRODUCTOS_IMPORTADOS'=>'success',
+        ];
+
+        $data = [];
+        foreach ($rows as $r) {
+            $color = $accionColor[$r['accion']] ?? 'secondary';
+            $rol   = $rolMap[(int)$r['rol']] ?? 'N/A';
+
+            // Tabla legible para el admin
+            $tablaMap = [
+                'notas_1'        => 'Folio',
+                'notas_2'        => 'Productos · Folio',
+                'montosnotas'    => 'Pago · Nota',
+                'clientes'       => 'Cliente',
+                'usuarios'       => 'Usuario',
+                'productosyazbek'=> 'Producto',
+                'mensajes'       => 'Mensaje',
+                'mensajesadmin'  => 'Mensaje',
+            ];
+            $tablaLegible = $tablaMap[$r['tabla']] ?? ucfirst($r['tabla']);
+            $refDisplay   = $tablaLegible . ($r['registro_id'] ? ' <strong>#' . htmlspecialchars($r['registro_id']) . '</strong>' : '');
+
+            $data[] = [
+                $r['id'],
+                $r['fecha'],
+                htmlspecialchars($r['usuario_nombre']) . ' <small class="text-muted">(' . $rol . ')</small>',
+                '<span class="badge badge-' . $color . '">' . $r['accion'] . '</span>',
+                $refDisplay,
+                htmlspecialchars($r['descripcion']),
+            ];
+        }
+
+        return $this->response->setJSON([
+            'draw'            => $draw,
+            'recordsTotal'    => $total,
+            'recordsFiltered' => $filtered,
+            'data'            => $data,
+        ]);
+    }
+
+    // ──────────────────────────────────────────────────────────────
+    // GET /admin/ticket-config  —  Configuración de textos del ticket
+    // ──────────────────────────────────────────────────────────────
+    public function ticketConfig(): string
+    {
+        $db     = \Config\Database::connect();
+        $rows   = $db->query("SELECT clave, valor FROM ticket_config")->getResultArray();
+        $config = array_column($rows, 'valor', 'clave');
+
+        return view('admin/ticket_config', [
+            'usuario' => $this->getUsuarioSesion(),
+            'config'  => $config,
+        ]);
+    }
+
+    // POST /admin/ticket-config/guardar  —  Guarda los textos del ticket
+    public function ticketConfigGuardar(): \CodeIgniter\HTTP\RedirectResponse
+    {
+        $db     = \Config\Database::connect();
+        $claves = [
+            'empresa_razon_social', 'empresa_sucursal', 'empresa_ciudad',
+            'empresa_telefono',     'empresa_email_web', 'empresa_rfc',
+            'empresa_regimen',
+            'msg_fiscal', 'msg_cambios', 'msg_quejas', 'msg_privacidad',
+        ];
+
+        foreach ($claves as $clave) {
+            $valor = trim($this->request->getPost($clave) ?? '');
+            $db->query(
+                "INSERT INTO ticket_config (clave, valor, etiqueta)
+                 VALUES (?, ?, '')
+                 ON DUPLICATE KEY UPDATE valor = ?",
+                [$clave, $valor, $valor]
+            );
+        }
+
+        AuditService::log(AuditService::MENSAJE_GUARDADO, 'ticket_config', null,
+            "Configuración del ticket actualizada");
+
+        return redirect()->to('/admin/ticket-config')
+                         ->with('success', 'Configuración guardada correctamente.');
+    }
+
+    // ──────────────────────────────────────────────────────────────
+    // Helper: carga config del ticket desde BD (con fallbacks)
+    // ──────────────────────────────────────────────────────────────
+    private function getTicketConfig(): array
+    {
+        try {
+            $db   = \Config\Database::connect();
+            $rows = $db->query("SELECT clave, valor FROM ticket_config")->getResultArray();
+            return array_column($rows, 'valor', 'clave');
+        } catch (\Throwable $e) {
+            return [];
+        }
+    }
+
+    // ──────────────────────────────
     // Helper: datos del usuario logueado desde la sesión
-    // ──────────────────────────────────────────────────────────────
+    // ──────────────────────────────
     private function getUsuarioSesion(): array
     {
         $session = session();

@@ -44,13 +44,13 @@
         <!-- Datos empresa -->
         <tr>
             <td colspan="4" class="center empresa">
-                PROMOSHAPE S. DE R.L. DE C.V.<br>
-                Sucursal 27 Poniente 904. Col. Chulavista<br>
-                Puebla, Pue. C.P. 72420<br>
-                Tel/Fax: (222) 1 30 29 29 / 2 96 65 30<br>
-                yazbekpuebla@hotmail.com | www.yazbekpuebla.com<br>
-                RFC PRO060620G97<br>
-                Régimen General de Personas Morales
+                <?= esc($config['empresa_razon_social'] ?? 'PROMOSHAPE S. DE R.L. DE C.V.') ?><br>
+                <?= esc($config['empresa_sucursal']     ?? 'Sucursal 27 Poniente 904. Col. Chulavista') ?><br>
+                <?= esc($config['empresa_ciudad']       ?? 'Puebla, Pue. C.P. 72420') ?><br>
+                <?= esc($config['empresa_telefono']     ?? 'Tel/Fax: (222) 1 30 29 29 / 2 96 65 30') ?><br>
+                <?= esc($config['empresa_email_web']    ?? 'yazbekpuebla@hotmail.com | www.yazbekpuebla.com') ?><br>
+                <?= esc($config['empresa_rfc']          ?? 'RFC PRO060620G97') ?><br>
+                <?= esc($config['empresa_regimen']      ?? 'Régimen General de Personas Morales') ?>
             </td>
         </tr>
 
@@ -261,18 +261,18 @@
         <!-- Avisos legales -->
         <tr class="sep">
             <td colspan="4" style="font-size:11px;">
-                Este ticket NO es comprobante Fiscal. Si requiere FACTURA favor de solicitarla el mismo día de su compra.
+                <?= esc($config['msg_fiscal'] ?? 'Este ticket NO es comprobante Fiscal. Si requiere FACTURA favor de solicitarla el mismo día de su compra.') ?>
             </td>
         </tr>
         <tr class="sep">
             <td colspan="4" style="font-size:11px;">
-                ESTIMADO CLIENTE NO SE REALIZAN CAMBIOS NI DEVOLUCIONES.<br>
-                QUEJAS: sugerencias@yazbekpuebla.com
+                <?= esc($config['msg_cambios'] ?? 'ESTIMADO CLIENTE NO SE REALIZAN CAMBIOS NI DEVOLUCIONES.') ?><br>
+                <?= esc($config['msg_quejas']  ?? 'QUEJAS: sugerencias@yazbekpuebla.com') ?>
             </td>
         </tr>
         <tr class="sep">
             <td colspan="4" style="font-size:11px;">
-                Lo invitamos a checar nuestro aviso de privacidad en nuestra página www.nissipromo.com.mx
+                <?= esc($config['msg_privacidad'] ?? 'Lo invitamos a checar nuestro aviso de privacidad en nuestra página www.nissipromo.com.mx') ?>
             </td>
         </tr>
         <tr><td colspan="4"><p>&nbsp;</p></td></tr>

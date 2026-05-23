@@ -61,9 +61,9 @@
 
 <?php
     $totalNotas    = count($notas);
-    // Solo sumar notas pagadas (5) o con anticipo (4) — excluir canceladas y abiertas
+    // Sumar notas pagadas (5), anticipo (4) y liquidadas (6)
     $totalVentas   = array_sum(array_column(
-        array_filter($notas, fn($n) => in_array((int)($n['idstatus'] ?? 0), [4, 5])),
+        array_filter($notas, fn($n) => in_array((int)($n['idstatus'] ?? 0), [4, 5, 6])),
         'total'
     ));
     $notasPagadas    = count(array_filter($notas, fn($n) => ($n['idstatus'] ?? 0) == 5));
@@ -126,59 +126,37 @@
                                 <th>Folio</th>
                                 <th>Fecha/Hora</th>
                                 <th>Cliente</th>
-                                <th class="text-right">Subtotal</th>
                                 <th class="text-right">Total</th>
                                 <th>Estatus</th>
-                                <th>Acciones</th>
                             </tr>
                         </thead>
                         <tbody>
                             <?php foreach ($notas as $n):
                                 $status = (int)($n['idstatus'] ?? 0);
-                                $badges = [
-                                    1 => ['Abierta',    'warning'],
-                                    2 => ['En proceso', 'info'],
-                                    3 => ['Cancelada',  'danger'],
-                                    4 => ['Anticipo',   'secondary'],
-                                    5 => ['Pagada',     'success'],
-                                ];
-                                $badge = isset($badges[$status]) ? $badges[$status] : ['—', 'light'];
-                                $label = $badge[0];
-                                $color = $badge[1];
                                 $folio = (int)$n['folio'];
+                                $statusBadges = [
+                                    1 => '<span class="badge badge-primary">Abierta</span>',
+                                    2 => '<span class="badge badge-info">En proceso</span>',
+                                    3 => '<span class="badge badge-danger">Cancelada</span>',
+                                    4 => '<span class="badge badge-warning">Anticipo</span>',
+                                    5 => '<span class="badge badge-success">Pagada</span>',
+                                    6 => '<span class="badge" style="background-color:#0d6e6e;color:#fff;">Liquidado</span>',
+                                ];
+                                $badgeHtml = $statusBadges[$status] ?? '<span class="badge badge-secondary">—</span>';
                             ?>
                             <tr>
                                 <td><strong><?= $folio ?></strong></td>
                                 <td><?= esc($n['fecha_inicial']) ?></td>
                                 <td><?= esc($n['nombreCliente'] ?? '—') ?></td>
-                                <td class="text-right">$<?= number_format($n['subTotal'] ?? 0, 2) ?></td>
                                 <td class="text-right font-weight-bold">$<?= number_format($n['total'] ?? 0, 2) ?></td>
-                                <td><span class="badge badge-<?= $color ?>"><?= $label ?></span></td>
-                                <td>
-                                    <?php if ($status !== 3): ?>
-                                    <a href="#" class="btn btn-xs btn-outline-primary mr-1"
-                                       onclick="adminVerFolioVenta(<?= $folio ?>); return false;">
-                                        <i class="simple-icon-eye"></i> Ver
-                                    </a>
-                                    <?php endif; ?>
-                                    <?php if ($status !== 5 && $status !== 3): ?>
-                                    <a href="#" class="btn btn-xs btn-outline-danger"
-                                       onclick="adminCancelarFolioVenta(<?= $folio ?>); return false;">
-                                        Cancelar
-                                    </a>
-                                    <?php endif; ?>
-                                </td>
+                                <td><?= $badgeHtml ?></td>
                             </tr>
                             <?php endforeach; ?>
                         </tbody>
                         <tfoot>
                             <tr class="font-weight-bold bg-light">
-                                <td class="text-right">Total:</td>
-                                <td></td>
-                                <td></td>
-                                <td></td>
+                                <td colspan="3" class="text-right">Total notas cobradas:</td>
                                 <td class="text-right text-success">$<?= number_format($totalVentas, 2) ?></td>
-                                <td></td>
                                 <td></td>
                             </tr>
                         </tfoot>
@@ -189,70 +167,4 @@
     </div>
 </div>
 
-<!-- Modal Ver Folio -->
-<div class="modal fade" id="modalVerFolioVenta" tabindex="-1" role="dialog">
-    <div class="modal-dialog modal-lg" role="document">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">Detalle del Folio</h5>
-                <button type="button" class="close" data-dismiss="modal"><span>&times;</span></button>
-            </div>
-            <div class="modal-body" id="modalVerFolioVentaBody">
-                <p class="text-center"><i>Cargando...</i></p>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-dismiss="modal">Cerrar</button>
-            </div>
-        </div>
-    </div>
-</div>
-
-<?= $this->endSection() ?>
-
-<?= $this->section('page_scripts') ?>
-<script>
-
-function postFetchVenta(url, folio, onSuccess, onError) {
-    var fd = new FormData();
-    fd.append('<?= csrf_token() ?>', '<?= csrf_hash() ?>');
-    fd.append('folio', folio);
-    fetch(url, { method: 'POST', body: fd, credentials: 'same-origin' })
-        .then(function(r) { return r.text(); })
-        .then(onSuccess)
-        .catch(onError);
-}
-
-function adminVerFolioVenta(folio) {
-    document.getElementById('modalVerFolioVentaBody').innerHTML = '<p class="text-center"><i>Cargando...</i></p>';
-    $('#modalVerFolioVenta').modal('show');
-    postFetchVenta(
-        '<?= base_url('admin/caja/ajax') ?>',
-        folio,
-        function(html) {
-            document.getElementById('modalVerFolioVentaBody').innerHTML = html;
-        },
-        function() {
-            document.getElementById('modalVerFolioVentaBody').innerHTML = '<p class="text-danger">Error al cargar el folio.</p>';
-        }
-    );
-}
-
-function adminCancelarFolioVenta(folio) {
-    if (!confirm('¿Cancelar el folio ' + folio + '?')) return;
-    postFetchVenta(
-        '<?= base_url('admin/caja/cancelar') ?>',
-        folio,
-        function(resp) {
-            if (resp.trim() === '1') {
-                window.location.reload();
-            } else {
-                alert('No se pudo cancelar el folio ' + folio + '.');
-            }
-        },
-        function() {
-            alert('Error de comunicación al cancelar.');
-        }
-    );
-}
-</script>
 <?= $this->endSection() ?>

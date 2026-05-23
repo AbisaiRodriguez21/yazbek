@@ -3,6 +3,7 @@
 namespace App\Controllers;
 
 use App\Models\UsuarioModel;
+use App\Libraries\AuditService;
 
 /**
  * AuthController
@@ -71,6 +72,9 @@ class AuthController extends BaseController
         $usuario = $this->usuarioModel->verificarLogin($mail, $pass);
 
         if (! $usuario) {
+            // Log intento fallido (sin datos de sesión todavía, se loguea con usuario_id=0)
+            AuditService::log(AuditService::LOGIN_FAIL, 'usuarios', null,
+                "Intento de login fallido para: {$mail}");
             return redirect()->to('/login')
                              ->with('error', 'Correo o contraseña incorrectos.');
         }
@@ -86,6 +90,9 @@ class AuthController extends BaseController
             'logged_in'   => true,
         ]);
 
+        AuditService::log(AuditService::LOGIN_OK, 'usuarios', $usuario['Id'],
+            "Login exitoso: {$usuario['nombre']}");
+
         // Redirigir según nivel de acceso
         return redirect()->to($this->dashboardPorRol((int) $usuario['acceso']));
     }
@@ -96,6 +103,11 @@ class AuthController extends BaseController
     // ──────────────────────────────────────────────────────────────
     public function logout(): \CodeIgniter\HTTP\RedirectResponse
     {
+        // Registrar antes de destruir la sesión (ya no tendríamos datos)
+        AuditService::log(AuditService::LOGOUT, 'usuarios',
+            session()->get('user_id'),
+            'Cierre de sesión: ' . (session()->get('user_nombre') ?? 'desconocido'));
+
         // Destruir la sesión completamente y regenerar un ID limpio
         session()->destroy();
 

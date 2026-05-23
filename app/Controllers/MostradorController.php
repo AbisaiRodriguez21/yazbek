@@ -7,6 +7,7 @@ use App\Models\MensajeAdminModel;
 use App\Models\NotaDetalleModel;
 use App\Models\NotaModel;
 use App\Models\ProductoModel;
+use App\Libraries\AuditService;
 use App\Models\UsuarioModel;
 
 /**
@@ -122,6 +123,9 @@ class MostradorController extends BaseController
 
         // Marcar al vendedor como con ticket abierto
         $this->usuarioModel->activarBandera($idVendedor);
+
+        AuditService::log(AuditService::VENTA_CREADA, 'notas_1', $folio,
+            "Nota creada: folio #{$folio}, cliente ID {$idCliente}, vendedor: {$vendedor}");
 
         return redirect()->to("/mostrador/venta/{$folio}/productos");
     }
@@ -365,6 +369,9 @@ class MostradorController extends BaseController
         // ── Liberar bandera del vendedor ──
         $this->usuarioModel->liberarBandera((int) session()->get('user_id'));
 
+        AuditService::log(AuditService::VENTA_CERRADA, 'notas_1', $folioN1,
+            "Nota cerrada: folio #{$folioN1}, status {$idEstatus}, total $" . number_format($total, 2));
+
         return $this->response
                     ->setContentType('application/json')
                     ->setBody(json_encode(['success' => true]));
@@ -489,6 +496,9 @@ class MostradorController extends BaseController
             log_message('warning', 'stock_eventos INSERT skipped: ' . $e->getMessage());
         }
 
+        AuditService::log(AuditService::PRODUCTO_AGREGADO, 'notas_2', $folio,
+            "Producto agregado a folio #{$folio}: SKU {$sku}, cantidad {$cantidad}");
+
         $esMayoreoForzado = session()->get("nota_{$folio}_tipo") === 'mayoreo';
         $carrito = $this->getCarritoData($folio, $db, $esMayoreoForzado);
 
@@ -538,6 +548,10 @@ class MostradorController extends BaseController
 
         // Eliminar línea
         $db->query("DELETE FROM notas_2 WHERE Id_Notas_2 = ?", [$idN2]);
+        if ($linea) {
+            AuditService::log(AuditService::PRODUCTO_QUITADO, 'notas_2', $folio,
+                "Producto quitado de folio #{$folio}: SKU " . ($skuBroadcast ?? $estilo) . ", cantidad " . ($linea['cantidad'] ?? 0));
+        }
 
         // ── Broadcast SSE: stock restaurado, avisar a todas las pantallas ──
         if ($skuBroadcast) {
@@ -602,6 +616,8 @@ class MostradorController extends BaseController
             "INSERT INTO montosnotas (idNotas, idTipoPago, monto, cargos, anticipo, fecha) VALUES (?, ?, ?, ?, ?, ?)",
             [$idNotas, $tipoPago, $monto, $cargos, $anticipo, date('Y-m-d H:i:s')]
         );
+        AuditService::log(AuditService::PAGO_REGISTRADO, 'montosnotas', $idNotas,
+            "Pago registrado en nota ID {$idNotas}: monto $" . number_format($monto, 2) . ", tipoPago {$tipoPago}, anticipo {$anticipo}");
 
         return $this->response->setBody('OK');
     }
@@ -613,6 +629,8 @@ class MostradorController extends BaseController
     {
         $idMonto = (int) $this->request->getPost('idMonto');
         \Config\Database::connect()->query("DELETE FROM montosnotas WHERE id = ?", [$idMonto]);
+        AuditService::log(AuditService::PAGO_CANCELADO, 'montosnotas', $idMonto,
+            "Pago cancelado: montosnotas ID {$idMonto}");
         return $this->response->setBody('OK');
     }
 
@@ -626,6 +644,8 @@ class MostradorController extends BaseController
 
         if ($nota) {
             $this->notaModel->marcarPagada($nota['Id_Notas_1']);
+            AuditService::log(AuditService::VENTA_VERIFICADA, 'notas_1', $folio,
+                "Nota verificada/pagada: folio #{$folio}");
         }
 
         return $this->response->setBody('OK');
@@ -678,6 +698,9 @@ class MostradorController extends BaseController
             $this->notaDetalleModel->insert($linea);
         }
 
+        AuditService::log(AuditService::VENTA_DUPLICADA, 'notas_1', $nuevoFolio,
+            "Nota duplicada: original #{$folio} -> nuevo folio #{$nuevoFolio}");
+
         return redirect()->to("/mostrador/venta/{$nuevoFolio}/productos")
                          ->with('success', "Nota duplicada. Nuevo folio: {$nuevoFolio}");
     }
@@ -722,6 +745,9 @@ class MostradorController extends BaseController
             [$folio]
         );
         $this->usuarioModel->liberarBandera((int) session()->get('user_id'));
+
+        AuditService::log(AuditService::VENTA_CANCELADA, 'notas_1', $folio,
+            "Nota cancelada: folio #{$folio}");
 
         return redirect()->to('/mostrador')->with('success', "Nota #{$folio} cancelada.");
     }
@@ -910,6 +936,9 @@ class MostradorController extends BaseController
             'comoNosConoce' => $this->request->getPost('comoNosConoce'),
             'fechaIngreso'  => date('Y-m-d'),
         ]);
+        $nombreCliente = strtoupper(trim($this->request->getPost('nombre') ?? ''));
+        AuditService::log(AuditService::CLIENTE_CREADO, 'clientes', null,
+            "Cliente creado: {$nombreCliente}");
 
         return redirect()->to('/mostrador/clientes')->with('success', 'Cliente registrado correctamente.');
     }
@@ -931,6 +960,8 @@ class MostradorController extends BaseController
             'razonSocial'   => strtoupper(trim($this->request->getPost('razonSocial') ?? '')),
             'comoNosConoce' => $this->request->getPost('comoNosConoce'),
         ]);
+        AuditService::log(AuditService::CLIENTE_EDITADO, 'clientes', $id,
+            "Cliente actualizado: ID {$id}");
 
         return redirect()->to('/mostrador/clientes')->with('success', 'Cliente actualizado.');
     }
@@ -941,6 +972,8 @@ class MostradorController extends BaseController
         $id = (int) $this->request->getPost('clienteDelete');
         if ($id) {
             $this->clienteModel->softDelete($id);
+            AuditService::log(AuditService::CLIENTE_ELIMINADO, 'clientes', $id,
+                "Cliente eliminado: ID {$id}");
         }
         return redirect()->to('/mostrador/clientes')->with('success', 'Cliente eliminado.');
     }
@@ -1025,12 +1058,16 @@ class MostradorController extends BaseController
         $cargo    = $monto * $cargoPct / 100;
 
         $folioHijo = $this->notaModel->crearFolioPagoAnticipo($foliopadre, $idCliente, $idVendedor, $monto, $idTipoPago, $cargo);
+        AuditService::log(AuditService::ANTICIPO_CREADO, 'notas_1', $folioHijo,
+            "Anticipo registrado: folio hijo #{$folioHijo} -> padre #{$foliopadre}, monto $" . number_format($monto, 2));
 
         // Verificar si ya está liquidado (total pagado >= total nota)
         $totalPagado = $this->notaModel->getTotalPagadoAnticipo($foliopadre);
         $totalNota   = (float)($padre['total'] ?? 0);
         if ($totalPagado >= $totalNota - 0.99) {
             $this->notaModel->liquidarAnticipo($foliopadre);
+            AuditService::log(AuditService::VENTA_LIQUIDADA, 'notas_1', $foliopadre,
+                "Folio #{$foliopadre} liquidado automaticamente al completar pagos");
         }
 
         return $this->response->setJSON([
@@ -1116,6 +1153,9 @@ class MostradorController extends BaseController
 
         // Marcar esta nota como MAYOREO en sesión (precio mayoreo siempre)
         session()->set("nota_{$folio}_tipo", 'mayoreo');
+
+        AuditService::log(AuditService::VENTA_CREADA, 'notas_1', $folio,
+            "Nota mayoreo creada: folio #{$folio}, cliente ID {$idCliente}, vendedor: {$vendedor}");
 
         return redirect()->to("/mostrador/venta/{$folio}/productos");
     }
@@ -1312,7 +1352,8 @@ class MostradorController extends BaseController
             $pagos = $db->query(
                 "SELECT m.idTipoPago, t.descripcion AS tipopago,
                         m.monto, m.cargos AS cargo, m.anticipo,
-                        n2.folio AS folio_pago
+                        n2.folio AS folio_pago,
+                        n2.status AS folio_status
                  FROM notas_1 n2
                  INNER JOIN montosnotas m ON m.idNotas = n2.Id_Notas_1
                  INNER JOIN tipopago t ON t.id = m.idTipoPago
@@ -1427,9 +1468,15 @@ class MostradorController extends BaseController
         $hayFoliosHijos = !empty(array_filter($pagos, fn($p) => (int)($p['folio_pago'] ?? 0) !== $folio));
 
         foreach ($pagos as $p) {
-            $html .= '<tr><td colspan="4" class="text-right no-border">';
+            $esCancelado = (int)($p['folio_status'] ?? 0) === 3;
+            $rowStyle    = $esCancelado ? 'opacity:.45;text-decoration:line-through;' : '';
+            $html .= '<tr style="' . $rowStyle . '"><td colspan="4" class="text-right no-border">';
             if ($hayFoliosHijos && (int)($p['folio_pago'] ?? 0) !== $folio) {
-                $html .= '<strong>Folio #' . $p['folio_pago'] . '</strong> — ';
+                $html .= '<strong>Folio #' . $p['folio_pago'] . '</strong>';
+                if ($esCancelado) {
+                    $html .= ' <span style="background:#dc3545;color:#fff;font-size:.7em;padding:1px 6px;border-radius:4px;text-decoration:none;vertical-align:middle;">CANCELADO</span>';
+                }
+                $html .= ' — ';
             }
             $html .= '<strong>Forma de Pago:</strong> ' . esc($p['tipopago']);
             $html .= ' <strong>Monto: </strong>$&nbsp;' . number_format($p['monto'] ?? 0, 2);
@@ -1440,9 +1487,10 @@ class MostradorController extends BaseController
             $html .= '</td></tr>';
         }
 
-        // Estatus en pie de modal (usa mapa, no valor de BD)
-        $sumPagado   = array_sum(array_column($pagos, 'monto'));
-        $hayAnticipo = !empty(array_filter($pagos, fn($p) => ($p['anticipo'] ?? 0) == 1));
+        // Estatus en pie de modal — ignora pagos de folios hijos cancelados
+        $pagosActivos = array_filter($pagos, fn($p) => (int)($p['folio_status'] ?? 0) !== 3);
+        $sumPagado    = array_sum(array_column($pagosActivos, 'monto'));
+        $hayAnticipo  = !empty(array_filter($pagosActivos, fn($p) => ($p['anticipo'] ?? 0) == 1));
         if ($esLiquidado) {
             $displayStatus = 'Liquidado';
         } elseif ($hayAnticipo && $sumPagado < ($nota['total'] ?? 0)) {
@@ -1525,10 +1573,12 @@ class MostradorController extends BaseController
                 "UPDATE notas_1 SET status = 3 WHERE folio = ? OR (referencia = ? AND status != 3)",
                 [$folio, $folio]
             );
+            AuditService::log(AuditService::VENTA_CANCELADA, 'notas_1', $folio,
+                "Nota cancelada: folio #{$folio}");
 
             return $this->response->setContentType('application/json')->setJSON(['ok' => true]);
 
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             log_message('error', 'folioAjaxCancelar folio=' . $folio . ': ' . $e->getMessage());
             return $this->response->setContentType('application/json')->setJSON(['ok' => false, 'error' => $e->getMessage()]);
         }

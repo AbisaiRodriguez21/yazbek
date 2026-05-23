@@ -223,11 +223,16 @@
         <!-- Mensaje de confirmación para edición inline -->
         <div id="status-inline" class="alert alert-success rounded" style="display:none"></div>
 
-        <div class="separator mb-5"></div>
+        <div class="separator mb-4"></div>
 
-        <!-- Tabla de inventario — igual al original -->
-        <div class="row">
-            <div class="col-12 mb-4">
+        <!-- Tabla de inventario —— audit-card -->
+        <div class="audit-card">
+            <div class="audit-card-header">
+                <i class="iconsminds-digital-drawing"></i>
+                <span>Inventario de Productos</span>
+                <span class="badge-count" id="totalProductos">&mdash;</span>
+            </div>
+            <div style="padding: 16px 20px 20px;">
                 <table id="datatableProductos" class="table responsive nowrap w-100">
                     <thead>
                         <tr>
@@ -258,8 +263,8 @@
                         <?php endforeach; ?>
                     </tbody>
                 </table>
-            </div>
-        </div>
+            </div><!-- /padding -->
+        </div><!-- /audit-card -->
 
     </div>
 </div>

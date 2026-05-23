@@ -23,6 +23,33 @@
     <link rel="stylesheet" href="<?= base_url('assets/vendor/nouislider.min.css') ?>">
 
     <style>
+    /* ── Card con encabezado degradado (reutilizable en varias vistas) ── */
+    .audit-card {
+        background: #fff;
+        border-radius: 10px;
+        box-shadow: 0 2px 10px rgba(0,0,0,.07);
+        overflow: hidden;
+        margin-bottom: 24px;
+    }
+    .audit-card-header {
+        background: linear-gradient(135deg, #145388 0%, #1a6bb5 100%);
+        color: #fff;
+        padding: 14px 20px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+    .audit-card-header i { font-size: 1.1rem; opacity: .85; }
+    .audit-card-header span { font-size: .92rem; font-weight: 600; letter-spacing: .02em; }
+    .audit-card-header .badge-count {
+        margin-left: auto;
+        background: rgba(255,255,255,.2);
+        color: #fff;
+        font-size: .72rem;
+        padding: 3px 10px;
+        border-radius: 20px;
+        font-weight: 600;
+    }
     /* ── Padding interno en tablas (aplica después del tema y DataTables) ── */
     .table > thead > tr > th,
     .table > tbody > tr > td,
@@ -142,7 +169,7 @@
         if ($seg2 === 'inventario') $menuActivo = 'productos';
         elseif (in_array($seg2, ['caja', 'reportediario'])) $menuActivo = 'contabilidad';
         elseif (($seg1 === 'admin' && in_array($seg2, ['venta','consulta'])) || ($seg1 === 'mostrador' && in_array($seg2, ['venta','mayoreo','consulta'])) || $seg1 === 'reportes') $menuActivo = 'ventas';
-        elseif (in_array($seg2, ['usuarios', 'mensajes', 'importar', 'exportar', 'clientes']) || ($seg1 === 'mostrador' && $seg2 === 'clientes')) $menuActivo = 'admon';
+        elseif (in_array($seg2, ['usuarios', 'mensajes', 'importar', 'exportar', 'clientes', 'auditoria', 'ticket-config']) || ($seg1 === 'mostrador' && $seg2 === 'clientes')) $menuActivo = 'admon';
 
         // Ítem activo del sub-menu
         $subActivo = '';
@@ -161,6 +188,8 @@
         elseif ($seg2 === 'clientes' && $seg3 === 'eliminados') $subActivo = 'clientes-eliminados';
         elseif ($seg2 === 'clientes' || ($seg1 === 'mostrador' && $seg2 === 'clientes')) $subActivo = 'clientes';
         elseif ($seg2 === 'importar') $subActivo = 'importar';
+        elseif ($seg2 === 'auditoria') $subActivo = 'auditoria';
+        elseif ($seg2 === 'ticket-config') $subActivo = 'ticket-config';
     ?>
     <div class="menu">
         <div class="main-menu">
@@ -282,6 +311,18 @@
                         <a href="<?= base_url('admin/clientes/eliminados') ?>">
                             <i class="simple-icon-trash"></i>
                             <span class="d-inline-block">Clientes Eliminados</span>
+                        </a>
+                    </li>
+                    <li class="<?= $subActivo === 'auditoria' ? 'active' : '' ?>" data-submenu="auditoria">
+                        <a href="<?= base_url('admin/auditoria') ?>">
+                            <i class="simple-icon-eye"></i>
+                            <span class="d-inline-block">Auditoría</span>
+                        </a>
+                    </li>
+                    <li class="<?= $subActivo === 'ticket-config' ? 'active' : '' ?>" data-submenu="ticket-config">
+                        <a href="<?= base_url('admin/ticket-config') ?>">
+                            <i class="simple-icon-printer"></i>
+                            <span class="d-inline-block">Config. Ticket</span>
                         </a>
                     </li>
                 </ul>
@@ -446,7 +487,7 @@
                             '/admin/consulta', 'admin/caja', 'admin/venta',
                             'admin/clientes', 'mostrador/clientes', 'caja/clientes',
                             'admin/inventario', 'admin/clientes/eliminados',
-                            'admin/dashboard'];
+                            'admin/dashboard', 'admin/auditoria', 'admin/ticket-config'];
 
         function shouldSkip(url) {
             if (!url || url.charAt(0) === '#') return true;
@@ -473,7 +514,7 @@
             if (seg2 === 'inventario') menu = 'productos';
             else if (seg2 === 'caja' || seg2 === 'reportediario') menu = 'contabilidad';
             else if ((seg1 === 'admin' && ['venta','consulta'].indexOf(seg2) !== -1) || (seg1 === 'mostrador' && ['venta','mayoreo','consulta'].indexOf(seg2) !== -1) || seg1 === 'reportes') menu = 'ventas';
-            else if (['usuarios','mensajes','importar','exportar','clientes'].indexOf(seg2) !== -1 || (seg1 === 'mostrador' && seg2 === 'clientes')) menu = 'admon';
+            else if (['usuarios','mensajes','importar','exportar','clientes','auditoria','ticket-config'].indexOf(seg2) !== -1 || (seg1 === 'mostrador' && seg2 === 'clientes')) menu = 'admon';
 
             // subActivo
             var sub = '';
@@ -489,6 +530,8 @@
             else if (seg2 === 'usuarios') sub = 'usuarios';
             else if (seg2 === 'clientes' || (seg1 === 'mostrador' && seg2 === 'clientes')) sub = 'clientes';
             else if (seg2 === 'importar') sub = 'importar';
+            else if (seg2 === 'auditoria') sub = 'auditoria';
+            else if (seg2 === 'ticket-config') sub = 'ticket-config';
 
             // Actualizar main-menu active
             document.querySelectorAll('.main-menu li[data-menu]').forEach(function(li) {

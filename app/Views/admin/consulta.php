@@ -27,9 +27,15 @@
 </div>
 <?php endif; ?>
 
-<div class="separator mb-5"></div>
-<div class="row">
-    <div class="col-12 mb-4">
+<div class="separator mb-4"></div>
+
+<div class="audit-card">
+    <div class="audit-card-header">
+        <i class="simple-icon-list"></i>
+        <span>Registro de Folios</span>
+        <span class="badge-count" id="totalFoliosConsulta">&mdash;</span>
+    </div>
+    <div style="padding: 16px 20px 20px;">
         <table class="table responsive nowrap" id="tablaAdminConsulta" style="width:100%">
             <thead>
                 <tr>
@@ -163,6 +169,10 @@ $(document).ready(function() {
         ],
         order: [[0, 'desc']],
         pageLength: 10,
+        drawCallback: function(settings) {
+            var total = settings.fnRecordsTotal();
+            $('#totalFoliosConsulta').text(total.toLocaleString() + ' folios');
+        },
         language: {
             url: '<?= base_url('assets/js/vendor/datatables.spanish.json') ?>'
         }

@@ -27,9 +27,15 @@
 </div>
 <?php endif; ?>
 
-<div class="separator mb-5"></div>
-<div class="row">
-    <div class="col-12 mb-4">
+<div class="separator mb-4"></div>
+
+<div class="audit-card">
+    <div class="audit-card-header">
+        <i class="simple-icon-list"></i>
+        <span>Registro de Folios</span>
+        <span class="badge-count" id="totalFoliosCaja">—</span>
+    </div>
+    <div style="padding: 16px 20px 20px;">
         <table class="table responsive nowrap" id="tablaCajaConsulta" style="width:100%">
             <thead>
                 <tr>
@@ -45,6 +51,24 @@
             </thead>
             <tbody></tbody>
         </table>
+    </div>
+</div>
+
+<!-- Modal Ver Folio -->
+<div class="modal fade" id="modalVerFolioCaja" tabindex="-1" role="dialog">
+    <div class="modal-dialog modal-lg" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Detalle del Folio</h5>
+                <button type="button" class="close" data-dismiss="modal"><span>&times;</span></button>
+            </div>
+            <div class="modal-body" id="modalVerFolioCajaBody">
+                <p class="text-center text-muted"><i>Cargando...</i></p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Cerrar</button>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -120,7 +144,7 @@ var URL_CANCELAR = '<?= base_url('caja/cancelar/') ?>';
                 /* Botones como <button> para evitar que el SPA los intercepte */
                 if (idstatus !== 5 && idstatus !== 3) {
                     btns += '<button class="btn btn-xs btn-outline-primary mr-1"'
-                          + ' onclick="window.location.href=\'' + URL_VER + row.folio + '\'">Ver</button>';
+                          + ' onclick="cajaVerFolioModal(' + row.folio + ')">Ver</button>';
                 }
                 if (idstatus === 2) {
                     btns += '<button class="btn btn-xs btn-outline-success mr-1"'
@@ -136,6 +160,8 @@ var URL_CANCELAR = '<?= base_url('caja/cancelar/') ?>';
                           + ' onclick="cajaRevivirFolio(' + row.folio + ')">Revivir</button>';
                 }
                 if (idstatus === 5) {
+                    btns += '<button class="btn btn-xs btn-outline-primary mr-1"'
+                          + ' onclick="cajaVerFolioModal(' + row.folio + ')">Ver</button>';
                     btns += '<button class="btn btn-xs btn-outline-dark mr-1"'
                           + ' onclick="cajaVerTicket(' + row.folio + ')">Ver Ticket</button>';
                 }
@@ -145,6 +171,10 @@ var URL_CANCELAR = '<?= base_url('caja/cancelar/') ?>';
         ],
         order: [[0, 'desc']],
         pageLength: 10,
+        drawCallback: function(settings) {
+            var total = settings.fnRecordsTotal();
+            $('#totalFoliosCaja').text(total.toLocaleString() + ' folios');
+        },
         language: {
             processing:   'Procesando...',
             search:       'Buscar:',
@@ -166,6 +196,38 @@ var URL_CANCELAR = '<?= base_url('caja/cancelar/') ?>';
 
 /* Cancelar: navegación completa para que la redirección del servidor funcione
    sin interferencia del SPA */
+/* Ver Folio en modal flotante — usa el mismo endpoint HTML que admin */
+function cajaVerFolioModal(folio) {
+    $('#modalVerFolioCajaBody').html('<p class="text-center text-muted py-4"><i class="simple-icon-refresh"></i> Cargando...</p>');
+    $('#modalVerFolioCaja').modal('show');
+    $.post('<?= base_url('caja/folio/detalle') ?>', {
+        folio: folio,
+        '<?= csrf_token() ?>': '<?= csrf_hash() ?>'
+    }, function(html) {
+        $('#modalVerFolioCajaBody').html(html);
+    }).fail(function() {
+        $('#modalVerFolioCajaBody').html('<div class="alert alert-danger">Error al cargar el folio.</div>');
+    });
+}
+
+/* Cancelar desde dentro del modal */
+function cajaModalCancelar() {
+    var folio = ($('#folio_input_caja_modal').val() || '').trim();
+    if (!folio) return;
+    if (!confirm('¿Cancelar el folio ' + folio + '? Esta acción restaura el inventario.')) return;
+    cajaCancelarFolio(folio);
+    $('#modalVerFolioCaja').modal('hide');
+}
+
+/* Verificar pago desde dentro del modal */
+function cajaModalVerificar() {
+    var folio = ($('#folio_input_caja_modal').val() || '').trim();
+    if (!folio) return;
+    if (!confirm('¿Marcar el folio ' + folio + ' como pagado?')) return;
+    $('#modalVerFolioCaja').modal('hide');
+    cajaVerificarPago(folio);
+}
+
 /* Ver Ticket de impresión */
 function cajaVerTicket(folio) {
     window.open('<?= base_url('caja/folio/') ?>' + folio + '/ticket', '_blank',

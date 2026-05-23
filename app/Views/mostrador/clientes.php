@@ -51,8 +51,13 @@ $rutaBase = $rutaBase ?? 'mostrador';
 
 <div class="separator mb-5"></div>
 
-<div class="row">
-    <div class="col-12 mb-4">
+<div class="audit-card">
+    <div class="audit-card-header">
+        <i class="simple-icon-people"></i>
+        <span>Listado de Clientes</span>
+        <span class="badge-count" id="totalClientes">—</span>
+    </div>
+    <div style="padding: 16px 20px 20px;">
         <table id="datatableProductos" class="table responsive nowrap" style="width:100%">
             <thead>
                 <tr>
@@ -240,6 +245,10 @@ var rutaDatatable = '<?= base_url($rutaBase . '/clientes/datatable') ?>';
             zeroRecords:  'No se encontraron resultados',
             emptyTable:   'No hay datos disponibles',
             paginate: { first: 'Primero', previous: 'Anterior', next: 'Siguiente', last: 'Último' }
+        },
+        drawCallback: function(settings) {
+            var total = settings.fnRecordsTotal();
+            $('#totalClientes').text(total.toLocaleString() + ' clientes');
         },
         columns: [
             { data: 'nombre' },

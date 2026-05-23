@@ -215,6 +215,11 @@
                 <button type="button" class="close" data-dismiss="modal"><span>&times;</span></button>
             </div>
             <div class="modal-body">
+                <!-- Indicador de restante -->
+                <div class="alert alert-info py-2 mb-3 d-flex justify-content-between align-items-center">
+                    <span class="font-weight-bold">Restante por pagar:</span>
+                    <span class="font-weight-bold" id="modalRestanteLabel" style="font-size:1.15rem;">$0.00</span>
+                </div>
                 <div class="form-group">
                     <label>Tipo de Pago</label>
                     <select id="modalTipoPago" class="form-control">
@@ -279,11 +284,20 @@ function getSinPagarId() {
     return id;
 }
 
-// Al abrir el modal: anticipo según el tipo de folio; reset campos
+// Al abrir el modal: anticipo según el tipo de folio; reset campos + muestra restante
 $('#modalPago').on('show.bs.modal', function () {
     $('#modalAnticipo').prop('checked', defaultAnticipo);
     $('#modalTipoPago').val('');
-    $('#modalMonto').val(0);
+
+    // Jalamos el restante actual del indicador de la página
+    var restanteTexto = ($('#spRestante').text() || '$0.00').replace(/[^0-9.]/g, '');
+    var restanteVal   = parseFloat(restanteTexto) || 0;
+
+    // Mostrar en el indicador del modal
+    $('#modalRestanteLabel').text('$' + restanteVal.toFixed(2));
+
+    // Pre-llenar el monto con el restante (mínimo 0)
+    $('#modalMonto').val(restanteVal > 0 ? restanteVal.toFixed(2) : 0);
 });
 
 // Al cambiar tipo de pago:

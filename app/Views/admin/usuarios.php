@@ -40,9 +40,15 @@
 <?php endif; ?>
 
 <!-- Tabla Usuarios -->
-<div class="separator mb-5"></div>
-<div class="row">
-    <div class="col-12 mb-4">
+<div class="separator mb-4"></div>
+
+<div class="audit-card">
+    <div class="audit-card-header">
+        <i class="simple-icon-people"></i>
+        <span>Listado de Usuarios</span>
+        <span class="badge-count"><?= count($usuarios) ?> usuarios</span>
+    </div>
+    <div style="padding: 16px 20px 20px;">
         <table id="usuariosTable" class="table responsive nowrap" style="width:100%">
             <thead>
                 <tr>
@@ -101,8 +107,8 @@
                 <?php endforeach; ?>
             </tbody>
         </table>
-    </div>
-</div>
+    </div><!-- /padding -->
+</div><!-- /audit-card -->
 
 <!-- Modal Crear Usuario -->
 <div class="modal fade" id="modalCrearUsuario" tabindex="-1" role="dialog">

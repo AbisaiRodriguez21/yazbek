@@ -109,6 +109,14 @@ $routes->group('admin', ['filter' => 'role:1'], function ($routes) {
     $routes->get('consulta', 'AdminController::consulta');
     $routes->get('consulta/datatable', 'AdminController::consultaDatatable');
 
+    // Auditoría del sistema
+    $routes->get('auditoria', 'AdminController::auditoria');
+    $routes->get('auditoria/datatable', 'AdminController::auditoriaDatatable');
+
+    // Configuración del ticket
+    $routes->get('ticket-config', 'AdminController::ticketConfig');
+    $routes->post('ticket-config/guardar', 'AdminController::ticketConfigGuardar');
+
     // Liquidar anticipo
     $routes->post('folio/(:num)/liquidar', 'AdminController::liquidarAnticipo/$1');
 
@@ -247,6 +255,7 @@ $routes->group('caja', ['filter' => 'role:2'], function ($routes) {
     // Módulo caja (lista de notas a cobrar / verificar)
     $routes->get('cobrar', 'CajaController::caja');
     $routes->get('cobrar/ajax/(:num)', 'CajaController::cobrarFolioAjax/$1');
+    $routes->post('folio/detalle', 'CajaController::folioDetalleAjax');
 
     // Consulta por folio
     $routes->get('folio/(:num)', 'CajaController::porFolio/$1');
