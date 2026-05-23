@@ -96,8 +96,9 @@ class AuditService
                     (fecha, usuario_id, usuario_nombre, rol, accion, tabla, registro_id,
                      descripcion, datos_antes, datos_despues, ip, ruta)
                  VALUES
-                    (NOW(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 [
+                    date('Y-m-d H:i:s'),
                     $usuarioId,
                     $usuarioNombre,
                     $rol,
