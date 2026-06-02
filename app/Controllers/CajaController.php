@@ -957,7 +957,8 @@ class CajaController extends BaseController
                     COALESCE(pm_direct.tipos_pago, pm_child.tipos_pago, NULLIF(TRIM(n.tipoPago), ''), 'A Crédito') AS tipopago,
                     n.total, n.status AS idstatus,
                     COALESCE(s.nombre, '')                   AS status_nombre,
-                    n.verificado, n.referencia
+                    n.verificado, n.referencia,
+                    n.factura, n.uuid_fiscal
              {$baseSql} {$where}
              ORDER BY {$orderCol} {$orderDir}
              LIMIT ? OFFSET ?",

@@ -172,6 +172,11 @@
         <tr class="sep">
             <td colspan="4" class="strong">Folio #<?= $hijo['folio'] ?></td>
         </tr>
+        <?php if (!empty($hijo['fecha'])): ?>
+        <tr>
+            <td colspan="4">&nbsp;&nbsp;Fecha: <?= date('d/m/Y H:i', strtotime($hijo['fecha'])) ?></td>
+        </tr>
+        <?php endif; ?>
         <?php foreach ($hijo['pagos'] as $p): ?>
         <tr>
             <td colspan="4">&nbsp;&nbsp;Forma de Pago: <?= esc($p['tipopago']) ?></td>
@@ -251,7 +256,17 @@
         <tr class="sep" style="font-size:18px; font-weight:700; color:#FF0000;">
             <td colspan="4">
                 Factura: <span style="color:#FF0000;">
-                    <?= ((int)($nota['factura'] ?? 0) === 1) ? 'Si requiere' : 'No requiere' ?>
+                    <?php
+                        $facVal = (int)($nota['factura'] ?? 0);
+                        $uuid   = $nota['uuid_fiscal'] ?? '';
+                        if ($uuid) {
+                            echo 'Facturado ✓';
+                        } elseif ($facVal === 1) {
+                            echo 'Si requiere';
+                        } else {
+                            echo 'No requiere';
+                        }
+                    ?>
                 </span>
             </td>
         </tr>

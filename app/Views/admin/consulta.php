@@ -159,9 +159,17 @@ $(document).ready(function() {
             { data: 'total', render: function(data) {
                 return '$' + parseFloat(data || 0).toFixed(2);
             }, className: 'text-right'},
-            { data: 'idstatus', render: function(data) {
-                var sid = parseInt(data, 10);
-                return STATUS_LABELS[sid] || '<span class="badge badge-secondary">Desconocido</span>';
+            { data: 'idstatus', render: function(data, type, row) {
+                var sid    = parseInt(data, 10);
+                var label  = STATUS_LABELS[sid] || '<span class="badge badge-secondary">Desconocido</span>';
+                var factura = parseInt(row.factura || 0, 10);
+                var uuid    = row.uuid_fiscal || '';
+                if (uuid) {
+                    label += ' <span class="badge" style="background:#0056b3;color:#fff;font-size:10px;">Facturado ✓</span>';
+                } else if (factura === 1) {
+                    label += ' <span class="badge" style="background:#fd7e14;color:#fff;font-size:10px;">Fact. pendiente</span>';
+                }
+                return label;
             }},
             { data: null, render: function(data, type, row) {
                 return accionesNota(row);
