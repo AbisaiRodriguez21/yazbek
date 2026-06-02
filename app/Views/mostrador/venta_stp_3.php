@@ -128,6 +128,83 @@
                         </div>
                     </div>
 
+                    <!-- Datos fiscales (se muestran solo si se marca Requiere Factura) -->
+                    <div id="panelFactura" style="display:none;" class="card card-body bg-light mb-3 border-primary">
+                        <h6 class="font-weight-bold mb-3"><i class="iconsminds-receipt-4"></i> Datos Fiscales del Receptor</h6>
+
+                        <div class="form-row">
+                            <div class="form-group col-md-5">
+                                <label>RFC Receptor <span class="text-danger">*</span></label>
+                                <input type="text" class="form-control" id="rfcReceptor" name="rfcReceptor"
+                                       maxlength="13" placeholder="XAXX010101000"
+                                       value="<?= esc($nota['rfc_receptor'] ?? '') ?>">
+                                <small class="text-muted">12 letras/números (persona moral) o 13 (física)</small>
+                            </div>
+                            <div class="form-group col-md-7">
+                                <label>Razón Social / Nombre <span class="text-danger">*</span></label>
+                                <input type="text" class="form-control" id="razonSocialReceptor" name="razonSocialReceptor"
+                                       placeholder="NOMBRE O RAZÓN SOCIAL"
+                                       value="<?= esc($nota['razon_social_receptor'] ?? '') ?>">
+                            </div>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group col-md-4">
+                                <label>CP Fiscal Receptor <span class="text-danger">*</span></label>
+                                <input type="text" class="form-control" id="cpReceptor" name="cpReceptor"
+                                       maxlength="5" placeholder="64000"
+                                       value="<?= esc($nota['cp_receptor'] ?? '') ?>">
+                            </div>
+                            <div class="form-group col-md-4">
+                                <label>Régimen Fiscal Receptor <span class="text-danger">*</span></label>
+                                <select class="form-control" id="regimenFiscalReceptor" name="regimenFiscalReceptor">
+                                    <option value="616">616 – Sin obligaciones fiscales</option>
+                                    <option value="601">601 – General de Ley Personas Morales</option>
+                                    <option value="612">612 – Personas Físicas con Actividades Empresariales</option>
+                                    <option value="621">621 – Incorporación Fiscal</option>
+                                    <option value="626">626 – Régimen Simplificado de Confianza (RESICO)</option>
+                                    <option value="605">605 – Sueldos y Salarios</option>
+                                </select>
+                            </div>
+                            <div class="form-group col-md-4">
+                                <label>Uso del CFDI <span class="text-danger">*</span></label>
+                                <select class="form-control" id="usoCFDI" name="usoCFDI">
+                                    <option value="S01">S01 – Sin efectos fiscales</option>
+                                    <option value="G01">G01 – Adquisición de mercancias</option>
+                                    <option value="G03">G03 – Gastos en general</option>
+                                    <option value="I01">I01 – Construcciones</option>
+                                    <option value="D01">D01 – Honorarios médicos y dentales</option>
+                                    <option value="CP01">CP01 – Pagos</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group col-md-6">
+                                <label>Forma de Pago</label>
+                                <select class="form-control" id="formaPagoCFDI" name="formaPagoCFDI">
+                                    <option value="01">01 – Efectivo</option>
+                                    <option value="02">02 – Cheque nominativo</option>
+                                    <option value="03">03 – Transferencia electrónica</option>
+                                    <option value="04">04 – Tarjeta de crédito</option>
+                                    <option value="28">28 – Tarjeta de débito</option>
+                                    <option value="99">99 – Por definir</option>
+                                </select>
+                            </div>
+                            <div class="form-group col-md-6">
+                                <label>Método de Pago</label>
+                                <select class="form-control" id="metodoPagoCFDI" name="metodoPagoCFDI">
+                                    <option value="PUE">PUE – Pago en una sola exhibición</option>
+                                    <option value="PPD">PPD – Pago en parcialidades o diferido</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="alert alert-warning py-2 mb-0" id="alertSinRFC" style="display:none;">
+                            <small><i class="simple-icon-exclamation"></i> Este cliente no tiene RFC registrado. Puedes capturarlo aquí o ir al perfil del cliente para guardarlo.</small>
+                        </div>
+                    </div>
+
                     <!-- Pagos -->
                     <div class="card card-body bg-light mb-3" id="panelPagos">
                         <div class="d-flex justify-content-between align-items-center mb-2">
@@ -504,7 +581,15 @@ $('#btnGuardar').on('click', function() {
         total:       $('#hidTotal').val(),
         estatus:     $('#selectEstatus').val(),
         factura:     $('#chkFactura').is(':checked') ? 1 : 0,
-        pagos:       JSON.stringify(pagos)   // solo los pagos NUEVOS
+        pagos:       JSON.stringify(pagos),   // solo los pagos NUEVOS
+        // Datos fiscales del receptor (solo se envían si se requiere factura)
+        rfcReceptor:           $('#rfcReceptor').val(),
+        razonSocialReceptor:   $('#razonSocialReceptor').val(),
+        cpReceptor:            $('#cpReceptor').val(),
+        regimenFiscalReceptor: $('#regimenFiscalReceptor').val(),
+        usoCFDI:               $('#usoCFDI').val(),
+        formaPagoCFDI:         $('#formaPagoCFDI').val(),
+        metodoPagoCFDI:        $('#metodoPagoCFDI').val()
     }, csrf);
 
     $('#btnGuardar').prop('disabled', true).text('Guardando...');
@@ -549,5 +634,57 @@ $('#btnGuardar').on('click', function() {
 
 // Inicializar cálculo al cargar
 recalcular();
+
+// ── Lógica del panel "Requiere Factura" ─────────────────────────────
+// Datos fiscales del cliente (pre-cargados desde PHP)
+var clienteRFC         = '<?= esc($nota['rfc_receptor'] ?? '') ?>' || '<?= esc($clienteRFC ?? '') ?>';
+var clienteRazonSocial = '<?= esc($nota['razon_social_receptor'] ?? '') ?>' || '<?= esc($clienteRazonSocial ?? '') ?>';
+var clienteCP          = '<?= esc($nota['cp_receptor'] ?? '') ?>'    || '<?= esc($clienteCP ?? '') ?>';
+
+$('#chkFactura').on('change', function () {
+    if ($(this).is(':checked')) {
+        $('#panelFactura').slideDown(200);
+
+        // Auto-rellenar solo si los campos están vacíos
+        if (!$('#rfcReceptor').val() && clienteRFC) {
+            $('#rfcReceptor').val(clienteRFC);
+        }
+        if (!$('#razonSocialReceptor').val() && clienteRazonSocial) {
+            $('#razonSocialReceptor').val(clienteRazonSocial);
+        }
+        if (!$('#cpReceptor').val() && clienteCP) {
+            $('#cpReceptor').val(clienteCP);
+        }
+
+        // Mostrar alerta si el cliente no tiene RFC
+        if (!clienteRFC) {
+            $('#alertSinRFC').show();
+        }
+    } else {
+        $('#panelFactura').slideUp(200);
+        $('#alertSinRFC').hide();
+    }
+});
+
+// Validar campos fiscales antes de guardar
+var btnGuardarOriginal = $('#btnGuardar').on('click', function () { }); // ya tiene su propio handler arriba
+// Extender validación: si factura está marcada, verificar RFC y Razón Social
+$(document).on('click', '#btnGuardar', function (e) {
+    if ($('#chkFactura').is(':checked')) {
+        var rfc = $.trim($('#rfcReceptor').val());
+        var rs  = $.trim($('#razonSocialReceptor').val());
+        var cp  = $.trim($('#cpReceptor').val());
+        if (!rfc || !rs || !cp) {
+            alert('Para facturar necesitas capturar: RFC, Razón Social y CP del receptor.');
+            return false;
+        }
+        // Validación básica de formato RFC
+        var rfcRegex = /^[A-Z&Ñ]{3,4}[0-9]{6}[A-Z0-9]{3}$/;
+        if (!rfcRegex.test(rfc.toUpperCase().replace(/\s/g,''))) {
+            alert('El RFC "' + rfc + '" no tiene el formato correcto (ej: XAXX010101000).');
+            return false;
+        }
+    }
+});
 </script>
 <?= $this->endSection() ?>

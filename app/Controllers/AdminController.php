@@ -1325,7 +1325,7 @@ class AdminController extends BaseController
                     n.cargoTarjeta, n.subTotal2, n.iva, n.total,
                     n.tipoImpresion, n.cargoPorImpresion, n.montoTCTD,
                     n.montoEfectivo, n.montoEfectivoIva, n.totalPiezas,
-                    n.precioMayoreo
+                    n.precioMayoreo, n.uuid_fiscal
              FROM notas_1 n
              LEFT JOIN clientes c ON c.id = n.idCliente
              LEFT JOIN usuarios u ON u.Id = n.idVendedor
@@ -1368,7 +1368,7 @@ class AdminController extends BaseController
         if ($referencia === 0) {
             // Solo aplica para notas padre (referencia = 0)
             $hijos = $db->query(
-                "SELECT n.folio, n.Id_Notas_1
+                "SELECT n.folio, n.Id_Notas_1, n.fecha_inicial
                  FROM notas_1 n
                  WHERE n.referencia = ? AND n.status != 3
                  ORDER BY n.folio ASC",
@@ -1377,7 +1377,7 @@ class AdminController extends BaseController
 
             foreach ($hijos as $hijo) {
                 $pgHijo = $db->query(
-                    "SELECT m.monto, m.cargos AS cargo, t.descripcion AS tipopago, m.anticipo
+                    "SELECT m.monto, m.cargos AS cargo, t.descripcion AS tipopago, m.anticipo, m.fecha
                      FROM montosnotas m
                      INNER JOIN tipopago t ON t.id = m.idTipoPago
                      WHERE m.idNotas = ?",
@@ -1386,8 +1386,9 @@ class AdminController extends BaseController
 
                 if (! empty($pgHijo)) {
                     $pagosHijos[] = [
-                        'folio' => $hijo['folio'],
-                        'pagos' => $pgHijo,
+                        'folio'  => $hijo['folio'],
+                        'fecha'  => $hijo['fecha_inicial'],
+                        'pagos'  => $pgHijo,
                     ];
                 }
             }
@@ -1522,10 +1523,19 @@ class AdminController extends BaseController
         $cliente      = $clienteModel->find($id);
 
         $resp = $cliente ? [
-            'success'   => true,
-            'direccion' => $cliente['direccion'] ?? '',
-            'telefono'  => $cliente['telefono'] ?? '',
-            'email'     => $cliente['mail'] ?? '',
+            'success'       => true,
+            'direccion'     => $cliente['direccion']     ?? '',
+            'telefono'      => $cliente['telefono']      ?? '',
+            'celular'       => $cliente['celular']       ?? '',
+            'email'         => $cliente['mail']          ?? '',
+            'RFC'           => $cliente['RFC']           ?? '',
+            'razonSocial'   => $cliente['razonSocial']   ?? '',
+            'NombreEmpresa' => $cliente['NombreEmpresa'] ?? '',
+            'CP'            => $cliente['CP']            ?? '',
+            'ciudad'        => $cliente['ciudad']        ?? '',
+            'estado'        => $cliente['estado']        ?? '',
+            'comoNosConoce' => $cliente['comoNosConoce'] ?? '',
+            'fechaIngreso'  => $cliente['fechaIngreso']  ?? '',
         ] : ['success' => false];
 
         return $this->response
@@ -2607,7 +2617,8 @@ class AdminController extends BaseController
                         n.total, n.status AS idstatus,
                         COALESCE(s.nombre, '')    AS status_nombre,
                         n.verificado,
-                        COALESCE(n.referencia, 0) AS referencia
+                        COALESCE(n.referencia, 0) AS referencia,
+                        n.factura, COALESCE(n.uuid_fiscal, '') AS uuid_fiscal
                  {$baseSql} {$where}
                  ORDER BY {$orderCol} {$orderDir}
                  LIMIT ? OFFSET ?",
@@ -2760,6 +2771,94 @@ class AdminController extends BaseController
     }
 
     // ──────────────────────────────────────────────────────────────
+    // ──────────────────────────────────────────────────────────────
+    // GET  /admin/cfdi-config         — Ver configuración de facturación
+    // POST /admin/cfdi-config/guardar — Guardar cambios
+    // ──────────────────────────────────────────────────────────────
+    public function cfdiConfig(): string
+    {
+        $db  = \Config\Database::connect();
+        $rows = $db->query("SELECT clave, valor FROM ticket_config WHERE clave LIKE 'cfdi_%' OR clave LIKE 'smtp_%'")->getResultArray();
+        $cfg  = array_column($rows, 'valor', 'clave');
+
+        // ¿Existen los archivos CSD?
+        $cerPath = APPPATH . 'ThirdParty/csd/csd.cer';
+        $keyPath = APPPATH . 'ThirdParty/csd/csd.key';
+        $cerInfo = file_exists($cerPath) ? round(filesize($cerPath) / 1024, 1) . ' KB' : null;
+        $keyInfo = file_exists($keyPath) ? round(filesize($keyPath) / 1024, 1) . ' KB' : null;
+
+        return view('admin/cfdi_config', [
+            'usuario'   => $this->getUsuarioSesion(),
+            'cfg'       => $cfg,
+            'cerInfo'   => $cerInfo,
+            'keyInfo'   => $keyInfo,
+            'success'   => session()->getFlashdata('success'),
+            'error'     => session()->getFlashdata('error'),
+        ]);
+    }
+
+    public function cfdiConfigGuardar()
+    {
+        $db      = \Config\Database::connect();
+        $request = $this->request;
+        $errores = [];
+
+        // ── 1. Credenciales PAC ──────────────────────────────────────
+        $claves = [
+            'cfdi_pac_usuario'   => $request->getPost('cfdi_pac_usuario'),
+            'cfdi_pac_password'  => $request->getPost('cfdi_pac_password'),
+            'cfdi_pac_url'       => $request->getPost('cfdi_pac_url'),
+            'cfdi_csd_password'  => $request->getPost('cfdi_csd_password'),
+            'smtp_host'          => $request->getPost('smtp_host'),
+            'smtp_user'          => $request->getPost('smtp_user'),
+            'smtp_pass'          => $request->getPost('smtp_pass'),
+            'smtp_port'          => $request->getPost('smtp_port'),
+            'smtp_crypto'        => $request->getPost('smtp_crypto'),
+            'smtp_from_email'    => $request->getPost('smtp_from_email'),
+            'smtp_from_name'     => $request->getPost('smtp_from_name'),
+            'empresa_email_facturacion' => $request->getPost('empresa_email_facturacion'),
+        ];
+
+        foreach ($claves as $clave => $valor) {
+            if ($valor === null) continue;
+            $db->query(
+                "INSERT INTO ticket_config (clave, valor, etiqueta) VALUES (?, ?, ?)
+                 ON DUPLICATE KEY UPDATE valor = VALUES(valor)",
+                [$clave, trim($valor), $clave]
+            );
+        }
+
+        // ── 2. Archivo CSD .cer ──────────────────────────────────────
+        $cerFile = $request->getFile('csd_cer');
+        if ($cerFile && $cerFile->isValid() && !$cerFile->hasMoved()) {
+            $ext = strtolower($cerFile->getClientExtension());
+            if ($ext === 'cer') {
+                $cerFile->move(APPPATH . 'ThirdParty/csd/', 'csd.cer', true);
+            } else {
+                $errores[] = 'El archivo CER debe tener extensión .cer';
+            }
+        }
+
+        // ── 3. Archivo CSD .key ──────────────────────────────────────
+        $keyFile = $request->getFile('csd_key');
+        if ($keyFile && $keyFile->isValid() && !$keyFile->hasMoved()) {
+            $ext = strtolower($keyFile->getClientExtension());
+            if ($ext === 'key') {
+                $keyFile->move(APPPATH . 'ThirdParty/csd/', 'csd.key', true);
+            } else {
+                $errores[] = 'El archivo KEY debe tener extensión .key';
+            }
+        }
+
+        if ($errores) {
+            session()->setFlashdata('error', implode('<br>', $errores));
+        } else {
+            session()->setFlashdata('success', 'Configuración de facturación guardada correctamente.');
+        }
+
+        return redirect()->to(base_url('admin/cfdi-config'));
+    }
+
     // GET /admin/ticket-config  —  Configuración de textos del ticket
     // ──────────────────────────────────────────────────────────────
     public function ticketConfig(): string

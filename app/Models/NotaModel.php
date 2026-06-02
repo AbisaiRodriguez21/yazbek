@@ -50,6 +50,17 @@ class NotaModel extends Model
         'tipoImpresion',
         'cargoPorImpresion',
         'totalPiezas',
+        // Campos fiscales Dfacture
+        'uuid_fiscal',
+        'rfc_receptor',
+        'razon_social_receptor',
+        'cp_receptor',
+        'uso_cfdi',
+        'regimen_fiscal_receptor',
+        'forma_pago_cfdi',
+        'cfdi_xml',
+        'cfdi_fecha_timbrado',
+        'cfdi_error',
     ];
 
     // ──────────────────────────────────────────────
@@ -269,11 +280,11 @@ class NotaModel extends Model
 
         $db->query(
             "INSERT INTO notas_1
-             (folio, fecha_inicial, idCliente, idVendedor, referencia,
+             (folio, fecha_inicial, fecha_final, idCliente, idVendedor, referencia,
               sumaImportes, subTotal, subTotal2, iva, total, totalPiezas,
               status, descuento, cargoTarjeta, factura, tipoImpresion)
-             VALUES (?, ?, ?, ?, ?, 0, ?, 0, 0, ?, 0, ?, 0, ?, 0, 1)",
-            [$folio, $fecha, $idCliente, $idVendedor, $foliopadre, $monto, $monto, $statusHijo, $cargo]
+             VALUES (?, ?, ?, ?, ?, ?, 0, ?, 0, 0, ?, 0, ?, 0, ?, 0, 1)",
+            [$folio, $fecha, $fecha, $idCliente, $idVendedor, $foliopadre, $monto, $monto, $statusHijo, $cargo]
         );
 
         $idNota = $db->insertID();

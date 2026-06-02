@@ -21,6 +21,12 @@ $routes->get('/logout', 'AuthController::logout');
 $routes->get('stock/poll', 'StockController::poll', ['filter' => 'role:1,2,3,4']);
 
 // =============================================================
+// DIAGNÓSTICO CFDI — SOLO SANDBOX / DESARROLLO
+// Eliminar en producción
+// =============================================================
+$routes->get('cfdi-diag', 'CfdiDiagController::index');
+
+// =============================================================
 // RUTAS DE ADMIN (acceso = 1)
 // =============================================================
 $routes->group('admin', ['filter' => 'role:1'], function ($routes) {
@@ -116,6 +122,10 @@ $routes->group('admin', ['filter' => 'role:1'], function ($routes) {
     // Configuración del ticket
     $routes->get('ticket-config', 'AdminController::ticketConfig');
     $routes->post('ticket-config/guardar', 'AdminController::ticketConfigGuardar');
+
+    // Configuración de Facturación CFDI
+    $routes->get('cfdi-config',          'AdminController::cfdiConfig');
+    $routes->post('cfdi-config/guardar', 'AdminController::cfdiConfigGuardar');
 
     // Liquidar anticipo
     $routes->post('folio/(:num)/liquidar', 'AdminController::liquidarAnticipo/$1');
