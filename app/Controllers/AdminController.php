@@ -1325,7 +1325,7 @@ class AdminController extends BaseController
                     n.cargoTarjeta, n.subTotal2, n.iva, n.total,
                     n.tipoImpresion, n.cargoPorImpresion, n.montoTCTD,
                     n.montoEfectivo, n.montoEfectivoIva, n.totalPiezas,
-                    n.precioMayoreo, n.uuid_fiscal
+                    n.precioMayoreo, COALESCE(n.uuid_fiscal, '') AS uuid_fiscal
              FROM notas_1 n
              LEFT JOIN clientes c ON c.id = n.idCliente
              LEFT JOIN usuarios u ON u.Id = n.idVendedor
@@ -1458,6 +1458,22 @@ class AdminController extends BaseController
     }
 
     // POST /admin/clientes/restaurar/(:num)  —  Revive un cliente eliminado
+    // POST /admin/clientes/guardar-email  —  AJAX: guarda email faltante del cliente
+    public function guardarEmailCliente(): \CodeIgniter\HTTP\Response
+    {
+        $id    = (int) $this->request->getPost('id');
+        $email = trim($this->request->getPost('email') ?? '');
+
+        if (!$id || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            return $this->response->setJSON(['ok' => false, 'error' => 'Datos inválidos']);
+        }
+
+        $db = \Config\Database::connect();
+        $db->query("UPDATE clientes SET mail = ? WHERE id = ?", [$email, $id]);
+
+        return $this->response->setJSON(['ok' => true]);
+    }
+
     public function restaurarCliente(int $id): \CodeIgniter\HTTP\RedirectResponse
     {
         $clienteModel = new \App\Models\ClienteModel();
@@ -1742,7 +1758,8 @@ class AdminController extends BaseController
                         n.sumaImportes, n.subTotal, n.tipoPago,
                         n.cargoTarjeta, n.subTotal2, n.iva, n.total,
                         n.tipoImpresion, n.cargoPorImpresion,
-                        n.montoTCTD, n.totalPiezas, n.precioMayoreo
+                        n.montoTCTD, n.totalPiezas, n.precioMayoreo,
+                        COALESCE(n.uuid_fiscal, '') AS uuid_fiscal
                  FROM notas_1 n
                  LEFT JOIN clientes c ON n.idCliente = c.id
                  LEFT JOIN usuarios u ON u.Id        = n.idVendedor
@@ -1917,7 +1934,8 @@ class AdminController extends BaseController
         $html .= '<tr><td colspan="2" class="text-right no-border" align="left"><strong>Estatus:</strong></td>';
         $html .= '<td colspan="2" align="left" id="estatusPago">' . esc($displayStatus) . '</td></tr>';
         $html .= '<tr><td colspan="2" class="text-right no-border" align="left"><strong>Factura:</strong></td>';
-        $html .= '<td colspan="2" align="left">' . (($nota['factura'] ?? 0) == 1 ? 'Si requiere' : 'No requiere') . '</td></tr>';
+        $facturaLabel = !empty($nota['uuid_fiscal']) ? 'Facturado ✓' : (($nota['factura'] ?? 0) == 1 ? 'Si requiere' : 'No requiere');
+        $html .= '<td colspan="2" align="left">' . $facturaLabel . '</td></tr>';
 
         $html .= '<tr><input type="hidden" id="folio_input" value="' . $nota['folio'] . '" />';
         if ($statusId !== 3) {
@@ -2825,6 +2843,20 @@ class AdminController extends BaseController
                 "INSERT INTO ticket_config (clave, valor, etiqueta) VALUES (?, ?, ?)
                  ON DUPLICATE KEY UPDATE valor = VALUES(valor)",
                 [$clave, trim($valor), $clave]
+            );
+        }
+
+        // ── 1b. Contraseña CSD → cifrada con AES-256-CBC antes de guardar en BD ──
+        $csdPassword = trim((string) $request->getPost('csd_password'));
+        if ($csdPassword !== '') {
+            $encKey   = hex2bin(getenv('CSD_ENCRYPT_KEY'));
+            $iv       = random_bytes(16);
+            $cifrado  = openssl_encrypt($csdPassword, 'AES-256-CBC', $encKey, OPENSSL_RAW_DATA, $iv);
+            $valor    = base64_encode($iv . $cifrado);
+            $db->query(
+                "INSERT INTO ticket_config (clave, valor, etiqueta) VALUES (?, ?, ?)
+                 ON DUPLICATE KEY UPDATE valor = VALUES(valor)",
+                ['csd.password', $valor, 'Contraseña CSD']
             );
         }
 

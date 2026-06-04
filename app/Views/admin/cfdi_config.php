@@ -43,7 +43,6 @@
                             ✅ Archivo actual: <b>csd.cer</b> — <?= $cerInfo['tamaño'] ?> bytes — subido el <?= $cerInfo['fecha'] ?>
                         </div>
                     <?php else: ?>
-                        <div class="alert alert-warning py-1 px-2 mb-1" style="font-size:12px;">⚠️ No hay archivo .cer cargado</div>
                     <?php endif; ?>
                     <input type="file" name="csd_cer" accept=".cer" class="form-control-file">
                     <small class="text-muted">Sube el nuevo .cer para reemplazar el actual</small>
@@ -55,7 +54,6 @@
                             ✅ Archivo actual: <b>csd.key</b> — <?= $keyInfo['tamaño'] ?> bytes — subido el <?= $keyInfo['fecha'] ?>
                         </div>
                     <?php else: ?>
-                        <div class="alert alert-warning py-1 px-2 mb-1" style="font-size:12px;">⚠️ No hay archivo .key cargado</div>
                     <?php endif; ?>
                     <input type="file" name="csd_key" accept=".key" class="form-control-file">
                     <small class="text-muted">Sube el nuevo .key para reemplazar el actual</small>
@@ -67,7 +65,6 @@
                     <label class="font-weight-bold">Contraseña del certificado (.key)</label>
                     <input type="password" name="csd_password" class="form-control"
                            placeholder="Dejar vacío para no cambiarla">
-                    <small class="text-muted">Solo escribe si quieres cambiarla</small>
                 </div>
             </div>
         </div>

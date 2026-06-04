@@ -39,7 +39,14 @@ class CfdiConfigController extends BaseController
         // ── Contraseña CSD → .env ────────────────────────────────────────
         $csdPass = trim($this->request->getPost('csd_password') ?? '');
         if ($csdPass !== '') {
-            $this->escribirEnv('csd.password', $csdPass);
+            $envPath = ROOTPATH . '.env';
+            if (!file_exists($envPath)) {
+                $errors[] = 'No se encontró el archivo .env en: ' . $envPath;
+            } elseif (!is_writable($envPath)) {
+                $errors[] = 'El archivo .env no tiene permisos de escritura. Ejecuta: chmod 664 .env';
+            } else {
+                $this->escribirEnv('csd.password', $csdPass);
+            }
         }
 
         // ── Archivo CSD .cer ─────────────────────────────────────────────

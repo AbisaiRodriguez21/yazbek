@@ -207,15 +207,17 @@ class MostradorController extends BaseController
         $clienteRFC         = '';
         $clienteRazonSocial = '';
         $clienteCP          = '';
+        $clienteEmail = '';
         if ($idCliente > 0) {
             $clienteDB = $db->query(
-                "SELECT RFC, razonSocial, CP FROM clientes WHERE id = ? LIMIT 1",
+                "SELECT RFC, razonSocial, CP, mail FROM clientes WHERE id = ? LIMIT 1",
                 [$idCliente]
             )->getRowArray();
             if ($clienteDB) {
                 $clienteRFC         = $clienteDB['RFC']         ?? '';
                 $clienteRazonSocial = $clienteDB['razonSocial'] ?? '';
                 $clienteCP          = $clienteDB['CP']          ?? '';
+                $clienteEmail       = $clienteDB['mail']        ?? '';
             }
         }
 
@@ -236,6 +238,8 @@ class MostradorController extends BaseController
             'clienteRFC'          => $clienteRFC,
             'clienteRazonSocial'  => $clienteRazonSocial,
             'clienteCP'           => $clienteCP,
+            'clienteEmail'        => $clienteEmail,
+            'idCliente'           => $idCliente,
         ]);
     }
 

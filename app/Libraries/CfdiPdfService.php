@@ -61,6 +61,31 @@ class CfdiPdfService
         }
         $totalIva = $impGlobal ? (float)$impGlobal->getAttribute('TotalImpuestosTrasladados') : 0.0;
 
+        // ── URL verificación SAT + QR ────────────────────────────────────
+        $fe        = substr($selloCFD, -8);                  // últimos 8 chars del sello
+        $totalFmt  = number_format($totalV, 6, '.', '');     // ej: 60.000000
+        $urlSAT    = 'https://verificacfdi.facturaelectronica.sat.gob.mx/default.aspx'
+                   . '?id='  . urlencode($uuid)
+                   . '&re='  . urlencode($emisorRfc)
+                   . '&rr='  . urlencode($receptorRfc)
+                   . '&tt='  . $totalFmt
+                   . '&fe='  . urlencode($fe);
+
+        // Generar QR localmente con chillerlan/php-qrcode v6
+        $qrHtml = '';
+        try {
+            $qrOptions = new \chillerlan\QRCode\QROptions([
+                'outputInterface' => \chillerlan\QRCode\Output\QRGdImagePNG::class,
+                'eccLevel'        => \chillerlan\QRCode\Common\EccLevel::M,
+                'scale'           => 4,
+                'outputBase64'    => true,
+            ]);
+            $qrB64  = (new \chillerlan\QRCode\QRCode($qrOptions))->render($urlSAT);
+            $qrHtml = '<img src="' . $qrB64 . '" style="width:90px;height:90px;" alt="QR SAT"/>';
+        } catch (\Throwable $e) {
+            // Si falla el QR, el PDF se genera igual sin él
+        }
+
         // ── Datos empresa desde ticket_config ────────────────────────────
         $empNombre  = $config['empresa_razon_social'] ?? '';
         $empDir     = $config['empresa_sucursal']     ?? '';
@@ -85,7 +110,7 @@ class CfdiPdfService
         $totalSinIva = 0;
 
         foreach ($conceptosNodes as $c) {
-            $clave    = $c->getAttribute('ClaveProdServ');
+            $clave    = $c->getAttribute('NoIdentificacion'); // SKU del producto
             $desc     = $c->getAttribute('Descripcion');
             $cantidad = (float)$c->getAttribute('Cantidad');
             $unidad   = $c->getAttribute('ClaveUnidad') . ' / ' . $c->getAttribute('Unidad');
@@ -272,10 +297,19 @@ table { width: 100%; border-collapse: collapse; }
   ' . htmlspecialchars(wordwrap($cadenaComplemento, 115, "\n", true)) . '
 </div>
 
-<p style="font-size:7pt;color:#666;margin-top:5px;text-align:center;">
-  Este documento es una representación impresa de un CFDI.<br/>
-  Folio Fiscal (UUID): <b>' . htmlspecialchars($uuid) . '</b>
-</p>
+<!-- ═══ PIE: QR + leyenda ══════════════════════════════════════════════ -->
+<table style="width:100%;margin-top:6px;">
+<tr>
+  <td style="width:110px;vertical-align:bottom;">
+    ' . $qrHtml . '
+    <div style="font-size:6pt;color:#555;text-align:center;margin-top:2px;">Verificar ante el SAT</div>
+  </td>
+  <td style="vertical-align:middle;text-align:center;font-size:7pt;color:#666;padding-left:10px;">
+    Este documento es una representación impresa de un CFDI.<br/>
+    Folio Fiscal (UUID): <b>' . htmlspecialchars($uuid) . '</b>
+  </td>
+</tr>
+</table>
 
 </body></html>';
 

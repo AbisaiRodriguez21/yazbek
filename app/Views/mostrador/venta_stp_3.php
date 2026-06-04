@@ -332,6 +332,31 @@
     </div>
 </div>
 
+<!-- ═══ MODAL: Email faltante ════════════════════════════════════════════ -->
+<div class="modal fade" id="modalEmailFaltante" tabindex="-1" role="dialog">
+    <div class="modal-dialog modal-sm" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">📧 Correo del cliente</h5>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted" style="font-size:13px;">
+                    Este cliente no tiene correo registrado. Es necesario para enviar la factura.
+                </p>
+                <div class="form-group mb-0">
+                    <label>Correo electrónico</label>
+                    <input type="email" id="inputEmailCliente" class="form-control" placeholder="ejemplo@correo.com">
+                    <small id="emailError" class="text-danger d-none">Ingresa un correo válido.</small>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancelar</button>
+                <button type="button" id="btnGuardarEmail" class="btn btn-primary">Guardar y continuar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <input type="hidden" id="hidCsrfName" value="<?= csrf_token() ?>">
 <input type="hidden" id="hidCsrfHash" value="<?= csrf_hash() ?>">
 <input type="hidden" id="hidSumaImportes" value="<?= $sumaImportes ?>">
@@ -546,7 +571,8 @@ $(document).on('click', '#btnQuitarSinPagar', function() {
     recalcular();
 });
 
-$('#btnGuardar').on('click', function() {
+// ── Verificar email antes de cerrar si requiere factura ──────────────
+function ejecutarCierreNota() {
     // Si no hay pagos nuevos pero ya estaba cubierto con anticipo, se permite cerrar
     var total    = parseFloat($('#hidTotal').val()) || 0;
     var montoNuevo = pagos.reduce(function(acc, p) { return acc + parseFloat(p.monto); }, 0);
@@ -630,6 +656,39 @@ $('#btnGuardar').on('click', function() {
             $('#btnGuardar').prop('disabled', false).text('Cerrar Nota');
         }
     });
+}
+
+$('#btnGuardar').on('click', function() {
+    ejecutarCierreNota();
+});
+
+// Guardar email y continuar
+$('#btnGuardarEmail').on('click', function() {
+    var email = $('#inputEmailCliente').val().trim();
+    var emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+        $('#emailError').removeClass('d-none');
+        return;
+    }
+    $('#emailError').addClass('d-none');
+    $('#btnGuardarEmail').prop('disabled', true).text('Guardando...');
+
+    $.post('<?= base_url('admin/clientes/guardar-email') ?>', {
+        id: idClienteActual,
+        email: email,
+        '<?= csrf_token() ?>': '<?= csrf_hash() ?>'
+    }).done(function(resp) {
+        if (resp && resp.ok) {
+            clienteEmailActual = email;
+            $('#modalEmailFaltante').modal('hide');
+        } else {
+            alert('No se pudo guardar el correo. Intenta de nuevo.');
+        }
+    }).fail(function() {
+        alert('Error de conexión al guardar el correo.');
+    }).always(function() {
+        $('#btnGuardarEmail').prop('disabled', false).text('Guardar y continuar');
+    });
 });
 
 // Inicializar cálculo al cargar
@@ -637,12 +696,31 @@ recalcular();
 
 // ── Lógica del panel "Requiere Factura" ─────────────────────────────
 // Datos fiscales del cliente (pre-cargados desde PHP)
+var clienteEmailActual = '<?= esc($clienteEmail ?? '') ?>';
+var idClienteActual    = <?= (int)($idCliente ?? 0) ?>;
 var clienteRFC         = '<?= esc($nota['rfc_receptor'] ?? '') ?>' || '<?= esc($clienteRFC ?? '') ?>';
 var clienteRazonSocial = '<?= esc($nota['razon_social_receptor'] ?? '') ?>' || '<?= esc($clienteRazonSocial ?? '') ?>';
 var clienteCP          = '<?= esc($nota['cp_receptor'] ?? '') ?>'    || '<?= esc($clienteCP ?? '') ?>';
 
 $('#chkFactura').on('change', function () {
     if ($(this).is(':checked')) {
+        // Verificar email del cliente en BD antes de mostrar panel
+        $.post('<?= base_url('admin/clientes/datos') ?>', {
+            id: idClienteActual,
+            '<?= csrf_token() ?>': '<?= csrf_hash() ?>'
+        }, function(resp) {
+            if (resp && resp.success && !resp.email) {
+                // Sin correo — mostrar modal para capturarlo
+                $('#inputEmailCliente').val('');
+                $('#emailError').addClass('d-none');
+                $('#modalEmailFaltante').modal('show');
+            }
+            // Independientemente, mostrar el panel fiscal
+            clienteEmailActual = (resp && resp.email) ? resp.email : '';
+        }, 'json').fail(function() {
+            // Si falla el AJAX igual abrimos el panel
+        });
+
         $('#panelFactura').slideDown(200);
 
         // Auto-rellenar solo si los campos están vacíos

@@ -10,7 +10,7 @@ namespace App\Libraries;
 class CfdiEmailService
 {
     /** Correo de la empresa (copia interna de todas las facturas) */
-    private string $correoYazbek = 'cortes17042003@gmail.com'; // Cambiar en producción
+    private string $correoYazbek = 'facturacionyazbek0@gmail.com';
 
     public function __construct()
     {
@@ -56,6 +56,7 @@ class CfdiEmailService
                 return ['success' => false, 'message' => 'El cliente no tiene correo registrado, no se envió.'];
             }
             $email->setTo($correoClienteLimpio, $nombreCliente);
+            $email->setCC($this->correoYazbek);
 
             // ── Asunto y cuerpo ──────────────────────────────────────────
             $email->setSubject('Factura CFDI ' . $folio . ' — UUID: ' . $uuid);
@@ -112,7 +113,6 @@ class CfdiEmailService
         <li><strong>XML</strong> — Archivo fiscal original para cargar en su contabilidad</li>
       </ul>
 
-      <p style="color:#555;font-size:12px;">Si tiene alguna duda puede contactarnos respondiendo este correo.</p>
       <p>Gracias por su compra.</p>
     </div>
     <div style="background:#F5F5F5;padding:12px 28px;text-align:center;font-size:11px;color:#888;">

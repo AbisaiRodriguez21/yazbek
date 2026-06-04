@@ -258,7 +258,7 @@
                 Factura: <span style="color:#FF0000;">
                     <?php
                         $facVal = (int)($nota['factura'] ?? 0);
-                        $uuid   = $nota['uuid_fiscal'] ?? '';
+                        $uuid   = $nota['uuid_fiscal'] ?? $nota['uuid_Fiscal'] ?? $nota['UUID_FISCAL'] ?? '';
                         if ($uuid) {
                             echo 'Facturado ✓';
                         } elseif ($facVal === 1) {

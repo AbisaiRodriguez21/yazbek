@@ -31,21 +31,23 @@ namespace App\Libraries;
 class DfactureService
 {
     // ─────────────────────────────────────────────────────────────────────
-    // CREDENCIALES DE ACCESO (sandbox — proporcionadas por IDEA15)
+    // CREDENCIALES DE ACCESO 
     // ─────────────────────────────────────────────────────────────────────
 
-    /** Usuario de timbrado */
-    private string $usuario  = 'DEMOCortes';
+    private string $usuario;
+    private string $password;
+    private string $urlBase;
 
-    /** Contraseña de timbrado */
-    private string $password = 'cfdi';
+    public function __construct()
+    {
+        $this->usuario  = getenv('DFACTURE_USUARIO')  ?: '';
+        $this->password = getenv('DFACTURE_PASSWORD') ?: '';
+        $this->urlBase  = getenv('DFACTURE_URL')      ?: '';
 
-    /**
-     * URL base del Web Service.
-     * Sandbox : http://timbrado.demodfacture.com/api/
-     * Producción: https://timbrado.dfacture.com/api/
-     */
-    private string $urlBase  = 'http://timbrado.demodfacture.com/api/';
+        if (!$this->usuario || !$this->password || !$this->urlBase) {
+            throw new \RuntimeException('Credenciales DFacture no configuradas. Revisa DFACTURE_USUARIO, DFACTURE_PASSWORD y DFACTURE_URL en el .env');
+        }
+    }
 
     // ─────────────────────────────────────────────────────────────────────
     // DATOS DEL EMISOR — se cargan automáticamente desde ticket_config
@@ -561,9 +563,21 @@ class DfactureService
         $cerPath     = APPPATH . 'ThirdParty/csd/csd.cer';
         $keyPath     = APPPATH . 'ThirdParty/csd/csd.key';
 
-        // Leer contraseña del .env (se guarda desde Admin → Certificado SAT)
-        // Fallback al valor hardcodeado para no romper entornos sin .env configurado
-        $keyPassword = $this->leerEnv('csd.password') ?: '@053124Cortes';
+        // Leer y descifrar contraseña CSD desde BD (ticket_config)
+        $db     = \Config\Database::connect();
+        $row    = $db->query("SELECT valor FROM ticket_config WHERE clave = 'csd.password' LIMIT 1")->getRowArray();
+        $stored = $row['valor'] ?? '';
+        if ($stored === '') {
+            throw new \RuntimeException('Contraseña CSD no configurada. Configúrala en Admin → Configuración CFDI.');
+        }
+        $encKey      = hex2bin(getenv('CSD_ENCRYPT_KEY'));
+        $decoded     = base64_decode($stored);
+        $iv          = substr($decoded, 0, 16);
+        $cifrado     = substr($decoded, 16);
+        $keyPassword = openssl_decrypt($cifrado, 'AES-256-CBC', $encKey, OPENSSL_RAW_DATA, $iv);
+        if ($keyPassword === false) {
+            throw new \RuntimeException('No se pudo descifrar la contraseña CSD.');
+        }
 
         if (!file_exists($cerPath)) {
             throw new \RuntimeException('CSD .cer no encontrado: ' . $cerPath);
@@ -972,16 +986,4 @@ class DfactureService
     }
 
     // ── Lee una clave del .env directamente (funciona en Windows y Linux) ──
-    private function leerEnv(string $clave): string
-    {
-        $envPath = ROOTPATH . '.env';
-        if (!file_exists($envPath)) return '';
-        foreach (file($envPath, FILE_IGNORE_NEW_LINES) as $linea) {
-            $trim = trim($linea);
-            if ($trim === '' || str_starts_with($trim, '#') || !str_contains($trim, '=')) continue;
-            [$k, $v] = explode('=', $trim, 2);
-            if (trim($k) === $clave) return trim($v, " \t\r\n'\"");
-        }
-        return '';
-    }
 }
