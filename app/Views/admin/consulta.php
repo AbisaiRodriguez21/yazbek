@@ -228,14 +228,30 @@ function accionesNota(n) {
 
     // Revivir: solo folios PADRE cancelados con método de pago permitido
     if (idstatus === 3 && esPadre && puedeRevivir(n.tipopago)) {
-        btns += '<a href="#" class="btn btn-xs btn-warning"'
+        btns += '<a href="#" class="btn btn-xs btn-outline-secondary"'
               + ' onclick="adminRevivirFolio(' + n.folio + '); return false;">Revivir</a>';
     }
 
     // Pagada o Liquidada + padre: Ver Ticket
     if ((idstatus === 5 || idstatus === 6) && esPadre) {
-        btns += '<a href="#" class="btn btn-xs btn-outline-dark"'
+        btns += '<a href="#" class="btn btn-xs btn-outline-dark mr-1"'
               + ' onclick="adminVerTicket(' + n.folio + '); return false;">Ver Ticket</a>';
+    }
+
+    // ── Botones de Facturación (solo Admin — acceso=1) ────────────
+    // Solo notas padre, pagadas/liquidadas, no canceladas
+    if (esPadre && (idstatus === 5 || idstatus === 6) && idstatus !== 3) {
+        var sf  = parseInt(n.status_facturacion || 0, 10);
+        var uid = (n.uuid_fiscal || '').trim();
+        if (uid !== '') {
+            // Ya facturada — no mostrar nada en Acciones (el badge ya aparece en Status)
+        } else if (sf === 1) {
+            btns += '<a href="#" class="btn btn-xs btn-primary mr-1"'
+                  + ' onclick="adminAbrirModalFactura(' + n.folio + '); return false;">Facturar</a>';
+        } else {
+            btns += '<a href="#" class="btn btn-xs btn-outline-primary"'
+                  + ' onclick="adminAbrirModalFactura(' + n.folio + '); return false;">Solicitar Factura</a>';
+        }
     }
 
     if (!btns) btns = '<span class="text-muted">—</span>';
@@ -416,10 +432,8 @@ function adminRevivirFolio(folio) {
                     + '\n\nLas cantidades se ajustaron al stock disponible.');
             }
             if (!data.esHijo) {
-                // Nota padre: redirigir a step 2 para revisar/agregar productos
                 window.location.href = '<?= base_url('admin/venta/') ?>' + folio + '/productos';
             } else {
-                // Nota hijo (anticipo): solo recargar tabla
                 $('#tablaAdminConsulta').DataTable().ajax.reload(null, false);
             }
         } else {
@@ -428,6 +442,194 @@ function adminRevivirFolio(folio) {
     })
     .catch(function() { alert('Error de conexión al revivir.'); });
 }
+
+// ── Facturación desde Consulta Folios ──────────────────────────────────
+
+// Abre el modal pre-llenando datos vía AJAX (sirve para Escenario 1 y 2)
+var _sfFolioActivo = null;
+
+function adminAbrirModalFactura(folio) {
+    _sfFolioActivo = folio;
+    document.getElementById('sfFolioNum').textContent    = '#' + folio;
+    document.getElementById('sfError').classList.add('d-none');
+    document.getElementById('sfError').textContent       = '';
+    document.getElementById('btnSfFacturar').disabled    = false;
+    document.getElementById('btnSfFacturar').innerHTML = '<i class="simple-icon-doc mr-1"></i> Facturar';
+
+    // Limpiar campos mientras carga
+    ['sfRfc','sfRazonSocial','sfCP'].forEach(function(id) {
+        document.getElementById(id).value = '';
+    });
+
+    $('#modalSolicitarFactura').modal('show');
+
+    // Obtener datos fiscales del servidor (nota + cliente como fallback)
+    fetch('<?= base_url('admin/folio/') ?>' + folio + '/datos-fiscales', {
+        credentials: 'same-origin'
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+        document.getElementById('sfRfc').value           = d.rfcReceptor           || '';
+        document.getElementById('sfRazonSocial').value   = d.razonSocialReceptor   || '';
+        document.getElementById('sfCP').value            = d.cpReceptor            || '';
+        document.getElementById('sfUsoCFDI').value       = d.usoCFDI               || 'S01';
+        document.getElementById('sfRegimenFiscal').value = d.regimenFiscalReceptor || '616';
+        document.getElementById('sfFormaPago').value     = d.formaPagoCFDI         || '01';
+        document.getElementById('sfMetodoPago').value    = 'PUE';
+    })
+    .catch(function() { /* campos vacíos, el usuario los llena manualmente */ });
+}
+
+// Alias legacy por si algún botón del modal interior lo llama
+function adminFacturar(folio) { adminAbrirModalFactura(folio); }
+function adminSolicitarFactura(folio) { adminAbrirModalFactura(folio); }
+
+document.addEventListener('DOMContentLoaded', function() {
+    document.getElementById('btnSfFacturar').addEventListener('click', function() {
+        var btn = this;
+        var rfc = document.getElementById('sfRfc').value.trim().toUpperCase();
+        var rs  = document.getElementById('sfRazonSocial').value.trim().toUpperCase();
+        var cp  = document.getElementById('sfCP').value.trim();
+        var err = document.getElementById('sfError');
+
+        if (!rfc)  { err.textContent = 'El RFC es requerido.';         err.classList.remove('d-none'); return; }
+        if (!rs)   { err.textContent = 'La Razón Social es requerida.'; err.classList.remove('d-none'); return; }
+        if (!cp)   { err.textContent = 'El Código Postal es requerido.'; err.classList.remove('d-none'); return; }
+
+        err.classList.add('d-none');
+        btn.disabled    = true;
+        btn.textContent = 'Procesando...';
+
+        var fd = new FormData();
+        fd.append('<?= csrf_token() ?>', '<?= csrf_hash() ?>');
+        fd.append('rfcReceptor',           rfc);
+        fd.append('razonSocialReceptor',   rs);
+        fd.append('cpReceptor',            cp);
+        fd.append('usoCFDI',               document.getElementById('sfUsoCFDI').value);
+        fd.append('regimenFiscalReceptor', document.getElementById('sfRegimenFiscal').value);
+        fd.append('formaPagoCFDI',         document.getElementById('sfFormaPago').value);
+        fd.append('metodoPagoCFDI',        document.getElementById('sfMetodoPago').value);
+
+        fetch('<?= base_url('admin/folio/') ?>' + _sfFolioActivo + '/facturar', {
+            method: 'POST', body: fd, credentials: 'same-origin'
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            btn.disabled    = false;
+            btn.innerHTML = '<i class="simple-icon-doc mr-1"></i> Facturar';
+            if (data.success) {
+                $('#modalSolicitarFactura').modal('hide');
+                alert('✔ ' + (data.mensaje || 'Factura generada correctamente.'));
+                $('#tablaAdminConsulta').DataTable().ajax.reload(null, false);
+            } else {
+                err.textContent = data.mensaje || 'Error al generar la factura.';
+                err.classList.remove('d-none');
+            }
+        })
+        .catch(function() {
+            btn.disabled    = false;
+            btn.innerHTML = '<i class="simple-icon-doc mr-1"></i> Facturar';
+            err.textContent = 'Error de conexión.';
+            err.classList.remove('d-none');
+        });
+    });
+});
 </script>
+
+<!-- Modal: Solicitar Factura (Escenario 2 — datos SAT) -->
+<div class="modal fade" id="modalSolicitarFactura" tabindex="-1" role="dialog">
+    <div class="modal-dialog modal-lg" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="simple-icon-doc mr-2"></i>Solicitar Factura — Folio <span id="sfFolioNum"></span></h5>
+                <button type="button" class="close" data-dismiss="modal"><span>&times;</span></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted small mb-3">Captura los datos fiscales del cliente. Al facturar, estos datos se guardarán en el perfil del cliente para sus próximas compras.</p>
+                <div class="row">
+                    <div class="col-md-4">
+                        <div class="form-group">
+                            <label>RFC Receptor <span class="text-danger">*</span></label>
+                            <input type="text" id="sfRfc" class="form-control text-uppercase" maxlength="13" placeholder="XAXX010101000">
+                            <small class="text-muted">12 letras/números (moral) o 13 (física)</small>
+                        </div>
+                    </div>
+                    <div class="col-md-8">
+                        <div class="form-group">
+                            <label>Razón Social / Nombre <span class="text-danger">*</span></label>
+                            <input type="text" id="sfRazonSocial" class="form-control text-uppercase" maxlength="200" placeholder="NOMBRE COMPLETO O RAZÓN SOCIAL">
+                        </div>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-md-3">
+                        <div class="form-group">
+                            <label>CP Fiscal <span class="text-danger">*</span></label>
+                            <input type="text" id="sfCP" class="form-control" maxlength="5" placeholder="72270">
+                        </div>
+                    </div>
+                    <div class="col-md-5">
+                        <div class="form-group">
+                            <label>Régimen Fiscal</label>
+                            <select id="sfRegimenFiscal" class="form-control">
+                                <option value="616" selected>616 – Sin obligaciones fiscales</option>
+                                <option value="601">601 – General de Ley Personas Morales</option>
+                                <option value="612">612 – Personas Físicas con Actividades Empresariales</option>
+                                <option value="621">621 – Incorporación Fiscal</option>
+                                <option value="626">626 – Régimen Simplificado de Confianza (RESICO)</option>
+                                <option value="605">605 – Sueldos y Salarios</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="form-group">
+                            <label>Uso del CFDI</label>
+                            <select id="sfUsoCFDI" class="form-control">
+                                <option value="S01" selected>S01 – Sin efectos fiscales</option>
+                                <option value="G01">G01 – Adquisición de mercancias</option>
+                                <option value="G03">G03 – Gastos en general</option>
+                                <option value="I01">I01 – Construcciones</option>
+                                <option value="D01">D01 – Honorarios médicos y dentales</option>
+                                <option value="CP01">CP01 – Pagos</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-md-4">
+                        <div class="form-group">
+                            <label>Forma de Pago</label>
+                            <select id="sfFormaPago" class="form-control">
+                                <option value="01" selected>01 – Efectivo</option>
+                                <option value="02">02 – Cheque nominativo</option>
+                                <option value="03">03 – Transferencia electrónica</option>
+                                <option value="04">04 – Tarjeta de crédito</option>
+                                <option value="28">28 – Tarjeta de débito</option>
+                                <option value="99">99 – Por definir</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="form-group">
+                            <label>Método de Pago</label>
+                            <select id="sfMetodoPago" class="form-control">
+                                <option value="PUE" selected>PUE – Pago en una sola exhibición</option>
+                                <option value="PPD">PPD – Pago en parcialidades o diferido</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                <div id="sfError" class="alert alert-danger d-none mt-2"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-primary" id="btnSfFacturar">
+                    <i class="simple-icon-doc mr-1"></i> Facturar
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <?= $this->endSection() ?>
                     

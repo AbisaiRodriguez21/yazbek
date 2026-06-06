@@ -428,149 +428,20 @@ class MostradorController extends BaseController
         AuditService::log(AuditService::VENTA_CERRADA, 'notas_1', $folioN1,
             "Nota cerrada: folio #{$folioN1}, status {$idEstatus}, total $" . number_format($total, 2));
 
-        // ── Timbrar CFDI con Dfacture (solo si factura=1 y nota pagada) ──
-        $cfdiUUID    = '';
-        $cfdiMensaje = '';
-        if ($factura === 1 && $idEstatus === 5) {
-            try {
-                $dfacture = new \App\Libraries\DfactureService();
-
-                // Obtener nota completa y detalle para construir el CFDI
-                $notaCFDI   = $db->query("SELECT * FROM notas_1 WHERE folio = ? LIMIT 1", [$folioN1])->getRowArray();
-                // Mismo query que verTicket — precios e info directo de notas_2 + productos
-                $detalleCFDI = $db->query(
-                    "SELECT n2.cantidad,
-                            n2.estilo AS sku,
-                            CONCAT(COALESCE(p.estilo,''),'-',COALESCE(p.Descripcion_Larga,''),
-                                   '-',COALESCE(p.Talla,''),'-',COALESCE(p.Color,'')) AS descripcion,
-                            n2.pUnitario,
-                            n2.pUnitarioM,
-                            (n2.cantidad * n2.pUnitario)  AS importeMenudeo,
-                            (n2.cantidad * n2.pUnitarioM) AS importeMayoreo
-                     FROM notas_2 n2
-                     LEFT JOIN productosyazbek p ON p.sku = n2.estilo
-                     WHERE n2.folio = ?
-                     ORDER BY n2.Id_Notas_2 ASC",
-                    [$folioN1]
-                )->getResultArray();
-
-                // Detectar mayoreo/menudeo — misma lógica que verTicket
-                $storedSuma = (float)($notaCFDI['sumaImportes'] ?? 0);
-                if ($storedSuma > 0) {
-                    $sumMenu = array_sum(array_map(fn($d) => $d['cantidad'] * (float)$d['pUnitario'], $detalleCFDI));
-                    $sumMay  = array_sum(array_map(fn($d) => $d['cantidad'] * (float)($d['pUnitarioM'] ?: $d['pUnitario']), $detalleCFDI));
-                    $esMayoreoCFDI = abs($sumMay - $storedSuma) < abs($sumMenu - $storedSuma);
-                } else {
-                    $esMayoreoCFDI = (int)($notaCFDI['precioMayoreo'] ?? 0) === 1;
-                }
-                // Asignar precio e importe exactos — igual que el ticket
-                foreach ($detalleCFDI as &$linea) {
-                    $useMayoreo = $esMayoreoCFDI && !empty($linea['pUnitarioM']) && (float)$linea['pUnitarioM'] > 0;
-                    $linea['precio']  = $useMayoreo ? (float)$linea['pUnitarioM']    : (float)$linea['pUnitario'];
-                    $linea['importe'] = $useMayoreo ? (float)$linea['importeMayoreo'] : (float)$linea['importeMenudeo'];
-                }
-                unset($linea);
-
-                $clienteCFDI = $db->query(
-                    "SELECT * FROM clientes WHERE id = ? LIMIT 1",
-                    [$notaCFDI['idCliente'] ?? 0]
-                )->getRowArray() ?? [];
-
-                $datosExtra = [
-                    'rfcReceptor'          => $rfcReceptor,
-                    'razonSocialReceptor'  => $razonSocialReceptor,
-                    'cpReceptor'           => $cpReceptor,
-                    'usoCFDI'              => $usoCFDI,
-                    'regimenFiscalReceptor'=> $regimenFiscalReceptor,
-                    'formaPago'            => $formaPagoCFDI,
-                    'metodoPago'           => $metodoPagoCFDI,
-                ];
-
-                $resultado = $dfacture->timbrarNota($folioN1, $notaCFDI, $detalleCFDI, $clienteCFDI, $datosExtra);
-
-                if ($resultado['success']) {
-                    $cfdiUUID = $resultado['uuid'];
-                    $xmlTimbrado = $resultado['xml'];
-                    $db->query(
-                        "UPDATE notas_1 SET uuid_fiscal=?, cfdi_xml=?, cfdi_fecha_timbrado=NOW(), cfdi_error=NULL WHERE folio=?",
-                        [$cfdiUUID, $xmlTimbrado, $folioN1]
-                    );
-                    AuditService::log(AuditService::VENTA_CERRADA, 'notas_1', $folioN1,
-                        "CFDI timbrado: UUID {$cfdiUUID}");
-
-                    // ── Enviar factura por correo ────────────────────────
-                    try {
-                        // Obtener correo del cliente
-                        $correoCliente = '';
-                        $nombreCliente = $clienteCFDI['nombre'] ?? '';
-                        if (!empty($notaCFDI['idCliente'])) {
-                            $clienteRow = $db->query(
-                                "SELECT mail, nombre FROM clientes WHERE id = ? LIMIT 1",
-                                [(int)$notaCFDI['idCliente']]
-                            )->getRowArray();
-                            $correoCliente = $clienteRow['mail']   ?? '';
-                            $nombreCliente = $clienteRow['nombre'] ?? $nombreCliente;
-                        }
-
-                        // Cargar ticket_config para datos de la empresa
-                        $cfgRows = $db->query("SELECT clave, valor FROM ticket_config")->getResultArray();
-                        $cfgMap  = array_column($cfgRows, 'valor', 'clave');
-
-                        // IDEA15 devuelve el XML en Base64 — decodificar antes de usar
-                        $xmlDecoded = base64_decode($xmlTimbrado);
-
-                        // Generar PDF
-                        $pdfService = new \App\Libraries\CfdiPdfService();
-                        $pdfBytes   = $pdfService->generarPDF($xmlDecoded, $cfgMap);
-
-                        // Enviar correo
-                        $emailService = new \App\Libraries\CfdiEmailService();
-                        $emailResult  = $emailService->enviar(
-                            $xmlDecoded,
-                            $pdfBytes,
-                            $cfdiUUID,
-                            (string)$folioN1,
-                            $correoCliente,
-                            $nombreCliente
-                        );
-
-                        if (!$emailResult['success']) {
-                            log_message('warning', "[CfdiEmail] folio={$folioN1} " . $emailResult['message']);
-                        }
-                    } catch (\Throwable $eEmail) {
-                        // El correo no debe bloquear el cierre de la nota
-                        log_message('error', "[CfdiEmail] folio={$folioN1} " . $eEmail->getMessage());
-                    }
-                    // ── Fin envío correo ─────────────────────────────────
-
-                } else {
-                    $cfdiMensaje = $resultado['message'];
-                    // Guardar el error pero no bloquear el cierre de la nota
-                    $db->query(
-                        "UPDATE notas_1 SET cfdi_error=? WHERE folio=?",
-                        [substr($cfdiMensaje, 0, 500), $folioN1]
-                    );
-                    log_message('error', "[DfactureService] folio={$folioN1} error: {$cfdiMensaje}");
-                }
-            } catch (\Throwable $eCFDI) {
-                $cfdiMensaje = $eCFDI->getMessage();
-                log_message('error', "[DfactureService] folio={$folioN1} excepción: {$cfdiMensaje}");
-                // Guardar la excepción en la DB para poder depurarla
-                try {
-                    $db->query(
-                        "UPDATE notas_1 SET cfdi_error=? WHERE folio=?",
-                        [substr('EXCEPCION: ' . $cfdiMensaje, 0, 500), $folioN1]
-                    );
-                } catch (\Throwable $ignored) {}
-            }
-        }
+        // ── Actualizar status_facturacion (NO se timbra aquí; se hace desde Consulta Folios) ──
+        // 0 = No Requerida, 1 = Pendiente por Facturar
+        $statusFacturacion = ($factura === 1) ? 1 : 0;
+        $db->query(
+            "UPDATE notas_1 SET status_facturacion = ? WHERE folio = ?",
+            [$statusFacturacion, $folioN1]
+        );
 
         return $this->response
                     ->setContentType('application/json')
                     ->setBody(json_encode([
                         'success'      => true,
-                        'cfdi_uuid'    => $cfdiUUID,
-                        'cfdi_error'   => $cfdiMensaje,
+                        'cfdi_uuid'    => '',
+                        'cfdi_error'   => '',
                     ]));
 
         } catch (\Throwable $e) {

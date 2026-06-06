@@ -131,6 +131,12 @@ $routes->group('admin', ['filter' => 'role:1'], function ($routes) {
     // Liquidar anticipo
     $routes->post('folio/(:num)/liquidar', 'AdminController::liquidarAnticipo/$1');
 
+    // Datos fiscales para modal de facturación (GET)
+    $routes->get('folio/(:num)/datos-fiscales', 'AdminController::datosFiscales/$1');
+
+    // Facturar folio (genera CFDI desde Consulta Folios — solo Admin)
+    $routes->post('folio/(:num)/facturar', 'AdminController::facturarFolio/$1');
+
     // Ver Ticket de impresión
     $routes->get('folio/(:num)/ticket', 'AdminController::verTicket/$1');
 
@@ -286,6 +292,12 @@ $routes->group('caja', ['filter' => 'role:2'], function ($routes) {
 
     // Revivir nota cancelada desde caja
     $routes->post('folio/(:num)/revivir', 'AdminController::revivirNota/$1');
+
+    // Datos fiscales para modal de facturación (GET)
+    $routes->get('folio/(:num)/datos-fiscales', 'CajaController::datosFiscales/$1');
+
+    // Facturar folio (genera CFDI desde Consulta Folios — Admin y Caja Nivel 2)
+    $routes->post('folio/(:num)/facturar', 'CajaController::facturarFolio/$1');
 
     // Ver Ticket de impresión (reutiliza el mismo método de admin)
     $routes->get('folio/(:num)/ticket', 'AdminController::verTicket/$1');

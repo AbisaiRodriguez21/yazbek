@@ -1308,6 +1308,105 @@ class AdminController extends BaseController
     }
 
     // ──────────────────────────────────────────────────────────────
+    // GET /admin/folio/:folio/datos-fiscales
+    // Devuelve los datos SAT para pre-llenar el modal de facturación.
+    // Prioridad: datos guardados en notas_1 → datos del cliente → vacío.
+    // ──────────────────────────────────────────────────────────────
+    public function datosFiscales(int $folio): \CodeIgniter\HTTP\Response
+    {
+        $db   = \Config\Database::connect();
+        $nota = $db->query(
+            "SELECT n.rfc_receptor, n.razon_social_receptor, n.cp_receptor,
+                    n.uso_cfdi, n.regimen_fiscal_receptor, n.forma_pago_cfdi,
+                    n.idCliente
+             FROM notas_1 n WHERE n.folio = ? LIMIT 1",
+            [$folio]
+        )->getRowArray();
+
+        if (! $nota) {
+            return $this->response->setJSON(['error' => 'Folio no encontrado']);
+        }
+
+        // Cargar datos del cliente como respaldo
+        $cliente = [];
+        if (! empty($nota['idCliente'])) {
+            $cliente = $db->query(
+                "SELECT RFC, razonSocial, CP FROM clientes WHERE id = ? LIMIT 1",
+                [(int)$nota['idCliente']]
+            )->getRowArray() ?? [];
+        }
+
+        // Prioridad: dato de nota → dato de cliente → vacío
+        $rfc    = $nota['rfc_receptor']          ?: ($cliente['RFC']         ?? '');
+        $rs     = $nota['razon_social_receptor'] ?: ($cliente['razonSocial'] ?? '');
+        $cp     = $nota['cp_receptor']           ?: ($cliente['CP']          ?? '');
+        $uso    = $nota['uso_cfdi']              ?: 'S01';
+        $reg    = $nota['regimen_fiscal_receptor'] ?: '616';
+        $forma  = $nota['forma_pago_cfdi']       ?: '01';
+
+        return $this->response->setJSON([
+            'rfcReceptor'           => strtoupper(trim($rfc)),
+            'razonSocialReceptor'   => strtoupper(trim($rs)),
+            'cpReceptor'            => trim($cp),
+            'usoCFDI'               => $uso,
+            'regimenFiscalReceptor' => $reg,
+            'formaPagoCFDI'         => $forma,
+            'metodoPagoCFDI'        => 'PUE',
+        ]);
+    }
+
+    // ──────────────────────────────────────────────────────────────
+    // POST /admin/folio/:folio/facturar
+    // Genera la factura CFDI para un folio ya cerrado.
+    // Escenario 1: los datos fiscales ya están en notas_1 (factura=1 al cerrar).
+    // Escenario 2: el admin proporciona los datos vía modal (factura=0 al cerrar).
+    // Solo Admin (acceso=1) puede llamar este endpoint.
+    // ──────────────────────────────────────────────────────────────
+    public function facturarFolio(int $folio): \CodeIgniter\HTTP\Response
+    {
+        try {
+            $req = $this->request;
+
+            // Si vienen datos del modal (Escenario 2), los pasamos al servicio
+            $rfcModal = trim($req->getPost('rfcReceptor') ?? '');
+            $datosModal = null;
+            if ($rfcModal !== '') {
+                $datosModal = [
+                    'rfcReceptor'           => $rfcModal,
+                    'razonSocialReceptor'   => trim($req->getPost('razonSocialReceptor') ?? ''),
+                    'cpReceptor'            => trim($req->getPost('cpReceptor')          ?? ''),
+                    'usoCFDI'               => trim($req->getPost('usoCFDI')             ?? 'S01'),
+                    'regimenFiscalReceptor' => trim($req->getPost('regimenFiscalReceptor') ?? '616'),
+                    'formaPago'             => trim($req->getPost('formaPagoCFDI')       ?? '01'),
+                    'metodoPago'            => trim($req->getPost('metodoPagoCFDI')      ?? 'PUE'),
+                ];
+            }
+
+            $svc    = new \App\Libraries\FacturacionService();
+            $result = $svc->procesar($folio, $datosModal);
+
+            if ($result['success']) {
+                return $this->response->setJSON([
+                    'success' => true,
+                    'uuid'    => $result['uuid'],
+                    'mensaje' => "Folio #{$folio} facturado correctamente. UUID: {$result['uuid']}",
+                ]);
+            } else {
+                return $this->response->setJSON([
+                    'success' => false,
+                    'mensaje' => $result['message'],
+                ]);
+            }
+        } catch (\Throwable $e) {
+            log_message('error', "AdminController::facturarFolio folio={$folio}: " . $e->getMessage());
+            return $this->response->setJSON([
+                'success' => false,
+                'mensaje' => 'Error interno: ' . $e->getMessage(),
+            ]);
+        }
+    }
+
+    // ──────────────────────────────────────────────────────────────
     // GET /admin/folio/:folio/ticket  —  Ticket de impresión (popup)
     // Equivalente a venta_stp_3.php del sistema original
     // ──────────────────────────────────────────────────────────────
@@ -1934,19 +2033,37 @@ class AdminController extends BaseController
         $html .= '<tr><td colspan="2" class="text-right no-border" align="left"><strong>Estatus:</strong></td>';
         $html .= '<td colspan="2" align="left" id="estatusPago">' . esc($displayStatus) . '</td></tr>';
         $html .= '<tr><td colspan="2" class="text-right no-border" align="left"><strong>Factura:</strong></td>';
-        $facturaLabel = !empty($nota['uuid_fiscal']) ? 'Facturado ✓' : (($nota['factura'] ?? 0) == 1 ? 'Si requiere' : 'No requiere');
+        // Consultar status_facturacion para el modal
+        $sfRow = $db->query(
+            "SELECT COALESCE(status_facturacion,0) AS sf, COALESCE(uuid_fiscal,'') AS uuid FROM notas_1 WHERE folio = ? LIMIT 1",
+            [$folio]
+        )->getRowArray();
+        $statusFact = (int)($sfRow['sf']   ?? 0);
+        $uuidFact   =       $sfRow['uuid'] ?? '';
+
+        $facturaLabel = !empty($uuidFact) ? 'Facturado ✓' : (($nota['factura'] ?? 0) == 1 ? 'Pendiente por facturar' : 'No requerida');
         $html .= '<td colspan="2" align="left">' . $facturaLabel . '</td></tr>';
 
         $html .= '<tr><input type="hidden" id="folio_input" value="' . $nota['folio'] . '" />';
         if ($statusId !== 3) {
             $html .= '<td></td>';
             $html .= '<td colspan="2" class="text-right no-border"><button type="button" class="btn btn-danger" onclick="fn_modal_calcelar_nota()">Cancelar Nota</button></td>';
-            // Botón Liquidar: oculto si ya fue liquidada (status=6 o verificado=Pagado)
             if (! $esLiquidado) {
                 $html .= '<td colspan="2" class="text-right no-border"><button type="button" class="btn btn-success" onclick="fn_liquidar_modal()">Liquidar</button></td>';
             }
         }
-        $html .= '</tr></tbody></table></div>';
+
+        // Botón Facturar en modal (solo nota pagada/liquidada, no cancelada, no ya facturada)
+        if ($statusId !== 3 && ($statusId === 5 || $esLiquidado) && empty($uuidFact)) {
+            $btnLabel = $statusFact === 1 ? 'Facturar' : 'Solicitar Factura';
+            $html .= '<tr><td colspan="4" class="text-right pt-2">'
+                   . '<button type="button" class="btn btn-primary" '
+                   . 'onclick="$(\'#modalVerFolio\').modal(\'hide\'); adminAbrirModalFactura(' . $folio . ');">'
+                   . '<i class=\'simple-icon-doc mr-1\'></i> ' . $btnLabel . '</button>'
+                   . '</td></tr>';
+        }
+
+        $html .= '</tbody></table></div>';
         $html .= '<script>function blurFnCj(){var p=parseFloat(document.getElementById("pagar2_cj").value)||0;var i=parseFloat(document.getElementById("importe_cj").value)||0;document.getElementById("resultado_cj").value=(i-p).toFixed(2);}</script>';
 
         return $html;
@@ -2636,7 +2753,14 @@ class AdminController extends BaseController
                         COALESCE(s.nombre, '')    AS status_nombre,
                         n.verificado,
                         COALESCE(n.referencia, 0) AS referencia,
-                        n.factura, COALESCE(n.uuid_fiscal, '') AS uuid_fiscal
+                        n.factura, COALESCE(n.uuid_fiscal, '') AS uuid_fiscal,
+                        COALESCE(n.status_facturacion, 0) AS status_facturacion,
+                        COALESCE(n.rfc_receptor, '')          AS rfc_receptor,
+                        COALESCE(n.razon_social_receptor, '') AS razon_social_receptor,
+                        COALESCE(n.cp_receptor, '')           AS cp_receptor,
+                        COALESCE(n.uso_cfdi, 'S01')           AS uso_cfdi,
+                        COALESCE(n.regimen_fiscal_receptor, '616') AS regimen_fiscal_receptor,
+                        COALESCE(n.forma_pago_cfdi, '01')     AS forma_pago_cfdi
                  {$baseSql} {$where}
                  ORDER BY {$orderCol} {$orderDir}
                  LIMIT ? OFFSET ?",

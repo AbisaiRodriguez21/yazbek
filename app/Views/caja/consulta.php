@@ -164,7 +164,7 @@ var URL_CANCELAR = '<?= base_url('caja/cancelar/') ?>';
                 }
                 // Revivir: solo folios PADRE cancelados con método de pago permitido
                 if (idstatus === 3 && esPadre && puedeRevivir(row.tipopago)) {
-                    btns += '<button class="btn btn-xs btn-warning"'
+                    btns += '<button class="btn btn-xs btn-outline-secondary"'
                           + ' onclick="cajaRevivirFolio(' + row.folio + ')">Revivir</button>';
                 }
                 if (idstatus === 5) {
@@ -172,6 +172,20 @@ var URL_CANCELAR = '<?= base_url('caja/cancelar/') ?>';
                           + ' onclick="cajaVerFolioModal(' + row.folio + ')">Ver</button>';
                     btns += '<button class="btn btn-xs btn-outline-dark mr-1"'
                           + ' onclick="cajaVerTicket(' + row.folio + ')">Ver Ticket</button>';
+                }
+                // ── Botones de Facturación (Caja Nivel 2) ──
+                if (esPadre && (idstatus === 5 || idstatus === 6) && idstatus !== 3) {
+                    var sf  = parseInt(row.status_facturacion || 0, 10);
+                    var uid = (row.uuid_fiscal || '').trim();
+                    if (uid !== '') {
+                        // Ya facturada — no mostrar nada en Acciones
+                    } else if (sf === 1) {
+                        btns += '<button class="btn btn-xs btn-primary mr-1"'
+                              + ' onclick="cajaAbrirModalFactura(' + row.folio + ')">Facturar</button>';
+                    } else {
+                        btns += '<button class="btn btn-xs btn-outline-primary"'
+                              + ' onclick="cajaAbrirModalFactura(' + row.folio + ')">Solicitar Factura</button>';
+                    }
                 }
                 return btns || '<span class="text-muted">—</span>';
               }
@@ -283,5 +297,180 @@ function cajaVerificarPago(folio) {
         })
         .catch(function() { alert('Error al verificar el pago.'); });
 }
+
+// ── Facturación desde Consulta Folios (Caja Nivel 2) ───────────────────
+
+// Abre el modal pre-llenando datos vía AJAX (Escenario 1 y 2)
+var _cajaSfFolioActivo = null;
+
+function cajaAbrirModalFactura(folio) {
+    _cajaSfFolioActivo = folio;
+    document.getElementById('cajaSfFolioNum').textContent    = '#' + folio;
+    document.getElementById('cajaSfError').classList.add('d-none');
+    document.getElementById('cajaSfError').textContent       = '';
+    document.getElementById('btnCajaSfFacturar').disabled    = false;
+    document.getElementById('btnCajaSfFacturar').innerHTML = '<i class="simple-icon-doc mr-1"></i> Facturar';
+
+    ['cajaSfRfc','cajaSfRazonSocial','cajaSfCP'].forEach(function(id) {
+        document.getElementById(id).value = '';
+    });
+
+    $('#modalCajaSolicitarFactura').modal('show');
+
+    fetch('<?= base_url('caja/folio/') ?>' + folio + '/datos-fiscales', {
+        credentials: 'same-origin'
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+        document.getElementById('cajaSfRfc').value           = d.rfcReceptor           || '';
+        document.getElementById('cajaSfRazonSocial').value   = d.razonSocialReceptor   || '';
+        document.getElementById('cajaSfCP').value            = d.cpReceptor            || '';
+        document.getElementById('cajaSfUsoCFDI').value       = d.usoCFDI               || 'S01';
+        document.getElementById('cajaSfRegimenFiscal').value = d.regimenFiscalReceptor || '616';
+        document.getElementById('cajaSfFormaPago').value     = d.formaPagoCFDI         || '01';
+    })
+    .catch(function() { /* campos vacíos, el usuario los llena manualmente */ });
+}
+
+// Alias legacy
+function cajaFacturar(folio) { cajaAbrirModalFactura(folio); }
+function cajaSolicitarFactura(folio) { cajaAbrirModalFactura(folio); }
+
+document.addEventListener('DOMContentLoaded', function() {
+    document.getElementById('btnCajaSfFacturar').addEventListener('click', function() {
+        var btn = this;
+        var rfc = document.getElementById('cajaSfRfc').value.trim().toUpperCase();
+        var rs  = document.getElementById('cajaSfRazonSocial').value.trim().toUpperCase();
+        var cp  = document.getElementById('cajaSfCP').value.trim();
+        var err = document.getElementById('cajaSfError');
+
+        if (!rfc) { err.textContent = 'El RFC es requerido.';          err.classList.remove('d-none'); return; }
+        if (!rs)  { err.textContent = 'La Razón Social es requerida.'; err.classList.remove('d-none'); return; }
+        if (!cp)  { err.textContent = 'El Código Postal es requerido.'; err.classList.remove('d-none'); return; }
+
+        err.classList.add('d-none');
+        btn.disabled    = true;
+        btn.textContent = 'Procesando...';
+
+        var fd = new FormData();
+        fd.append('<?= csrf_token() ?>', '<?= csrf_hash() ?>');
+        fd.append('rfcReceptor',           rfc);
+        fd.append('razonSocialReceptor',   rs);
+        fd.append('cpReceptor',            cp);
+        fd.append('usoCFDI',               document.getElementById('cajaSfUsoCFDI').value);
+        fd.append('regimenFiscalReceptor', document.getElementById('cajaSfRegimenFiscal').value);
+        fd.append('formaPagoCFDI',         document.getElementById('cajaSfFormaPago').value);
+        fd.append('metodoPagoCFDI',        'PUE');
+
+        fetch('<?= base_url('caja/folio/') ?>' + _cajaSfFolioActivo + '/facturar', {
+            method: 'POST', body: fd, credentials: 'same-origin'
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            btn.disabled    = false;
+            btn.innerHTML = '<i class="simple-icon-doc mr-1"></i> Facturar';
+            if (data.success) {
+                $('#modalCajaSolicitarFactura').modal('hide');
+                alert('✔ ' + (data.mensaje || 'Factura generada correctamente.'));
+                $('#tablaCajaConsulta').DataTable().ajax.reload(null, false);
+            } else {
+                err.textContent = data.mensaje || 'Error al generar la factura.';
+                err.classList.remove('d-none');
+            }
+        })
+        .catch(function() {
+            btn.disabled    = false;
+            btn.innerHTML = '<i class="simple-icon-doc mr-1"></i> Facturar';
+            err.textContent = 'Error de conexión.';
+            err.classList.remove('d-none');
+        });
+    });
+});
 </script>
+
+<!-- Modal: Solicitar Factura Caja (Escenario 2) -->
+<div class="modal fade" id="modalCajaSolicitarFactura" tabindex="-1" role="dialog">
+    <div class="modal-dialog modal-lg" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="simple-icon-doc mr-2"></i>Solicitar Factura — Folio <span id="cajaSfFolioNum"></span></h5>
+                <button type="button" class="close" data-dismiss="modal"><span>&times;</span></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted small mb-3">Captura los datos fiscales del cliente. Al facturar, quedarán guardados en su perfil para futuras compras.</p>
+                <div class="row">
+                    <div class="col-md-4">
+                        <div class="form-group">
+                            <label>RFC Receptor <span class="text-danger">*</span></label>
+                            <input type="text" id="cajaSfRfc" class="form-control text-uppercase" maxlength="13" placeholder="XAXX010101000">
+                        </div>
+                    </div>
+                    <div class="col-md-8">
+                        <div class="form-group">
+                            <label>Razón Social / Nombre <span class="text-danger">*</span></label>
+                            <input type="text" id="cajaSfRazonSocial" class="form-control text-uppercase" maxlength="200">
+                        </div>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-md-3">
+                        <div class="form-group">
+                            <label>CP Fiscal <span class="text-danger">*</span></label>
+                            <input type="text" id="cajaSfCP" class="form-control" maxlength="5" placeholder="72270">
+                        </div>
+                    </div>
+                    <div class="col-md-5">
+                        <div class="form-group">
+                            <label>Régimen Fiscal</label>
+                            <select id="cajaSfRegimenFiscal" class="form-control">
+                                <option value="616" selected>616 – Sin obligaciones fiscales</option>
+                                <option value="601">601 – General de Ley Personas Morales</option>
+                                <option value="612">612 – Personas Físicas con Actividades Empresariales</option>
+                                <option value="621">621 – Incorporación Fiscal</option>
+                                <option value="626">626 – Régimen Simplificado de Confianza (RESICO)</option>
+                                <option value="605">605 – Sueldos y Salarios</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="form-group">
+                            <label>Uso del CFDI</label>
+                            <select id="cajaSfUsoCFDI" class="form-control">
+                                <option value="S01" selected>S01 – Sin efectos fiscales</option>
+                                <option value="G01">G01 – Adquisición de mercancias</option>
+                                <option value="G03">G03 – Gastos en general</option>
+                                <option value="I01">I01 – Construcciones</option>
+                                <option value="D01">D01 – Honorarios médicos y dentales</option>
+                                <option value="CP01">CP01 – Pagos</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-md-4">
+                        <div class="form-group">
+                            <label>Forma de Pago</label>
+                            <select id="cajaSfFormaPago" class="form-control">
+                                <option value="01" selected>01 – Efectivo</option>
+                                <option value="02">02 – Cheque nominativo</option>
+                                <option value="03">03 – Transferencia electrónica</option>
+                                <option value="04">04 – Tarjeta de crédito</option>
+                                <option value="28">28 – Tarjeta de débito</option>
+                                <option value="99">99 – Por definir</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                <div id="cajaSfError" class="alert alert-danger d-none mt-2"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-primary" id="btnCajaSfFacturar">
+                    <i class="simple-icon-doc mr-1"></i> Facturar
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <?= $this->endSection() ?>

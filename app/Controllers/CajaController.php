@@ -694,8 +694,20 @@ class CajaController extends BaseController
 
         $html .= '<tr><td colspan="2" align="left"><strong>Estatus:</strong></td>';
         $html .= '<td colspan="2" id="estatusPago">' . esc($displayStatus) . '</td></tr>';
+        // Consultar status_facturacion
+        $sfRow2     = $db->query(
+            "SELECT COALESCE(status_facturacion,0) AS sf, COALESCE(uuid_fiscal,'') AS uuid FROM notas_1 WHERE folio = ? LIMIT 1",
+            [$folio]
+        )->getRowArray();
+        $statusFact2 = (int)($sfRow2['sf']   ?? 0);
+        $uuidFact2   =       $sfRow2['uuid'] ?? '';
+
+        $factLabel = !empty($uuidFact2)
+            ? 'Facturado ✓'
+            : (($nota['factura'] ?? 0) == 1 ? 'Pendiente por facturar' : 'No requerida');
+
         $html .= '<tr><td colspan="2" align="left"><strong>Factura:</strong></td>';
-        $html .= '<td colspan="2">' . (($nota['factura'] ?? 0) == 1 ? 'Si requiere' : 'No requiere') . '</td></tr>';
+        $html .= '<td colspan="2">' . $factLabel . '</td></tr>';
 
         // Botones caja: Verificar Pago y Cancelar
         $html .= '<tr><td colspan="4" class="text-right pt-3">';
@@ -707,6 +719,16 @@ class CajaController extends BaseController
             }
         }
         $html .= '</td></tr>';
+
+        // Botón Facturar en modal (solo nota pagada/liquidada, no cancelada, no ya facturada)
+        if ($statusId !== 3 && ($statusId === 5 || $esLiquidado) && empty($uuidFact2)) {
+            $btnLabel2 = $statusFact2 === 1 ? 'Facturar' : 'Solicitar Factura';
+            $html .= '<tr><td colspan="4" class="text-right pt-2">'
+                   . '<button type="button" class="btn btn-primary" '
+                   . 'onclick="$(\'#modalVerFolioCaja\').modal(\'hide\'); cajaAbrirModalFactura(' . $folio . ');">'
+                   . '<i class=\'simple-icon-doc mr-1\'></i> ' . $btnLabel2 . '</button>'
+                   . '</td></tr>';
+        }
 
         $html .= '</tbody></table></div>';
         $html .= '<script>function blurFnCj(){var p=parseFloat(document.getElementById("pagar2_cj").value)||0;var i=parseFloat(document.getElementById("importe_cj").value)||0;var r=document.getElementById("resultado_cj");if(r)r.value=(i-p).toFixed(2);}</script>';
@@ -785,6 +807,99 @@ class CajaController extends BaseController
             'detalle' => $detalle,
             'pagos'   => $pagos,
         ]);
+    }
+
+    // ──────────────────────────────────────────────────────────────
+    // GET /caja/folio/:folio/datos-fiscales
+    // Devuelve datos SAT para pre-llenar el modal de facturación.
+    // ──────────────────────────────────────────────────────────────
+    public function datosFiscales(int $folio): \CodeIgniter\HTTP\Response
+    {
+        $db   = \Config\Database::connect();
+        $nota = $db->query(
+            "SELECT n.rfc_receptor, n.razon_social_receptor, n.cp_receptor,
+                    n.uso_cfdi, n.regimen_fiscal_receptor, n.forma_pago_cfdi,
+                    n.idCliente
+             FROM notas_1 n WHERE n.folio = ? LIMIT 1",
+            [$folio]
+        )->getRowArray();
+
+        if (! $nota) {
+            return $this->response->setJSON(['error' => 'Folio no encontrado']);
+        }
+
+        $cliente = [];
+        if (! empty($nota['idCliente'])) {
+            $cliente = $db->query(
+                "SELECT RFC, razonSocial, CP FROM clientes WHERE id = ? LIMIT 1",
+                [(int)$nota['idCliente']]
+            )->getRowArray() ?? [];
+        }
+
+        $rfc   = $nota['rfc_receptor']           ?: ($cliente['RFC']         ?? '');
+        $rs    = $nota['razon_social_receptor']  ?: ($cliente['razonSocial'] ?? '');
+        $cp    = $nota['cp_receptor']            ?: ($cliente['CP']          ?? '');
+        $uso   = $nota['uso_cfdi']               ?: 'S01';
+        $reg   = $nota['regimen_fiscal_receptor'] ?: '616';
+        $forma = $nota['forma_pago_cfdi']        ?: '01';
+
+        return $this->response->setJSON([
+            'rfcReceptor'           => strtoupper(trim($rfc)),
+            'razonSocialReceptor'   => strtoupper(trim($rs)),
+            'cpReceptor'            => trim($cp),
+            'usoCFDI'               => $uso,
+            'regimenFiscalReceptor' => $reg,
+            'formaPagoCFDI'         => $forma,
+            'metodoPagoCFDI'        => 'PUE',
+        ]);
+    }
+
+    // ──────────────────────────────────────────────────────────────
+    // POST /caja/folio/:folio/facturar
+    // Genera la factura CFDI para un folio ya cerrado.
+    // Solo Caja (acceso=2) y Admin (acceso=1) pueden llamar este endpoint.
+    // ──────────────────────────────────────────────────────────────
+    public function facturarFolio(int $folio): \CodeIgniter\HTTP\Response
+    {
+        try {
+            $req = $this->request;
+
+            $rfcModal = trim($req->getPost('rfcReceptor') ?? '');
+            $datosModal = null;
+            if ($rfcModal !== '') {
+                $datosModal = [
+                    'rfcReceptor'           => $rfcModal,
+                    'razonSocialReceptor'   => trim($req->getPost('razonSocialReceptor') ?? ''),
+                    'cpReceptor'            => trim($req->getPost('cpReceptor')          ?? ''),
+                    'usoCFDI'               => trim($req->getPost('usoCFDI')             ?? 'S01'),
+                    'regimenFiscalReceptor' => trim($req->getPost('regimenFiscalReceptor') ?? '616'),
+                    'formaPago'             => trim($req->getPost('formaPagoCFDI')       ?? '01'),
+                    'metodoPago'            => trim($req->getPost('metodoPagoCFDI')      ?? 'PUE'),
+                ];
+            }
+
+            $svc    = new \App\Libraries\FacturacionService();
+            $result = $svc->procesar($folio, $datosModal);
+
+            if ($result['success']) {
+                return $this->response->setJSON([
+                    'success' => true,
+                    'uuid'    => $result['uuid'],
+                    'mensaje' => "Folio #{$folio} facturado correctamente. UUID: {$result['uuid']}",
+                ]);
+            } else {
+                return $this->response->setJSON([
+                    'success' => false,
+                    'mensaje' => $result['message'],
+                ]);
+            }
+        } catch (\Throwable $e) {
+            log_message('error', "CajaController::facturarFolio folio={$folio}: " . $e->getMessage());
+            return $this->response->setJSON([
+                'success' => false,
+                'mensaje' => 'Error interno: ' . $e->getMessage(),
+            ]);
+        }
     }
 
     // ──────────────────────────────────────────────────────────────
@@ -958,7 +1073,14 @@ class CajaController extends BaseController
                     n.total, n.status AS idstatus,
                     COALESCE(s.nombre, '')                   AS status_nombre,
                     n.verificado, n.referencia,
-                    n.factura, n.uuid_fiscal
+                    n.factura, COALESCE(n.uuid_fiscal, '') AS uuid_fiscal,
+                    COALESCE(n.status_facturacion, 0) AS status_facturacion,
+                    COALESCE(n.rfc_receptor, '')          AS rfc_receptor,
+                    COALESCE(n.razon_social_receptor, '') AS razon_social_receptor,
+                    COALESCE(n.cp_receptor, '')           AS cp_receptor,
+                    COALESCE(n.uso_cfdi, 'S01')           AS uso_cfdi,
+                    COALESCE(n.regimen_fiscal_receptor, '616') AS regimen_fiscal_receptor,
+                    COALESCE(n.forma_pago_cfdi, '01')     AS forma_pago_cfdi
              {$baseSql} {$where}
              ORDER BY {$orderCol} {$orderDir}
              LIMIT ? OFFSET ?",

@@ -101,11 +101,15 @@
                                     Agrega productos que <strong>no existen</strong> aún en el inventario.
                                     Si el SKU ya existe, la fila se omite sin modificar nada.
                                 </p>
-                                <div class="alert alert-info py-2 mb-3" style="font-size:.85rem">
+                                <div class="alert alert-info py-2 mb-2" style="font-size:.85rem">
                                     <strong>Formato del CSV — mismo que exporta "Exportar base de datos":</strong><br>
                                     <code>Estilo, SKU, Descripcion Corta, Descripcion Larga, Talla, Color, Precio Menudeo, Precio Mayoreo, Piezas</code><br>
                                     <small>Puedes usar el archivo exportado por el botón <strong>EBD</strong> como plantilla. Si el SKU ya existe en el inventario, la fila se omite.</small>
                                 </div>
+                                <button type="button" class="btn btn-sm btn-outline-secondary mb-3"
+                                        onclick="descargarPlantilla('producto')">
+                                    <i class="simple-icon-cloud-download mr-1"></i> Descargar plantilla
+                                </button>
                                 <form action="<?= base_url('admin/inventario/importar/producto') ?>"
                                       method="POST" enctype="multipart/form-data"
                                       onsubmit="return validarCsv(this)">
@@ -131,11 +135,15 @@
                                     Actualiza <strong>solo los precios</strong> de los productos existentes.
                                     Se busca por SKU; si el SKU no existe en la BD se omite.
                                 </p>
-                                <div class="alert alert-info py-2 mb-3" style="font-size:.85rem">
+                                <div class="alert alert-info py-2 mb-2" style="font-size:.85rem">
                                     <strong>Formato del CSV — columnas requeridas:</strong><br>
                                     <code>SKU, pMayoreo, pMenudeo</code><br>
                                     <small>Ejemplo: <em>B0300P010001, 25.00, 36.00</em></small>
                                 </div>
+                                <button type="button" class="btn btn-sm btn-outline-secondary mb-3"
+                                        onclick="descargarPlantilla('precios')">
+                                    <i class="simple-icon-cloud-download mr-1"></i> Descargar plantilla
+                                </button>
                                 <form action="<?= base_url('admin/inventario/importar/precios') ?>"
                                       method="POST" enctype="multipart/form-data"
                                       onsubmit="return validarCsv(this)">
@@ -161,11 +169,15 @@
                                     Actualiza <strong>solo las piezas en stock</strong> de los productos existentes.
                                     El valor reemplaza el stock actual (no suma). Se busca por SKU.
                                 </p>
-                                <div class="alert alert-info py-2 mb-3" style="font-size:.85rem">
+                                <div class="alert alert-info py-2 mb-2" style="font-size:.85rem">
                                     <strong>Formato del CSV — columnas requeridas:</strong><br>
                                     <code>SKU, piezas</code><br>
                                     <small>Ejemplo: <em>B0300P010001, 20</em></small>
                                 </div>
+                                <button type="button" class="btn btn-sm btn-outline-secondary mb-3"
+                                        onclick="descargarPlantilla('stock')">
+                                    <i class="simple-icon-cloud-download mr-1"></i> Descargar plantilla
+                                </button>
                                 <form action="<?= base_url('admin/inventario/importar/stock') ?>"
                                       method="POST" enctype="multipart/form-data"
                                       onsubmit="return validarCsv(this)">
@@ -599,6 +611,30 @@
         });
     });
 })();
+
+// ── Descargar plantilla CSV con solo los títulos ──
+function descargarPlantilla(tipo) {
+    var headers = {
+        producto: 'Estilo,SKU,Descripcion Corta,Descripcion Larga,Talla,Color,Precio Menudeo,Precio Mayoreo,Piezas',
+        precios:  'SKU,pMayoreo,pMenudeo',
+        stock:    'SKU,piezas'
+    };
+    var nombres = {
+        producto: 'plantilla_nuevo_producto.csv',
+        precios:  'plantilla_actualizar_precios.csv',
+        stock:    'plantilla_actualizar_stock.csv'
+    };
+    var csv  = headers[tipo] + '\r\n';
+    var blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    var url  = URL.createObjectURL(blob);
+    var a    = document.createElement('a');
+    a.href     = url;
+    a.download = nombres[tipo];
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+}
 
 // Validación de extensión antes de enviar el formulario
 function validarCsv(form) {
