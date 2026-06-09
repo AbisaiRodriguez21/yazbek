@@ -269,7 +269,7 @@ class NotaModel extends Model
      * Crea un folio hijo de pago para un anticipo existente.
      * El hijo tiene referencia = folio padre, sin productos, solo registra el pago.
      */
-    public function crearFolioPagoAnticipo(int $foliopadre, int $idCliente, int $idVendedor, float $monto, int $idTipoPago, float $cargo = 0, int $esAnticipo = 1): int
+    public function crearFolioPagoAnticipo(int $foliopadre, int $idCliente, int $idVendedor, float $monto, int $idTipoPago, float $cargo = 0, int $esAnticipo = 1, string $numReferencia = ''): int
     {
         $db    = \Config\Database::connect();
         $folio = $this->siguienteFolio();
@@ -290,9 +290,9 @@ class NotaModel extends Model
         $idNota = $db->insertID();
 
         $db->query(
-            "INSERT INTO montosnotas (idNotas, idTipoPago, monto, cargos, anticipo, montoEfectivoIva, fecha)
-             VALUES (?, ?, ?, ?, ?, 0, ?)",
-            [$idNota, $idTipoPago, $monto, $cargo, $esAnticipo, $fecha]
+            "INSERT INTO montosnotas (idNotas, idTipoPago, monto, cargos, referencia, anticipo, montoEfectivoIva, fecha)
+             VALUES (?, ?, ?, ?, ?, ?, 0, ?)",
+            [$idNota, $idTipoPago, $monto, $cargo, $numReferencia ?: null, $esAnticipo, $fecha]
         );
 
         return $folio;

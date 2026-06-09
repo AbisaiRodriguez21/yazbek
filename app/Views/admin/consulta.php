@@ -1,5 +1,65 @@
 <?= $this->extend('layouts/main') ?>
 
+<?= $this->section('page_css') ?>
+<style>
+/* ── Dropdown de acciones en DataTable ────────────────────── */
+.btn-acciones {
+    font-size: .78rem;
+    font-weight: 600;
+    padding: 3px 10px;
+    border-radius: 4px;
+    border: 1px solid #145388;
+    color: #145388;
+    background: #fff;
+    transition: background .15s, color .15s;
+    white-space: nowrap;
+}
+.btn-acciones:hover,
+.btn-acciones:focus {
+    background: #145388;
+    color: #fff;
+}
+.btn-acciones .caret-icon {
+    font-size: .65rem;
+    margin-left: 4px;
+    vertical-align: middle;
+}
+
+/* Menú flotante (se mueve al body para evitar overflow:hidden) */
+body > .dd-acc-menu {
+    border: none;
+    border-radius: 6px;
+    box-shadow: 0 4px 20px rgba(0,0,0,.18);
+    min-width: 175px;
+    padding: 4px 0;
+}
+body > .dd-acc-menu .dropdown-item {
+    font-size: .82rem;
+    padding: 6px 14px;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    color: #333;
+    transition: background .12s;
+}
+body > .dd-acc-menu .dropdown-item:hover {
+    background: #f0f5fb;
+    color: #145388;
+}
+body > .dd-acc-menu .dropdown-item i {
+    font-size: .9rem;
+    width: 16px;
+    text-align: center;
+    flex-shrink: 0;
+}
+body > .dd-acc-menu .dropdown-item.text-success { color: #28a745 !important; }
+body > .dd-acc-menu .dropdown-item.text-success:hover { background: #f0fff4; }
+body > .dd-acc-menu .dropdown-item.text-danger  { color: #dc3545 !important; }
+body > .dd-acc-menu .dropdown-item.text-danger:hover  { background: #fff5f5; }
+body > .dd-acc-menu .dropdown-divider { margin: 4px 0; }
+</style>
+<?= $this->endSection() ?>
+
 <?= $this->section('content') ?>
 
 <div class="page-title-container">
@@ -196,66 +256,98 @@ function puedeRevivir(tipopago) {
     return true;
 }
 
+// Escapa una cadena para usarla como argumento en un atributo onclick (comilla simple)
+function _sq(s) { return "'" + String(s || '').replace(/\\/g,'\\\\').replace(/'/g,"\\'") + "'"; }
+
 function accionesNota(n) {
-    var btns = '';
     var idstatus   = parseInt(n.idstatus, 10);
     var referencia = parseInt(n.referencia || 0, 10);
     var esPadre    = referencia === 0;
     var BASE_PAGO  = '<?= base_url('admin/venta/') ?>';
+    var items      = '';
 
-    // Ver / Pagar: folios padre Abiertos o Anticipo
+    // Ver / Pagar
     if ((idstatus === 1 || idstatus === 4) && esPadre) {
-        btns += '<a href="' + BASE_PAGO + n.folio + '/confirmar" class="btn btn-xs btn-outline-primary mr-1">Ver / Pagar</a>';
+        items += '<a class="dropdown-item" href="' + BASE_PAGO + n.folio + '/confirmar">'
+               + '<i class="simple-icon-wallet"></i>Ver / Pagar</a>';
     }
 
-    // Ver modal: folios hijo o notas pagadas/liquidadas/canceladas
+    // Ver modal
     if (!esPadre || idstatus === 5 || idstatus === 6 || idstatus === 3) {
-        btns += '<a href="#" class="btn btn-xs btn-outline-secondary mr-1"'
-              + ' onclick="adminVerFolio(' + n.folio + '); return false;">Ver</a>';
+        items += '<a class="dropdown-item" href="#" onclick="adminVerFolio(' + n.folio + '); return false;">'
+               + '<i class="simple-icon-eye"></i>Ver detalle</a>';
     }
 
-    // Liquidar: status Anticipo (4): solo padre. Status Pagada (5): padre e hijos. NO si Liquidado (6)
-    if ((idstatus === 4 && esPadre) || idstatus === 5) {
-        btns += '<a href="#" class="btn btn-xs btn-success mr-1"'
-              + ' onclick="adminLiquidarAnticipo(' + n.folio + '); return false;">Liquidar</a>';
-    }
-
-    // Cancelar: cualquier nota que NO esté cancelada ni liquidada
-    if (idstatus !== 3 && idstatus !== 6) {
-        btns += '<a href="#" class="btn btn-xs btn-outline-danger mr-1"'
-              + ' onclick="adminCancelarFolio(' + n.folio + '); return false;">Cancelar</a>';
-    }
-
-    // Revivir: solo folios PADRE cancelados con método de pago permitido
-    if (idstatus === 3 && esPadre && puedeRevivir(n.tipopago)) {
-        btns += '<a href="#" class="btn btn-xs btn-outline-secondary"'
-              + ' onclick="adminRevivirFolio(' + n.folio + '); return false;">Revivir</a>';
-    }
-
-    // Pagada o Liquidada + padre: Ver Ticket
+    // Ver Ticket
     if ((idstatus === 5 || idstatus === 6) && esPadre) {
-        btns += '<a href="#" class="btn btn-xs btn-outline-dark mr-1"'
-              + ' onclick="adminVerTicket(' + n.folio + '); return false;">Ver Ticket</a>';
+        items += '<a class="dropdown-item" href="#" onclick="adminVerTicket(' + n.folio + '); return false;">'
+               + '<i class="simple-icon-printer"></i>Ver Ticket</a>';
     }
 
-    // ── Botones de Facturación (solo Admin — acceso=1) ────────────
-    // Solo notas padre, pagadas/liquidadas, no canceladas
+    // Agregar Referencia (Transferencia / Depósito / Cargo con tarjeta)
+    var _tp = (n.tipopago || '').toLowerCase();
+    var _esRef = _tp.indexOf('transferencia') >= 0
+              || _tp.indexOf('deposito')       >= 0
+              || _tp.indexOf('depósito')  >= 0
+              || _tp.indexOf('cargo con tarjeta') >= 0;
+    if (_esRef) {
+        items += '<div class="dropdown-divider"></div>';
+        items += '<a class="dropdown-item" href="#" onclick="adminAbrirModalReferencia('
+               + (n.mn_id_ref || 0) + ','
+               + _sq(n.tipopago_ref_nombre || n.tipopago) + ','
+               + _sq(n.mn_referencia_banco) + ','
+               + n.folio + ','
+               + (n.mn_tipo_ref || 0)
+               + '); return false;"><i class="simple-icon-tag"></i>Agregar Referencia</a>';
+        items += '<div class="dropdown-divider"></div>';
+    }
+
+    // Liquidar
+    if ((idstatus === 4 && esPadre) || idstatus === 5) {
+        items += '<a class="dropdown-item text-success" href="#" onclick="adminLiquidarAnticipo(' + n.folio + '); return false;">'
+               + '<i class="simple-icon-check"></i>Liquidar</a>';
+    }
+
+    // Cancelar
+    if (idstatus !== 3 && idstatus !== 6) {
+        items += '<a class="dropdown-item text-danger" href="#" onclick="adminCancelarFolio(' + n.folio + '); return false;">'
+               + '<i class="simple-icon-close"></i>Cancelar</a>';
+    }
+
+    // Revivir
+    if (idstatus === 3 && esPadre && puedeRevivir(n.tipopago)) {
+        items += '<a class="dropdown-item" href="#" onclick="adminRevivirFolio(' + n.folio + '); return false;">'
+               + '<i class="simple-icon-refresh"></i>Revivir</a>';
+    }
+
+    // Facturación
     if (esPadre && (idstatus === 5 || idstatus === 6) && idstatus !== 3) {
         var sf  = parseInt(n.status_facturacion || 0, 10);
         var uid = (n.uuid_fiscal || '').trim();
-        if (uid !== '') {
-            // Ya facturada — no mostrar nada en Acciones (el badge ya aparece en Status)
-        } else if (sf === 1) {
-            btns += '<a href="#" class="btn btn-xs btn-primary mr-1"'
-                  + ' onclick="adminAbrirModalFactura(' + n.folio + '); return false;">Facturar</a>';
-        } else {
-            btns += '<a href="#" class="btn btn-xs btn-outline-primary"'
-                  + ' onclick="adminAbrirModalFactura(' + n.folio + '); return false;">Solicitar Factura</a>';
+        if (uid === '') {
+            items += '<div class="dropdown-divider"></div>';
+            if (sf === 1) {
+                items += '<a class="dropdown-item" href="#" onclick="adminAbrirModalFactura(' + n.folio + '); return false;">'
+                       + '<i class="simple-icon-doc"></i>Facturar</a>';
+            } else {
+                items += '<a class="dropdown-item" href="#" onclick="adminAbrirModalFactura(' + n.folio + '); return false;">'
+                       + '<i class="simple-icon-doc"></i>Solicitar Factura</a>';
+            }
         }
     }
 
-    if (!btns) btns = '<span class="text-muted">—</span>';
-    return btns;
+    if (!items) return '<span class="text-muted">—</span>';
+
+    var mid = 'accmenu_' + n.folio;
+    return '<div>'
+         + '<button class="btn-acciones" type="button"'
+         + ' onclick="openAccMenu(event,this,\'' + mid + '\')">'
+         + 'Acciones <i class="simple-icon-arrow-down caret-icon"></i>'
+         + '</button>'
+         + '<div id="' + mid + '" class="dd-acc-menu" style="display:none">'
+         + items
+         + '</div>'
+         + '</div>';
 }
 
 // fn_muestra_modal: alias legacy conservado por compatibilidad
@@ -443,6 +535,132 @@ function adminRevivirFolio(folio) {
     .catch(function() { alert('Error de conexión al revivir.'); });
 }
 
+// ── Referencia bancaria desde Consulta Folios ──────────────────────────
+var _refMnId     = null;
+var _refFolio    = null;
+var _refMnTipoId = null;
+
+function adminAbrirModalReferencia(mnId, tipopago, refActual, folio, mnTipoId) {
+    _refMnId     = mnId;      // idNotas en montosnotas (puede ser 0 si no existe aún)
+    _refFolio    = folio;
+    _refMnTipoId = mnTipoId || 0;
+    document.getElementById('modalRefBancoFolio').textContent = '#' + folio;
+    document.getElementById('modalRefBancoTipo').textContent  = tipopago || '';
+    document.getElementById('inputRefBanco').value            = refActual || '';
+    document.getElementById('refBancoError').classList.add('d-none');
+    document.getElementById('refBancoOk').classList.add('d-none');
+    $('#modalRefBanco').modal('show');
+    setTimeout(function() { document.getElementById('inputRefBanco').focus(); }, 400);
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    document.getElementById('btnGuardarRefBanco').addEventListener('click', function() {
+        var btn = this;
+        var ref = document.getElementById('inputRefBanco').value.trim();
+
+        btn.disabled = true;
+        btn.textContent = 'Guardando...';
+
+        var fd = new FormData();
+        fd.append('<?= csrf_token() ?>', '<?= csrf_hash() ?>');
+        fd.append('mn_id',      _refMnId     || 0);
+        fd.append('mn_tipo_id', _refMnTipoId || 0);
+        fd.append('folio',      _refFolio    || 0);
+        fd.append('referencia', ref);
+
+        fetch('<?= base_url('admin/caja/monto/referencia') ?>', {
+            method: 'POST', body: fd, credentials: 'same-origin'
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            btn.disabled = false;
+            btn.textContent = 'Guardar';
+            if (data.ok) {
+                document.getElementById('refBancoOk').classList.remove('d-none');
+                setTimeout(function() {
+                    $('#modalRefBanco').modal('hide');
+                    $('#tablaAdminConsulta').DataTable().ajax.reload(null, false);
+                }, 1200);
+            } else {
+                document.getElementById('refBancoError').textContent = data.msg || 'Error al guardar.';
+                document.getElementById('refBancoError').classList.remove('d-none');
+            }
+        })
+        .catch(function() {
+            btn.disabled = false;
+            btn.textContent = 'Guardar';
+            document.getElementById('refBancoError').textContent = 'Error de conexión.';
+            document.getElementById('refBancoError').classList.remove('d-none');
+        });
+    });
+
+    // Enter en el input dispara guardar
+    document.getElementById('inputRefBanco').addEventListener('keypress', function(e) {
+        if (e.which === 13) document.getElementById('btnGuardarRefBanco').click();
+    });
+
+    // ── Custom dropdown (sin Bootstrap JS — evita conflicto con DataTable overflow:hidden) ──
+    window._accMenu    = null;
+    window._accMenuSrc = null;
+
+    window.closeAccMenu = function() {
+        if (window._accMenu && window._accMenu.parentNode) {
+            window._accMenu.parentNode.removeChild(window._accMenu);
+        }
+        window._accMenu    = null;
+        window._accMenuSrc = null;
+    };
+
+    window.openAccMenu = function(e, btn, menuId) {
+        e.stopPropagation();
+        // Toggle: si ya está abierto el mismo menú, cerrar
+        if (window._accMenuSrc === menuId) { closeAccMenu(); return; }
+        closeAccMenu();
+
+        var src = document.getElementById(menuId);
+        if (!src) return;
+
+        var rect  = btn.getBoundingClientRect();
+        var clone = src.cloneNode(true);
+        clone.id  = '';
+        clone.style.cssText = [
+            'display:block',
+            'position:fixed',
+            'top:'   + (rect.bottom + 3) + 'px',
+            'right:' + Math.round(window.innerWidth - rect.right) + 'px',
+            'left:auto',
+            'z-index:10000',
+            'min-width:175px',
+            'border-radius:6px',
+            'background:#fff',
+            'box-shadow:0 4px 20px rgba(0,0,0,.18)',
+            'padding:4px 0',
+            'border:none'
+        ].join(';');
+
+        document.body.appendChild(clone);
+        window._accMenu    = clone;
+        window._accMenuSrc = menuId;
+
+        // Ajustar si el menú se sale del viewport por abajo
+        requestAnimationFrame(function() {
+            if (!window._accMenu) return;
+            var mr = window._accMenu.getBoundingClientRect();
+            if (mr.bottom > window.innerHeight - 8) {
+                window._accMenu.style.top    = 'auto';
+                window._accMenu.style.bottom = (window.innerHeight - rect.top + 3) + 'px';
+            }
+        });
+    };
+
+    // Cerrar el menú al hacer clic fuera
+    document.addEventListener('click', function(ev) {
+        if (window._accMenu && !window._accMenu.contains(ev.target)) {
+            closeAccMenu();
+        }
+    });
+});
+
 // ── Facturación desde Consulta Folios ──────────────────────────────────
 
 // Abre el modal pre-llenando datos vía AJAX (sirve para Escenario 1 y 2)
@@ -535,6 +753,37 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 });
 </script>
+
+<!-- Modal: Referencia bancaria -->
+<div class="modal fade" id="modalRefBanco" tabindex="-1" role="dialog">
+    <div class="modal-dialog modal-sm" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="simple-icon-tag mr-1"></i>
+                    Referencia — Folio <span id="modalRefBancoFolio"></span>
+                </h5>
+                <button type="button" class="close" data-dismiss="modal"><span>&times;</span></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted small mb-3">
+                    Método: <strong id="modalRefBancoTipo"></strong>
+                </p>
+                <div class="form-group mb-2">
+                    <label>Número de referencia</label>
+                    <input type="text" id="inputRefBanco" class="form-control"
+                           placeholder="Ej. 1234567890" maxlength="100">
+                </div>
+                <div id="refBancoError" class="alert alert-danger py-1 d-none"></div>
+                <div id="refBancoOk"    class="alert alert-success py-1 d-none">✔ Guardado correctamente</div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-primary" id="btnGuardarRefBanco">Guardar</button>
+            </div>
+        </div>
+    </div>
+</div>
 
 <!-- Modal: Solicitar Factura (Escenario 2 — datos SAT) -->
 <div class="modal fade" id="modalSolicitarFactura" tabindex="-1" role="dialog">

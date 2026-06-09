@@ -219,11 +219,14 @@ class CajaController extends BaseController
         $db = \Config\Database::connect();
 
         // Filtros: POST tiene precedencia, GET como fallback (para links directos)
-        $fecha    = $this->request->getPost('fecha')
-                 ?? $this->request->getGet('fecha')
-                 ?? date('d/m/Y');
-        $estatus  = (int) ($this->request->getPost('estatus')  ?? $this->request->getGet('estatus')  ?? 0);
-        $tipopago = (int) ($this->request->getPost('tipopago') ?? $this->request->getGet('tipopago') ?? 0);
+        $fecha      = $this->request->getPost('fecha')
+                   ?? $this->request->getGet('fecha')
+                   ?? date('d/m/Y');
+        $fechaHasta = $this->request->getPost('fecha_hasta')
+                   ?? $this->request->getGet('fecha_hasta')
+                   ?? '';
+        $estatus    = (int) ($this->request->getPost('estatus')  ?? $this->request->getGet('estatus')  ?? 0);
+        $tipopago   = (int) ($this->request->getPost('tipopago') ?? $this->request->getGet('tipopago') ?? 0);
 
         if (empty($fecha)) {
             $fecha = date('d/m/Y');
@@ -236,105 +239,14 @@ class CajaController extends BaseController
         // ── Query principal ──
         $where = "WHERE 1=1";
         if ($fecha !== '') {
-            $where .= " AND DATE_FORMAT(n.fecha_inicial, '%d/%m/%Y') = " . $db->escape($fecha);
-        }
-        if ($estatus > 0) {
-            $where .= " AND s.id = " . (int) $estatus;
-        }
-        if ($tipopago > 0) {
-            $where .= " AND tp.id = " . (int) $tipopago;
-        }
-
-        // CANDADO DE SEGURIDAD
-        if (!in_array((int) session()->get('user_acceso'), [1, 2])) {
-            $where .= " AND n.idVendedor = " . (int) session()->get('user_id');
-        }
-
-        $filas = $db->query(
-            "SELECT n.folio, n.referencia,
-                    DATE_FORMAT(n.fecha_inicial, '%d/%m/%Y') AS fecha,
-                    c.nombre    AS cliente,
-                    u.usuario   AS vendedor,
-                    tp.descripcion AS tipopago,
-                    mn.monto    AS total,
-                    mn.cargos,
-                    s.nombre    AS status,
-                    n.verificado
-             FROM notas_1 n
-             LEFT  JOIN montosnotas mn ON mn.idNotas    = n.Id_Notas_1
-             LEFT  JOIN clientes    c  ON n.idCliente   = c.id
-             INNER JOIN usuarios    u  ON u.Id          = n.idVendedor
-             LEFT  JOIN tipopago    tp ON mn.idTipoPago = tp.id
-             LEFT  JOIN status      s  ON n.status      = s.id
-             {$where}
-             ORDER BY DATE_FORMAT(n.fecha_inicial, '%d/%m/%Y'), n.folio"
-        )->getResultArray();
-
-        // ── Agrupar pagos por folio ──
-        $agrupadas = [];
-        foreach ($filas as $row) {
-            $f = $row['folio'];
-            if (! isset($agrupadas[$f])) {
-                $agrupadas[$f] = [
-                    'folio'      => $f,
-                    'referencia' => $row['referencia'],
-                    'fecha'      => $row['fecha'],
-                    'cliente'    => $row['cliente'],
-                    'vendedor'   => $row['vendedor'],
-                    'status'     => $row['status'],
-                    'verificado' => $row['verificado'],
-                    'pagos'      => [],
-                ];
+            $dtDesde = \DateTime::createFromFormat('d/m/Y', $fecha);
+            $dtHasta = $fechaHasta !== '' ? \DateTime::createFromFormat('d/m/Y', $fechaHasta) : null;
+            if ($dtDesde && $dtHasta) {
+                $where .= " AND DATE(n.fecha_inicial) BETWEEN " . $db->escape($dtDesde->format('Y-m-d'))
+                        . " AND " . $db->escape($dtHasta->format('Y-m-d'));
+            } else {
+                $where .= " AND DATE_FORMAT(n.fecha_inicial, '%d/%m/%Y') = " . $db->escape($fecha);
             }
-            if ($row['tipopago']) {
-                $monto = $row['total'] != '' ? '$ ' . number_format((float) $row['total'], 2) : '';
-                $agrupadas[$f]['pagos'][] = $row['tipopago'] . ' / ' . $monto;
-                if (in_array($row['tipopago'], ['T.Credito', 'T.Debito']) && $row['cargos']) {
-                    $agrupadas[$f]['pagos'][] = 'Cargo / $' . number_format((float) $row['cargos'], 2);
-                }
-            }
-        }
-
-        $fechaYmd = '';
-        $dt = \DateTime::createFromFormat('d/m/Y', $fecha);
-        if ($dt) {
-            $fechaYmd = $dt->format('Y-m-d');
-        }
-
-        return view('caja/corte', [
-            'usuario'      => $this->getUsuarioSesion(),
-            'notas'        => array_values($agrupadas),
-            'statusList'   => $statusList,
-            'tipoPagoList' => $tipoPagoList,
-            'fecha'        => $fecha,
-            'fechaYmd'     => $fechaYmd,
-            'estatus'      => $estatus,
-            'tipopago'     => $tipopago,
-        ]);
-    }
-
-    // ──────────────────────────────────────────────────────────────
-    // GET /caja/corte/exportar  —  Descarga directa Excel del corte
-    // Migrado desde: reportes/ReporteCorteCaja.php
-    //
-// ──────────────────────────────────────────────────────────────
-    // GET /caja/corte/exportar  —  Descarga directa Excel del corte
-    // ──────────────────────────────────────────────────────────────
-    public function exportarCorte(): \CodeIgniter\HTTP\ResponseInterface
-    {
-        $db = \Config\Database::connect();
-
-        $fecha    = $this->request->getGet('fecha')    ?? date('d/m/Y');
-        $estatus  = (int) ($this->request->getGet('estatus')   ?? 0);
-        $tipopago = (int) ($this->request->getGet('tipopago')  ?? 0);
-
-        if (empty($fecha)) {
-            $fecha = date('d/m/Y');
-        }
-
-        $where = "WHERE 1=1";
-        if ($fecha !== '') {
-            $where .= " AND DATE_FORMAT(n.fecha_inicial, '%d/%m/%Y') = " . $db->escape($fecha);
         }
         if ($estatus > 0) {
             $where .= " AND s.id = " . (int) $estatus;
@@ -354,8 +266,10 @@ class CajaController extends BaseController
                     c.nombre       AS cliente,
                     u.usuario      AS vendedor,
                     tp.descripcion AS tipopago,
+                    mn.id          AS mn_id,
                     mn.monto       AS total,
                     mn.cargos,
+                    mn.referencia  AS mn_referencia,
                     s.nombre       AS status,
                     n.verificado
              FROM notas_1 n
@@ -368,6 +282,10 @@ class CajaController extends BaseController
              ORDER BY DATE_FORMAT(n.fecha_inicial, '%d/%m/%Y'), n.folio"
         )->getResultArray();
 
+        // Métodos que caja puede capturar referencia después
+        $metodosSinRef = ['transferencia', 'deposito', 'cargo con tarjeta'];
+
+        // ── Agrupar pagos por folio ──
         $agrupadas = [];
         foreach ($filas as $row) {
             $f = $row['folio'];
@@ -378,60 +296,257 @@ class CajaController extends BaseController
                     'fecha'      => $row['fecha'],
                     'cliente'    => $row['cliente'],
                     'vendedor'   => $row['vendedor'],
-                    'tipopago'   => '',
                     'status'     => $row['status'],
                     'verificado' => $row['verificado'],
+                    'pagos'      => [],
                 ];
             }
             if ($row['tipopago']) {
-                $monto = $row['total'] != '' ? '$ ' . number_format((float) $row['total'], 2) : '';
-                $linea = $row['tipopago'] . ' / ' . $monto;
-                $agrupadas[$f]['tipopago'] .= ($agrupadas[$f]['tipopago'] ? ' | ' : '') . $linea;
+                $monto       = $row['total'] != '' ? '$ ' . number_format((float) $row['total'], 2) : '';
+                $descLower   = strtolower($row['tipopago']);
+                $editableRef = in_array($descLower, $metodosSinRef);
+
+                $agrupadas[$f]['pagos'][] = [
+                    'texto'      => $row['tipopago'] . ' / ' . $monto,
+                    'tipopago'   => $row['tipopago'],
+                    'mn_id'      => $row['mn_id'],
+                    'referencia' => $row['mn_referencia'] ?? '',
+                    'editable'   => $editableRef,
+                ];
                 if (in_array($row['tipopago'], ['T.Credito', 'T.Debito']) && $row['cargos']) {
-                    $agrupadas[$f]['tipopago'] .= ' | Cargo / $' . number_format((float) $row['cargos'], 2);
+                    $agrupadas[$f]['pagos'][] = [
+                        'texto'    => 'Cargo / $' . number_format((float) $row['cargos'], 2),
+                        'tipopago' => '',
+                        'mn_id'    => null,
+                        'referencia' => '',
+                        'editable' => false,
+                    ];
                 }
             }
         }
 
-        $filenameDate = date('dmY');
-        $filename     = 'ReporteCaja' . $filenameDate . '.xls';
-
-        $html  = '<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body>';
-        $html .= '<table border="1">';
-        $html .= '<tr>';
-        $html .= '<th>FOLIO</th><th>REFERENCIA</th><th>FECHA</th>';
-        $html .= '<th>NOMBRE CLIENTE</th><th>VENDEDOR</th>';
-        $html .= '<th>TIPO PAGO / MONTO</th><th>ESTATUS NOTA</th><th>VERIFICADO</th>';
-        $html .= '</tr>';
-
-        foreach (array_values($agrupadas) as $n) {
-            $html .= '<tr>';
-            $html .= '<td>' . htmlspecialchars((string) $n['folio'])      . '</td>';
-            $html .= '<td>' . htmlspecialchars((string) $n['referencia'])  . '</td>';
-            $html .= '<td>' . htmlspecialchars((string) $n['fecha'])       . '</td>';
-            $html .= '<td>' . htmlspecialchars((string) $n['cliente'])     . '</td>';
-            $html .= '<td>' . htmlspecialchars((string) $n['vendedor'])    . '</td>';
-            $html .= '<td>' . htmlspecialchars((string) $n['tipopago'])    . '</td>';
-            $html .= '<td>' . htmlspecialchars((string) $n['status'])      . '</td>';
-            $html .= '<td>' . htmlspecialchars((string) $n['verificado'])  . '</td>';
-            $html .= '</tr>';
+        $fechaYmd = '';
+        $dt = \DateTime::createFromFormat('d/m/Y', $fecha);
+        if ($dt) {
+            $fechaYmd = $dt->format('Y-m-d');
         }
 
-        $html .= '</table></body></html>';
+        return view('caja/corte', [
+            'usuario'      => $this->getUsuarioSesion(),
+            'notas'        => array_values($agrupadas),
+            'statusList'   => $statusList,
+            'tipoPagoList' => $tipoPagoList,
+            'fecha'        => $fecha,
+            'fechaHasta'   => $fechaHasta,
+            'fechaYmd'     => $fechaYmd,
+            'estatus'      => $estatus,
+            'tipopago'     => $tipopago,
+        ]);
+    }
+
+    // ──────────────────────────────────────────────────────────────
+    // GET /caja/corte/exportar  —  Descarga XLSX del corte (nuevo formato)
+    // ──────────────────────────────────────────────────────────────
+    public function exportarCorte(): \CodeIgniter\HTTP\ResponseInterface
+    {
+        $db = \Config\Database::connect();
+
+        $fecha      = $this->request->getGet('fecha')       ?? date('d/m/Y');
+        $fechaHasta = $this->request->getGet('fecha_hasta') ?? '';
+        $estatus    = (int)($this->request->getGet('estatus')  ?? 0);
+        $tipopago   = (int)($this->request->getGet('tipopago') ?? 0);
+
+        if (empty($fecha)) { $fecha = date('d/m/Y'); }
+
+        $where  = "WHERE 1=1";
+        $params = [];
+
+        if ($fecha !== '') {
+            $dtDesde = \DateTime::createFromFormat('d/m/Y', $fecha);
+            $dtHasta = $fechaHasta !== '' ? \DateTime::createFromFormat('d/m/Y', $fechaHasta) : null;
+
+            if ($dtDesde && $dtHasta) {
+                $where   .= " AND DATE(n.fecha_inicial) BETWEEN ? AND ?";
+                $params[] = $dtDesde->format('Y-m-d');
+                $params[] = $dtHasta->format('Y-m-d');
+                $fecha = $fecha . ' - ' . $fechaHasta;
+            } else {
+                $where   .= " AND DATE_FORMAT(n.fecha_inicial, '%d/%m/%Y') = ?";
+                $params[] = $fecha;
+            }
+        }
+        if ($estatus > 0) {
+            $where .= " AND n.status = ?";
+            $params[] = $estatus;
+        }
+        if ($tipopago > 0) {
+            $where .= " AND EXISTS (SELECT 1 FROM montosnotas mn2 WHERE mn2.idNotas = n.Id_Notas_1 AND mn2.idTipoPago = ?)";
+            $params[] = $tipopago;
+        }
+
+        // Candado de seguridad
+        if (!in_array((int)session()->get('user_acceso'), [1, 2])) {
+            $where .= " AND n.idVendedor = ?";
+            $params[] = (int)session()->get('user_id');
+        }
+
+        $rows = $db->query(
+            "SELECT n.folio,
+                    DATE_FORMAT(n.fecha_inicial, '%d/%m/%Y') AS fecha,
+                    COALESCE(NULLIF(c.nombre,''), 'PUBLICO GENERAL') AS cliente,
+                    COALESCE(u.usuario, '—')       AS vendedor,
+                    COALESCE(tp.descripcion, '')   AS tipopago,
+                    COALESCE(mn.monto, 0)          AS monto,
+                    n.total                        AS total_nota,
+                    COALESCE(s.nombre, '—')        AS estatus,
+                    COALESCE(mn.referencia, '')    AS referencia
+             FROM notas_1 n
+             LEFT  JOIN clientes    c  ON c.id         = n.idCliente
+             INNER JOIN usuarios    u  ON u.Id          = n.idVendedor
+             LEFT  JOIN montosnotas mn ON mn.idNotas    = n.Id_Notas_1
+             LEFT  JOIN tipopago    tp ON tp.id         = mn.idTipoPago
+             LEFT  JOIN status      s  ON s.id          = n.status
+             {$where}
+             ORDER BY n.folio ASC",
+            $params
+        )->getResultArray();
+
+        $content = \App\Libraries\CorteCajaExporter::build($rows, $fecha);
 
         return $this->response
-            ->setHeader('Last-Modified',        gmdate('D, d M Y H:i:s') . ' GMT')
-            ->setHeader('Cache-Control',        'no-cache, must-revalidate')
-            ->setHeader('Pragma',               'no-cache')
-            ->setHeader('Content-Type',         'application/vnd.ms-excel')
-            ->setHeader('Content-Disposition',  'attachment; filename="' . $filename . '"')
-            ->setBody($html);
+            ->setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+            ->setHeader('Content-Disposition', 'attachment; filename="corte_caja_' . date('dmY') . '.xlsx"')
+            ->setHeader('Cache-Control', 'max-age=0')
+            ->setBody($content);
     }
 
     // GET /caja/corte/detalle
     public function corteDetalle(): string
     {
         return $this->corte();
+    }
+
+    // ──────────────────────────────────────────────────────────────
+    // POST /caja/monto/referencia  —  Guarda referencia de pago (AJAX)
+    // ──────────────────────────────────────────────────────────────
+    public function guardarReferenciaMontosnotas(): \CodeIgniter\HTTP\ResponseInterface
+    {
+        $idNotas    = (int)$this->request->getPost('mn_id');
+        $idTipoPago = (int)$this->request->getPost('mn_tipo_id');
+        $folio      = (int)$this->request->getPost('folio');
+        $referencia = trim($this->request->getPost('referencia') ?? '');
+
+        $db = \Config\Database::connect();
+
+        if ($idNotas > 0 && $idTipoPago > 0) {
+            $db->query(
+                "UPDATE montosnotas SET referencia = ? WHERE idNotas = ? AND idTipoPago = ?",
+                [$referencia, $idNotas, $idTipoPago]
+            );
+            return $this->response->setJSON(['ok' => true]);
+        }
+
+        if ($folio > 0) {
+            $row = $db->query(
+                "SELECT mn.idNotas, mn.idTipoPago FROM montosnotas mn
+                 INNER JOIN notas_1 n   ON n.Id_Notas_1 = mn.idNotas
+                 INNER JOIN tipopago tp ON tp.id = mn.idTipoPago
+                 WHERE n.folio = ?
+                   AND TRIM(LOWER(tp.descripcion)) IN ('transferencia','deposito','depósito','cargo con tarjeta')
+                 LIMIT 1",
+                [$folio]
+            )->getRowArray();
+
+            if ($row) {
+                $db->query(
+                    "UPDATE montosnotas SET referencia = ? WHERE idNotas = ? AND idTipoPago = ?",
+                    [$referencia, $row['idNotas'], $row['idTipoPago']]
+                );
+                return $this->response->setJSON(['ok' => true]);
+            }
+        }
+
+        return $this->response->setJSON(['ok' => false, 'msg' => 'No se encontró el registro de pago']);
+    }
+
+    // ──────────────────────────────────────────────────────────────
+    // GET  /caja/reportediario         — Vista Reporte Diario Caja
+    // POST /caja/reportediario         — Exporta xlsx (rango fechas)
+    // GET  /caja/reportediario/dia     — Exporta xlsx (hoy)
+    // ──────────────────────────────────────────────────────────────
+    public function reporteDiarioPage(): string
+    {
+        return view('caja/reportediario', [
+            'usuario' => $this->getUsuarioSesion(),
+        ]);
+    }
+
+    public function reporteDiario(): \CodeIgniter\HTTP\ResponseInterface
+    {
+        $db     = \Config\Database::connect();
+        $fecha1 = $this->request->getPost('fecha1') ?? date('Y-m-d');
+        $h1     = str_pad($this->request->getPost('horas')    ?? '0',  2, '0', STR_PAD_LEFT);
+        $m1     = str_pad($this->request->getPost('minutos')  ?? '0',  2, '0', STR_PAD_LEFT);
+        $s1     = str_pad($this->request->getPost('segundos') ?? '0',  2, '0', STR_PAD_LEFT);
+        $fecha2 = $this->request->getPost('fecha2') ?? date('Y-m-d');
+        $h2     = str_pad($this->request->getPost('horas2')   ?? '23', 2, '0', STR_PAD_LEFT);
+        $m2     = str_pad($this->request->getPost('minutos2') ?? '59', 2, '0', STR_PAD_LEFT);
+        $s2     = str_pad($this->request->getPost('segundos2')  ?? '59', 2, '0', STR_PAD_LEFT);
+
+        return $this->exportarReporteDiarioCajaXls($db, $fecha1, $h1, $m1, $s1, $fecha2, $h2, $m2, $s2);
+    }
+
+    public function reporteDiarioDia(): \CodeIgniter\HTTP\ResponseInterface
+    {
+        $db  = \Config\Database::connect();
+        $hoy = date('Y-m-d');
+        return $this->exportarReporteDiarioCajaXls($db, $hoy, '00', '00', '00', $hoy, '23', '59', '59');
+    }
+
+    private function exportarReporteDiarioCajaXls($db, string $fecha1, string $h1, string $m1, string $s1,
+                                                   string $fecha2, string $h2, string $m2, string $s2): \CodeIgniter\HTTP\ResponseInterface
+    {
+        $desde = "{$fecha1} {$h1}:{$m1}:{$s1}";
+        $hasta = "{$fecha2} {$h2}:{$m2}:{$s2}";
+
+        $where  = "WHERE n.fecha_inicial >= ? AND n.fecha_inicial <= ? AND n.status != 3";
+        $params = [$desde, $hasta];
+
+        // Candado de seguridad por vendedor
+        if (!in_array((int)session()->get('user_acceso'), [1, 2])) {
+            $where .= " AND n.idVendedor = ?";
+            $params[] = (int)session()->get('user_id');
+        }
+
+        $rows = $db->query(
+            "SELECT n.folio,
+                    DATE_FORMAT(n.fecha_inicial, '%d/%m/%Y') AS fecha,
+                    COALESCE(NULLIF(c.nombre,''), 'PUBLICO GENERAL') AS cliente,
+                    COALESCE(u.usuario, '—')       AS vendedor,
+                    COALESCE(tp.descripcion, '')   AS tipopago,
+                    COALESCE(mn.monto, 0)          AS monto,
+                    n.total                        AS total_nota,
+                    COALESCE(s.nombre, '—')        AS estatus,
+                    COALESCE(mn.referencia, '')    AS referencia
+             FROM notas_1 n
+             LEFT JOIN clientes    c  ON c.id         = n.idCliente
+             LEFT JOIN usuarios    u  ON u.Id          = n.idVendedor
+             LEFT JOIN montosnotas mn ON mn.idNotas    = n.Id_Notas_1
+             LEFT JOIN tipopago    tp ON tp.id         = mn.idTipoPago
+             LEFT JOIN status      s  ON s.id          = n.status
+             {$where}
+             ORDER BY n.folio ASC",
+            $params
+        )->getResultArray();
+
+        $fechaLabel = date('d/m/Y', strtotime($fecha1)) . ' — ' . date('d/m/Y', strtotime($fecha2));
+        $content    = \App\Libraries\CorteCajaExporter::build($rows, $fechaLabel);
+
+        return $this->response
+            ->setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+            ->setHeader('Content-Disposition', 'attachment; filename="reporte_diario_' . date('dmY') . '.xlsx"')
+            ->setHeader('Cache-Control', 'max-age=0')
+            ->setBody($content);
     }
 
     // ──────────────────────────────────────────────────────────────
@@ -1080,7 +1195,27 @@ class CajaController extends BaseController
                     COALESCE(n.cp_receptor, '')           AS cp_receptor,
                     COALESCE(n.uso_cfdi, 'S01')           AS uso_cfdi,
                     COALESCE(n.regimen_fiscal_receptor, '616') AS regimen_fiscal_receptor,
-                    COALESCE(n.forma_pago_cfdi, '01')     AS forma_pago_cfdi
+                    COALESCE(n.forma_pago_cfdi, '01')     AS forma_pago_cfdi,
+                    (SELECT mn2.idNotas FROM montosnotas mn2
+                      INNER JOIN tipopago tp2 ON tp2.id = mn2.idTipoPago
+                      WHERE mn2.idNotas = n.Id_Notas_1
+                        AND TRIM(LOWER(tp2.descripcion)) IN ('transferencia','deposito','depósito','cargo con tarjeta')
+                      LIMIT 1) AS mn_id_ref,
+                    (SELECT mn2.idTipoPago FROM montosnotas mn2
+                      INNER JOIN tipopago tp2 ON tp2.id = mn2.idTipoPago
+                      WHERE mn2.idNotas = n.Id_Notas_1
+                        AND TRIM(LOWER(tp2.descripcion)) IN ('transferencia','deposito','depósito','cargo con tarjeta')
+                      LIMIT 1) AS mn_tipo_ref,
+                    (SELECT COALESCE(mn2.referencia,'') FROM montosnotas mn2
+                      INNER JOIN tipopago tp2 ON tp2.id = mn2.idTipoPago
+                      WHERE mn2.idNotas = n.Id_Notas_1
+                        AND TRIM(LOWER(tp2.descripcion)) IN ('transferencia','deposito','depósito','cargo con tarjeta')
+                      LIMIT 1) AS mn_referencia_banco,
+                    (SELECT tp2.descripcion FROM montosnotas mn2
+                      INNER JOIN tipopago tp2 ON tp2.id = mn2.idTipoPago
+                      WHERE mn2.idNotas = n.Id_Notas_1
+                        AND TRIM(LOWER(tp2.descripcion)) IN ('transferencia','deposito','depósito','cargo con tarjeta')
+                      LIMIT 1) AS tipopago_ref_nombre
              {$baseSql} {$where}
              ORDER BY {$orderCol} {$orderDir}
              LIMIT ? OFFSET ?",

@@ -332,6 +332,31 @@
     </div>
 </div>
 
+<!-- ═══ MODAL: Referencia de tarjeta ══════════════════════════════════════ -->
+<div class="modal fade" id="modalRefTarjeta" tabindex="-1" role="dialog" data-backdrop="static" data-keyboard="false">
+    <div class="modal-dialog modal-sm" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="iconsminds-credit-card"></i> Referencia de pago</h5>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted" style="font-size:13px;">
+                    Ingresa el número de referencia o autorización de la terminal.
+                </p>
+                <div class="form-group mb-0">
+                    <label>No. de Referencia / Autorización</label>
+                    <input type="text" id="inputRefTarjeta" class="form-control" placeholder="Ej. 123456">
+                    <small id="refTarjetaError" class="text-danger d-none">Este campo es obligatorio.</small>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" id="btnCancelarRefTarjeta">Cancelar</button>
+                <button type="button" id="btnConfirmarRefTarjeta" class="btn btn-primary">Confirmar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- ═══ MODAL: Email faltante ════════════════════════════════════════════ -->
 <div class="modal fade" id="modalEmailFaltante" tabindex="-1" role="dialog">
     <div class="modal-dialog modal-sm" role="document">
@@ -402,15 +427,32 @@ $('#modalPago').on('show.bs.modal', function () {
     $('#modalMonto').val(restanteVal > 0 ? restanteVal.toFixed(2) : 0);
 });
 
+// Referencia de tarjeta pendiente de confirmar
+var _refTarjetaPendiente = '';
+
+// Detecta si el tipo de pago seleccionado es tarjeta (Débito/Crédito)
+// "Cargo con tarjeta" sigue la misma lógica que Transferencia/Depósito (sin modal de referencia inmediato)
+function esTarjeta(desc) {
+    if (!desc) return false;
+    var d = desc.toLowerCase();
+    return d.indexOf('tarjeta') !== -1 && d.indexOf('cargo') === -1;
+}
+
 // Al cambiar tipo de pago:
 // "Sin Pagar" → forzar anticipo ON
-// Otro método → volver al default del folio (no forzar OFF en folios con pagos previos)
+// Tarjeta → pedir referencia
+// Otro método → volver al default del folio
 $('#modalTipoPago').on('change', function () {
     var sinPagarId = getSinPagarId();
+    var desc = $(this).find('option:selected').data('desc') || '';
     if ($(this).val() === sinPagarId && sinPagarId !== '') {
         $('#modalAnticipo').prop('checked', true);
     } else {
         $('#modalAnticipo').prop('checked', defaultAnticipo);
+    }
+    // Si es tarjeta, limpiar referencia previa al cambiar selección
+    if (!esTarjeta(desc)) {
+        _refTarjetaPendiente = '';
     }
 });
 var sumaImportes = parseFloat($('#hidSumaImportes').val()) || 0;
@@ -477,39 +519,8 @@ function recalcular() {
 
 $('#inputDescuento').on('input', recalcular);
 
-$('#btnAgregarPago').on('click', function() {
-    var tipo     = $('#modalTipoPago').val();
-    var desc     = $('#modalTipoPago option:selected').data('desc');
-    var monto    = parseFloat($('#modalMonto').val()) || 0;
-    var anticipo = $('#modalAnticipo').is(':checked') ? 1 : 0;
-    var cargoPct = parseFloat($('#modalTipoPago option:selected').data('cargo')) || 0;
-    var cargo    = monto * cargoPct / 100;
-
-    // Sin selección: obligatorio elegir método
-    if (!tipo) {
-        alert('Debes seleccionar un método de pago.');
-        return;
-    }
-
-    // "Sin Pagar" = a crédito: no requiere monto, solo marca la bandera
-    if (desc === 'Sin Pagar') {
-        sinPagarSeleccionado = true;
-        pagos = [];   // limpiar pagos reales si había alguno
-        renderPagos();
-        recalcular();
-        $('#modalPago').modal('hide');
-        $('#modalTipoPago').val('');
-        $('#modalMonto').val(0);
-        $('#modalAnticipo').prop('checked', defaultAnticipo);  // reset según tipo de folio
-        return;
-    }
-
-    // Método de pago real: requiere monto
-    if (monto <= 0) {
-        alert('Ingresa un monto válido.');
-        return;
-    }
-
+// Función central para agregar el pago al array (se llama después de confirmar referencia si aplica)
+function agregarPagoConfirmado(tipo, desc, monto, cargo, anticipo, referencia) {
     // Si había "Sin Pagar" seleccionado antes, se reemplaza con pago real
     sinPagarSeleccionado = false;
 
@@ -529,13 +540,84 @@ $('#btnAgregarPago').on('click', function() {
         if (!confirmar) return;
     }
 
-    pagos.push({ tipo: tipo, desc: desc, monto: monto, cargo: cargo, anticipo: anticipo });
+    pagos.push({ tipo: tipo, desc: desc, monto: monto, cargo: cargo, anticipo: anticipo, referencia: referencia || '' });
     renderPagos();
     recalcular();
     $('#modalPago').modal('hide');
     $('#modalTipoPago').val('');
     $('#modalMonto').val(0);
-    $('#modalAnticipo').prop('checked', esHijo);  // reset según tipo de folio
+    $('#modalAnticipo').prop('checked', esHijo);
+    _refTarjetaPendiente = '';
+}
+
+$('#btnAgregarPago').on('click', function() {
+    var tipo     = $('#modalTipoPago').val();
+    var desc     = $('#modalTipoPago option:selected').data('desc');
+    var monto    = parseFloat($('#modalMonto').val()) || 0;
+    var anticipo = $('#modalAnticipo').is(':checked') ? 1 : 0;
+    var cargoPct = parseFloat($('#modalTipoPago option:selected').data('cargo')) || 0;
+    var cargo    = monto * cargoPct / 100;
+
+    // Sin selección: obligatorio elegir método
+    if (!tipo) {
+        alert('Debes seleccionar un método de pago.');
+        return;
+    }
+
+    // "Sin Pagar" = a crédito: no requiere monto, solo marca la bandera
+    if (desc === 'Sin Pagar') {
+        sinPagarSeleccionado = true;
+        pagos = [];
+        renderPagos();
+        recalcular();
+        $('#modalPago').modal('hide');
+        $('#modalTipoPago').val('');
+        $('#modalMonto').val(0);
+        $('#modalAnticipo').prop('checked', defaultAnticipo);
+        return;
+    }
+
+    // Método de pago real: requiere monto
+    if (monto <= 0) {
+        alert('Ingresa un monto válido.');
+        return;
+    }
+
+    // Si es tarjeta, pedir referencia antes de agregar
+    if (esTarjeta(desc)) {
+        // Guardar los datos del pago actual para usarlos al confirmar
+        _refTarjetaPendiente = '';
+        $('#inputRefTarjeta').val('');
+        $('#refTarjetaError').addClass('d-none');
+
+        // Guardar en variables temporales para el callback del modal de referencia
+        $('#modalRefTarjeta').data('pago', { tipo: tipo, desc: desc, monto: monto, cargo: cargo, anticipo: anticipo });
+        $('#modalPago').modal('hide');
+        // Pequeño delay para que el primer modal termine de cerrar
+        setTimeout(function() { $('#modalRefTarjeta').modal('show'); }, 350);
+        return;
+    }
+
+    agregarPagoConfirmado(tipo, desc, monto, cargo, anticipo, '');
+});
+
+// Confirmar referencia de tarjeta
+$('#btnConfirmarRefTarjeta').on('click', function() {
+    var ref = $.trim($('#inputRefTarjeta').val());
+    if (!ref) {
+        $('#refTarjetaError').removeClass('d-none');
+        return;
+    }
+    $('#refTarjetaError').addClass('d-none');
+    var p = $('#modalRefTarjeta').data('pago');
+    $('#modalRefTarjeta').modal('hide');
+    agregarPagoConfirmado(p.tipo, p.desc, p.monto, p.cargo, p.anticipo, ref);
+});
+
+// Cancelar referencia: volver al modal de pago
+$('#btnCancelarRefTarjeta').on('click', function() {
+    $('#modalRefTarjeta').modal('hide');
+    setTimeout(function() { $('#modalPago').modal('show'); }, 350);
 });
 
 function renderPagos() {
@@ -549,8 +631,9 @@ function renderPagos() {
     }
     var html = '';
     pagos.forEach(function(p, i) {
+        var refLabel = p.referencia ? ' <small class="text-muted">Ref: ' + p.referencia + '</small>' : '';
         html += '<li class="list-group-item d-flex justify-content-between align-items-center">'
-            + '<span>' + p.desc + (p.anticipo ? ' <span class="badge badge-warning">Anticipo</span>' : '') + '</span>'
+            + '<span>' + p.desc + (p.anticipo ? ' <span class="badge badge-warning">Anticipo</span>' : '') + refLabel + '</span>'
             + '<span>$' + parseFloat(p.monto).toFixed(2)
             + ' <button type="button" class="btn btn-xs btn-outline-danger ml-2 btn-del-pago" data-idx="' + i + '">&times;</button></span>'
             + '</li>';

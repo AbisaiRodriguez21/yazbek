@@ -173,6 +173,22 @@ var URL_CANCELAR = '<?= base_url('caja/cancelar/') ?>';
                     btns += '<button class="btn btn-xs btn-outline-dark mr-1"'
                           + ' onclick="cajaVerTicket(' + row.folio + ')">Ver Ticket</button>';
                 }
+                // Agregar Referencia (Transferencia / Depósito / Cargo con tarjeta)
+                var _tp = (row.tipopago || '').toLowerCase();
+                var _esRef = _tp.indexOf('transferencia') >= 0
+                          || _tp.indexOf('deposito')       >= 0
+                          || _tp.indexOf('depósito')       >= 0
+                          || _tp.indexOf('cargo con tarjeta') >= 0;
+                if (_esRef && idstatus !== 3) {
+                    btns += '<button class="btn btn-xs btn-outline-secondary mr-1"'
+                          + ' onclick="cajaAbrirModalReferencia('
+                          + (row.mn_id_ref || 0) + ','
+                          + '\'' + (row.tipopago_ref_nombre || row.tipopago || '').replace(/'/g,"\\'") + '\','
+                          + '\'' + (row.mn_referencia_banco || '').replace(/'/g,"\\'") + '\','
+                          + row.folio + ','
+                          + (row.mn_tipo_ref || 0)
+                          + ')">Referencia</button>';
+                }
                 // ── Botones de Facturación (Caja Nivel 2) ──
                 if (esPadre && (idstatus === 5 || idstatus === 6) && idstatus !== 3) {
                     var sf  = parseInt(row.status_facturacion || 0, 10);
@@ -298,6 +314,70 @@ function cajaVerificarPago(folio) {
         .catch(function() { alert('Error al verificar el pago.'); });
 }
 
+// ── Referencia bancaria desde Consulta Folios (Caja) ──────────────────
+var _cajaRefMnId     = null;
+var _cajaRefFolio    = null;
+var _cajaRefMnTipoId = null;
+
+function cajaAbrirModalReferencia(mnId, tipopago, refActual, folio, mnTipoId) {
+    _cajaRefMnId     = mnId;
+    _cajaRefFolio    = folio;
+    _cajaRefMnTipoId = mnTipoId || 0;
+    document.getElementById('cajaModalRefBancoFolio').textContent = '#' + folio;
+    document.getElementById('cajaModalRefBancoTipo').textContent  = tipopago || '';
+    document.getElementById('cajaInputRefBanco').value            = refActual || '';
+    document.getElementById('cajaRefBancoError').classList.add('d-none');
+    document.getElementById('cajaRefBancoOk').classList.add('d-none');
+    $('#cajaModalRefBanco').modal('show');
+    setTimeout(function() { document.getElementById('cajaInputRefBanco').focus(); }, 400);
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    document.getElementById('btnCajaGuardarRefBanco').addEventListener('click', function() {
+        var btn = this;
+        var ref = document.getElementById('cajaInputRefBanco').value.trim();
+
+        btn.disabled = true;
+        btn.textContent = 'Guardando...';
+
+        var fd = new FormData();
+        fd.append('<?= csrf_token() ?>', '<?= csrf_hash() ?>');
+        fd.append('mn_id',      _cajaRefMnId     || 0);
+        fd.append('mn_tipo_id', _cajaRefMnTipoId || 0);
+        fd.append('folio',      _cajaRefFolio    || 0);
+        fd.append('referencia', ref);
+
+        fetch('<?= base_url('caja/monto/referencia') ?>', {
+            method: 'POST', body: fd, credentials: 'same-origin'
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            btn.disabled = false;
+            btn.textContent = 'Guardar';
+            if (data.ok) {
+                document.getElementById('cajaRefBancoOk').classList.remove('d-none');
+                setTimeout(function() {
+                    $('#cajaModalRefBanco').modal('hide');
+                    $('#tablaCajaConsulta').DataTable().ajax.reload(null, false);
+                }, 1200);
+            } else {
+                document.getElementById('cajaRefBancoError').textContent = data.msg || 'Error al guardar.';
+                document.getElementById('cajaRefBancoError').classList.remove('d-none');
+            }
+        })
+        .catch(function() {
+            btn.disabled = false;
+            btn.textContent = 'Guardar';
+            document.getElementById('cajaRefBancoError').textContent = 'Error de conexión.';
+            document.getElementById('cajaRefBancoError').classList.remove('d-none');
+        });
+    });
+
+    document.getElementById('cajaInputRefBanco').addEventListener('keypress', function(e) {
+        if (e.which === 13) document.getElementById('btnCajaGuardarRefBanco').click();
+    });
+});
+
 // ── Facturación desde Consulta Folios (Caja Nivel 2) ───────────────────
 
 // Abre el modal pre-llenando datos vía AJAX (Escenario 1 y 2)
@@ -387,6 +467,35 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 });
 </script>
+
+<!-- Modal: Referencia bancaria (Caja) -->
+<div class="modal fade" id="cajaModalRefBanco" tabindex="-1" role="dialog">
+    <div class="modal-dialog modal-sm" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="simple-icon-tag mr-1"></i>
+                    Referencia — Folio <span id="cajaModalRefBancoFolio"></span>
+                </h5>
+                <button type="button" class="close" data-dismiss="modal"><span>&times;</span></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted small mb-3">Método: <strong id="cajaModalRefBancoTipo"></strong></p>
+                <div class="form-group mb-2">
+                    <label>Número de referencia</label>
+                    <input type="text" id="cajaInputRefBanco" class="form-control"
+                           placeholder="Ej. 1234567890" maxlength="100">
+                </div>
+                <div id="cajaRefBancoError" class="alert alert-danger py-1 d-none"></div>
+                <div id="cajaRefBancoOk"    class="alert alert-success py-1 d-none">✔ Guardado correctamente</div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-primary" id="btnCajaGuardarRefBanco">Guardar</button>
+            </div>
+        </div>
+    </div>
+</div>
 
 <!-- Modal: Solicitar Factura Caja (Escenario 2) -->
 <div class="modal fade" id="modalCajaSolicitarFactura" tabindex="-1" role="dialog">

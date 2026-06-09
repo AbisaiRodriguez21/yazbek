@@ -59,12 +59,22 @@
                 <div class="row">
                     <div class="col-md-2">
                         <div class="form-group">
-                            <label>Fecha</label>
+                            <label>Fecha Desde</label>
                             <input name="fecha" type="text"
                                    class="form-control datepicker"
                                    id="fecha"
                                    placeholder="dd/mm/yyyy"
                                    value="<?= esc($fecha ?? '') ?>">
+                        </div>
+                    </div>
+                    <div class="col-md-2">
+                        <div class="form-group">
+                            <label>Fecha Hasta <small class="text-muted">(opcional)</small></label>
+                            <input name="fecha_hasta" type="text"
+                                   class="form-control datepicker"
+                                   id="fechaHasta"
+                                   placeholder="dd/mm/yyyy"
+                                   value="<?= esc($fechaHasta ?? '') ?>">
                         </div>
                     </div>
                     <div class="col-md-2">
@@ -132,7 +142,29 @@
                         <td valign="middle"><?= esc($n['fecha']) ?></td>
                         <td valign="middle"><?= esc($n['cliente']) ?></td>
                         <td valign="middle"><?= esc($n['vendedor']) ?></td>
-                        <td><?= implode('<br>', array_map('esc', $n['pagos'])) ?></td>
+                        <td>
+                            <?php foreach ($n['pagos'] as $p): ?>
+                                <div class="mb-1">
+                                    <span><?= esc($p['texto']) ?></span>
+                                    <?php if (!empty($p['editable']) && $p['mn_id']): ?>
+                                        <div class="d-flex align-items-center mt-1" style="gap:4px;">
+                                            <input type="text"
+                                                   class="form-control form-control-sm input-ref-pago"
+                                                   style="max-width:170px;"
+                                                   placeholder="Referencia bancaria"
+                                                   value="<?= esc($p['referencia']) ?>"
+                                                   data-mn-id="<?= (int)$p['mn_id'] ?>">
+                                            <button type="button"
+                                                    class="btn btn-sm btn-outline-success btn-guardar-ref"
+                                                    title="Guardar">
+                                                <i class="simple-icon-check"></i>
+                                            </button>
+                                            <span class="ref-ok text-success d-none" style="font-size:.8rem;">✓</span>
+                                        </div>
+                                    <?php endif; ?>
+                                </div>
+                            <?php endforeach; ?>
+                        </td>
                         <td valign="middle"><?= esc($n['status']) ?></td>
                         <td valign="middle"><?= esc($n['verificado']) ?></td>
                     </tr>
@@ -176,15 +208,47 @@ $(document).ready(function () {
         }
     });
 
+    // ── Guardar referencia de pago (Transferencia/Depósito/Cargo con tarjeta)
+    $(document).on('click', '.btn-guardar-ref', function () {
+        var $btn   = $(this);
+        var $wrap  = $btn.closest('.d-flex');
+        var $input = $wrap.find('.input-ref-pago');
+        var $ok    = $wrap.find('.ref-ok');
+        var mnId   = $input.data('mn-id');
+        var ref    = $input.val().trim();
+
+        $btn.prop('disabled', true);
+        $.post('<?= base_url('admin/caja/monto/referencia') ?>', {
+            <?= csrf_token() ?>: '<?= csrf_hash() ?>',
+            mn_id:      mnId,
+            referencia: ref
+        })
+        .done(function (res) {
+            if (res.ok) {
+                $ok.removeClass('d-none');
+                setTimeout(function () { $ok.addClass('d-none'); }, 2000);
+            }
+        })
+        .always(function () { $btn.prop('disabled', false); });
+    });
+
+    $(document).on('keypress', '.input-ref-pago', function (e) {
+        if (e.which === 13) {
+            $(this).closest('.d-flex').find('.btn-guardar-ref').trigger('click');
+        }
+    });
+
     // Exportar corte con fetch (misma lógica que Reporte Diario)
     document.getElementById('btnExportarCorte').addEventListener('click', function () {
         var overlay = document.getElementById('exportOverlayCj');
         overlay.classList.add('active');
 
-        var fecha    = document.getElementById('fecha').value;
-        var estatus  = document.getElementById('estatus').value;
-        var tipopago = document.getElementById('tipopago').value;
+        var fecha      = document.getElementById('fecha').value;
+        var fechaHasta = document.getElementById('fechaHasta').value;
+        var estatus    = document.getElementById('estatus').value;
+        var tipopago   = document.getElementById('tipopago').value;
         var url = '<?= base_url('admin/caja/corte/exportar') ?>?fecha=' + encodeURIComponent(fecha)
+                + '&fecha_hasta=' + encodeURIComponent(fechaHasta)
                 + '&estatus=' + estatus + '&tipopago=' + tipopago;
 
         fetch(url, { method: 'GET', credentials: 'same-origin' })

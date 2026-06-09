@@ -315,10 +315,11 @@ class MostradorController extends BaseController
             $listaPagos = [];
             foreach ($listaPagosRaw as $p) {
                 $listaPagos[] = [
-                    'tipo'    => $p['tipo'],
-                    'monto'   => $p['monto'],
-                    'cargo'   => $p['cargo'] ?? 0,
-                    'anticipo'=> $p['anticipo'] ?? 0,
+                    'tipo'       => $p['tipo'],
+                    'monto'      => $p['monto'],
+                    'cargo'      => $p['cargo'] ?? 0,
+                    'anticipo'   => $p['anticipo'] ?? 0,
+                    'referencia' => $p['referencia'] ?? '',
                 ];
             }
         }
@@ -346,6 +347,8 @@ class MostradorController extends BaseController
             foreach ($listaPagos as $pago) {
                 $esAnticipo = (int)($pago['anticipo'] ?? 0);
 
+                $numReferencia = trim($pago['referencia'] ?? '');
+
                 if ($esAnticipo === 1) {
                     // Pago de anticipo sobre una nota ya abierta (sin pagar/A Crédito):
                     // se crea un folio hijo con referencia al padre.
@@ -356,19 +359,21 @@ class MostradorController extends BaseController
                         (float)$pago['monto'],
                         (int)$pago['tipo'],
                         (float)($pago['cargo'] ?? 0),
-                        1
+                        1,
+                        $numReferencia
                     );
                 } else {
                     // Pago directo al cerrar la nota (contado, transferencia, etc.):
                     // solo se registra en montosnotas del folio padre, sin crear folio hijo.
                     $db->query(
-                        "INSERT INTO montosnotas (idNotas, idTipoPago, monto, cargos, anticipo, montoEfectivoIva, fecha)
-                         VALUES (?, ?, ?, ?, 0, 0, ?)",
+                        "INSERT INTO montosnotas (idNotas, idTipoPago, monto, cargos, referencia, anticipo, montoEfectivoIva, fecha)
+                         VALUES (?, ?, ?, ?, ?, 0, 0, ?)",
                         [
                             $idNotas1,
                             (int)$pago['tipo'],
                             (float)$pago['monto'],
                             (float)($pago['cargo'] ?? 0),
+                            $numReferencia ?: null,
                             $fechaHoraActual,
                         ]
                     );

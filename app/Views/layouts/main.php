@@ -353,6 +353,7 @@
         $cajDash = ($cajSeg2 === '' || $cajSeg2 === null) ? 'active' : '';
         $cajCobrar = in_array($cajSeg2, ['cobrar','folio','venta','pago']) ? 'active' : '';
         $cajCorte  = in_array($cajSeg2, ['corte']) ? 'active' : '';
+        $cajDiario = in_array($cajSeg2, ['reportediario']) ? 'active' : '';
     ?>
     <div class="menu">
         <div class="main-menu">
@@ -386,6 +387,12 @@
                         <a href="<?= base_url('caja/corte') ?>">
                             <i class="iconsminds-receipt-4"></i>
                             <span>Corte de Caja</span>
+                        </a>
+                    </li>
+                    <li class="<?= $cajDiario ?>">
+                        <a href="<?= base_url('caja/reportediario') ?>">
+                            <i class="iconsminds-calendar-4"></i>
+                            <span>Reporte Diario</span>
                         </a>
                     </li>
                 </ul>

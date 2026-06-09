@@ -92,6 +92,7 @@ $routes->group('admin', ['filter' => 'role:1'], function ($routes) {
     $routes->get('caja/corte', 'AdminController::cajaCorte');
     $routes->post('caja/corte', 'AdminController::cajaCorte');
     $routes->get('caja/corte/exportar', 'AdminController::exportarCorteXls');
+    $routes->post('caja/monto/referencia', 'AdminController::guardarReferenciaMontosnotas');
 
     // Importar productos CSV
     $routes->get('importar', 'AdminController::importar');
@@ -313,6 +314,14 @@ $routes->group('caja', ['filter' => 'role:2'], function ($routes) {
     // Exportar corte de caja (accesible desde módulo caja)
     $routes->get('cortecaja', 'ReportesController::corteCaja');
     $routes->get('cortecaja2', 'ReportesController::corteCaja2');
+
+    // Guardar referencia de pago desde caja (AJAX)
+    $routes->post('monto/referencia', 'CajaController::guardarReferenciaMontosnotas');
+
+    // Reporte Diario caja
+    $routes->get('reportediario', 'CajaController::reporteDiarioPage');
+    $routes->post('reportediario', 'CajaController::reporteDiario');
+    $routes->get('reportediario/dia', 'CajaController::reporteDiarioDia');
 });
 
 // =============================================================
