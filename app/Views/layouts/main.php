@@ -167,7 +167,7 @@
         // Ítem activo del main-menu
         $menuActivo = 'dashboards';
         if ($seg2 === 'inventario') $menuActivo = 'productos';
-        elseif (in_array($seg2, ['caja', 'reportediario'])) $menuActivo = 'contabilidad';
+        elseif (in_array($seg2, ['caja', 'reportediario', 'facturacion'])) $menuActivo = 'contabilidad';
         elseif (($seg1 === 'admin' && in_array($seg2, ['venta','consulta'])) || ($seg1 === 'mostrador' && in_array($seg2, ['venta','mayoreo','consulta'])) || $seg1 === 'reportes') $menuActivo = 'ventas';
         elseif (in_array($seg2, ['usuarios', 'mensajes', 'importar', 'exportar', 'clientes', 'auditoria', 'ticket-config', 'cfdi-config']) || ($seg1 === 'mostrador' && $seg2 === 'clientes')) $menuActivo = 'admon';
 
@@ -191,6 +191,7 @@
         elseif ($seg2 === 'auditoria') $subActivo = 'auditoria';
         elseif ($seg2 === 'ticket-config') $subActivo = 'ticket-config';
         elseif ($seg2 === 'cfdi-config')   $subActivo = 'cfdi-config';
+        elseif ($seg2 === 'facturacion')   $subActivo = 'facturacion';
     ?>
     <div class="menu">
         <div class="main-menu">
@@ -232,7 +233,7 @@
 
         <div class="sub-menu">
             <div class="scroll">
-                <!-- Contabilidad — igual al original: 3 ítems -->
+                <!-- Contabilidad -->
                 <ul class="list-unstyled" data-link="contabilidad">
                     <li class="<?= $subActivo === 'cortecaja'    ? 'active' : '' ?>" data-submenu="cortecaja">
                         <a href="<?= base_url('admin/caja/corte') ?>">
@@ -250,6 +251,12 @@
                         <a href="<?= base_url('admin/reportediario') ?>">
                             <i class="simple-icon-calculator"></i>
                             <span class="d-inline-block">Reporte diario</span>
+                        </a>
+                    </li>
+                    <li class="<?= $subActivo === 'facturacion' ? 'active' : '' ?>" data-submenu="facturacion">
+                        <a href="<?= base_url('admin/facturacion') ?>">
+                            <i class="simple-icon-doc"></i>
+                            <span class="d-inline-block">Facturación</span>
                         </a>
                     </li>
                 </ul>
@@ -350,10 +357,11 @@
             }
             return '';
         };
-        $cajDash = ($cajSeg2 === '' || $cajSeg2 === null) ? 'active' : '';
-        $cajCobrar = in_array($cajSeg2, ['cobrar','folio','venta','pago']) ? 'active' : '';
-        $cajCorte  = in_array($cajSeg2, ['corte']) ? 'active' : '';
-        $cajDiario = in_array($cajSeg2, ['reportediario']) ? 'active' : '';
+        $cajDash       = ($cajSeg2 === '' || $cajSeg2 === null) ? 'active' : '';
+        $cajCobrar     = in_array($cajSeg2, ['cobrar','folio','venta','pago']) ? 'active' : '';
+        $cajCorte      = in_array($cajSeg2, ['corte']) ? 'active' : '';
+        $cajDiario     = in_array($cajSeg2, ['reportediario']) ? 'active' : '';
+        $cajFacturacion = ($cajSeg2 === 'facturacion') ? 'active' : '';
     ?>
     <div class="menu">
         <div class="main-menu">
@@ -393,6 +401,12 @@
                         <a href="<?= base_url('caja/reportediario') ?>">
                             <i class="iconsminds-calendar-4"></i>
                             <span>Reporte Diario</span>
+                        </a>
+                    </li>
+                    <li class="<?= $cajFacturacion ?>">
+                        <a href="<?= base_url('caja/facturacion') ?>">
+                            <i class="simple-icon-doc"></i>
+                            <span>Facturación</span>
                         </a>
                     </li>
                 </ul>

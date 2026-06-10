@@ -70,6 +70,24 @@
         </div>
     </div>
 
+    <!-- ── Correo de copia interna de facturas ────────────────────────── -->
+    <div class="card mb-4">
+        <div class="card-header" style="background:#1F4E79;color:#fff;font-weight:bold;">
+            📧 Correo interno de facturación
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-6">
+                    <label class="font-weight-bold">Correo donde se recibe copia de cada factura</label>
+                    <input type="email" name="empresa_email_facturacion" class="form-control"
+                           value="<?= esc($cfg['empresa_email_facturacion'] ?? 'facturacionyazbek0@gmail.com') ?>"
+                           placeholder="facturacionyazbek0@gmail.com">
+                    <small class="text-muted">Se envía CC a este correo cada vez que se timbra una factura.</small>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div class="text-right mb-5">
         <button type="submit" class="btn btn-primary btn-lg">
             💾 Guardar configuración

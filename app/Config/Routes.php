@@ -129,11 +129,20 @@ $routes->group('admin', ['filter' => 'role:1'], function ($routes) {
     $routes->get('cfdi-config',          'AdminController::cfdiConfig');
     $routes->post('cfdi-config/guardar', 'AdminController::cfdiConfigGuardar');
 
+    // ── Módulo de Facturación (Contabilidad) ──
+    $routes->get('facturacion',                    'AdminController::facturacion');
+    $routes->get('facturacion/datatable',          'AdminController::facturacionDatatable');
+    $routes->get('facturacion/resumen',            'AdminController::facturacionResumen');
+    $routes->get('facturacion/folios-pendientes',  'AdminController::facturacionFoliosPendientes');
+    $routes->post('facturacion/consolidada',       'AdminController::facturacionConsolidada');
+
     // Liquidar anticipo
     $routes->post('folio/(:num)/liquidar', 'AdminController::liquidarAnticipo/$1');
 
     // Datos fiscales para modal de facturación (GET)
-    $routes->get('folio/(:num)/datos-fiscales', 'AdminController::datosFiscales/$1');
+    $routes->get('folio/(:num)/datos-fiscales',               'AdminController::datosFiscales/$1');
+    $routes->get('clientes/(:num)/datos-fiscales-cliente',    'AdminController::datosFiscalesCliente/$1');
+    $routes->post('clientes/(:num)/guardar-correo',           'AdminController::guardarCorreoCliente/$1');
 
     // Facturar folio (genera CFDI desde Consulta Folios — solo Admin)
     $routes->post('folio/(:num)/facturar', 'AdminController::facturarFolio/$1');
@@ -269,6 +278,7 @@ $routes->group('caja', ['filter' => 'role:2'], function ($routes) {
     $routes->post('clientes/crear', 'CajaController::crearCliente');
     $routes->post('clientes/actualizar/(:num)', 'CajaController::actualizarCliente/$1');
     $routes->post('clientes/eliminar', 'CajaController::eliminarCliente');
+    $routes->post('clientes/buscar', 'MostradorController::buscarClientes');
 
     // Módulo caja (lista de notas a cobrar / verificar)
     $routes->get('cobrar', 'CajaController::caja');
@@ -322,6 +332,15 @@ $routes->group('caja', ['filter' => 'role:2'], function ($routes) {
     $routes->get('reportediario', 'CajaController::reporteDiarioPage');
     $routes->post('reportediario', 'CajaController::reporteDiario');
     $routes->get('reportediario/dia', 'CajaController::reporteDiarioDia');
+
+    // Módulo Facturación (misma lógica que Admin — reutiliza AdminController)
+    $routes->get('facturacion',                   'AdminController::facturacion');
+    $routes->get('facturacion/datatable',         'AdminController::facturacionDatatable');
+    $routes->get('facturacion/resumen',           'AdminController::facturacionResumen');
+    $routes->get('facturacion/folios-pendientes', 'AdminController::facturacionFoliosPendientes');
+    $routes->post('facturacion/consolidada',                'AdminController::facturacionConsolidada');
+    $routes->get('clientes/(:num)/datos-fiscales-cliente', 'AdminController::datosFiscalesCliente/$1');
+    $routes->post('clientes/(:num)/guardar-correo',        'AdminController::guardarCorreoCliente/$1');
 });
 
 // =============================================================

@@ -946,7 +946,7 @@ class CajaController extends BaseController
         $cliente = [];
         if (! empty($nota['idCliente'])) {
             $cliente = $db->query(
-                "SELECT RFC, razonSocial, CP FROM clientes WHERE id = ? LIMIT 1",
+                "SELECT RFC, razonSocial, CP, mail FROM clientes WHERE id = ? LIMIT 1",
                 [(int)$nota['idCliente']]
             )->getRowArray() ?? [];
         }
@@ -966,6 +966,8 @@ class CajaController extends BaseController
             'regimenFiscalReceptor' => $reg,
             'formaPagoCFDI'         => $forma,
             'metodoPagoCFDI'        => 'PUE',
+            'idCliente'             => (int)($nota['idCliente'] ?? 0),
+            'correoCliente'         => trim($cliente['mail'] ?? ''),
         ]);
     }
 

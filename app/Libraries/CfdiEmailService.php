@@ -44,7 +44,8 @@ class CfdiEmailService
         string $uuid,
         string $folio,
         string $correoCliente,
-        string $nombreCliente
+        string $nombreCliente,
+        array  $foliosConsolidados = []
     ): array {
         try {
             $email = \Config\Services::email();
@@ -61,7 +62,7 @@ class CfdiEmailService
             // ── Asunto y cuerpo ──────────────────────────────────────────
             $email->setSubject('Factura CFDI ' . $folio . ' — UUID: ' . $uuid);
             $email->setMailType('html');
-            $email->setMessage($this->construirCuerpo($uuid, $folio, $nombreCliente));
+            $email->setMessage($this->construirCuerpo($uuid, $folio, $nombreCliente, $foliosConsolidados));
 
             // ── Adjuntos ─────────────────────────────────────────────────
             // PDF
@@ -86,8 +87,23 @@ class CfdiEmailService
     }
 
     // ── HTML del cuerpo del correo ────────────────────────────────────────
-    private function construirCuerpo(string $uuid, string $folio, string $nombreCliente): string
+    private function construirCuerpo(string $uuid, string $folio, string $nombreCliente, array $foliosConsolidados = []): string
     {
+        // Bloque de folios consolidados (solo si aplica)
+        $bloqueConsolidado = '';
+        if (!empty($foliosConsolidados)) {
+            $filas = '';
+            foreach ($foliosConsolidados as $f) {
+                $filas .= '<tr><td style="padding:3px 8px;border-bottom:1px solid #e8e8e8;">#' . htmlspecialchars((string)$f) . '</td></tr>';
+            }
+            $bloqueConsolidado = '
+      <p style="margin:12px 0 4px;">Esta factura consolida los siguientes <strong>' . count($foliosConsolidados) . ' folios</strong>:</p>
+      <table style="border-collapse:collapse;font-size:12px;width:100%;max-width:300px;margin-bottom:12px;">
+        <thead><tr><th style="background:#1F4E79;color:#fff;padding:4px 8px;text-align:left;">Folio</th></tr></thead>
+        <tbody>' . $filas . '</tbody>
+      </table>';
+        }
+
         return '
 <!DOCTYPE html>
 <html>
@@ -101,7 +117,7 @@ class CfdiEmailService
     <div style="padding:24px 28px;">
       <p>Estimado(a) <strong>' . htmlspecialchars($nombreCliente) . '</strong>,</p>
       <p>Adjunto a este correo encontrará su factura electrónica correspondiente a la compra con folio <strong>' . htmlspecialchars($folio) . '</strong>.</p>
-
+      ' . $bloqueConsolidado . '
       <div style="background:#F0F4FA;border-left:4px solid #1F4E79;padding:12px 16px;margin:16px 0;border-radius:3px;">
         <p style="margin:0;font-size:12px;"><strong>UUID (Folio Fiscal):</strong></p>
         <p style="margin:4px 0 0;font-family:monospace;font-size:11px;color:#1F4E79;">' . htmlspecialchars($uuid) . '</p>

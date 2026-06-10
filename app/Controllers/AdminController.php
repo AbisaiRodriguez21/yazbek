@@ -1331,7 +1331,7 @@ class AdminController extends BaseController
         $cliente = [];
         if (! empty($nota['idCliente'])) {
             $cliente = $db->query(
-                "SELECT RFC, razonSocial, CP FROM clientes WHERE id = ? LIMIT 1",
+                "SELECT RFC, razonSocial, CP, mail FROM clientes WHERE id = ? LIMIT 1",
                 [(int)$nota['idCliente']]
             )->getRowArray() ?? [];
         }
@@ -1352,6 +1352,46 @@ class AdminController extends BaseController
             'regimenFiscalReceptor' => $reg,
             'formaPagoCFDI'         => $forma,
             'metodoPagoCFDI'        => 'PUE',
+            'idCliente'             => (int)($nota['idCliente'] ?? 0),
+            'correoCliente'         => trim($cliente['mail'] ?? ''),
+        ]);
+    }
+
+    /**
+     * POST /admin/clientes/:id/guardar-correo
+     * Guarda el correo electrónico de un cliente (solo si estaba vacío).
+     */
+    public function guardarCorreoCliente(int $id): \CodeIgniter\HTTP\Response
+    {
+        $mail = trim($this->request->getPost('mail') ?? '');
+        if (!$id || !filter_var($mail, FILTER_VALIDATE_EMAIL)) {
+            return $this->response->setJSON(['success' => false, 'message' => 'Correo inválido.']);
+        }
+        $db = \Config\Database::connect();
+        $db->query("UPDATE clientes SET mail = ? WHERE id = ?", [$mail, $id]);
+        return $this->response->setJSON(['success' => true]);
+    }
+
+    /**
+     * GET /admin/clientes/:id/datos-fiscales-cliente
+     * Devuelve RFC, Razón Social y CP del cliente para pre-llenar el modal consolidado.
+     */
+    public function datosFiscalesCliente(int $id): \CodeIgniter\HTTP\Response
+    {
+        $db  = \Config\Database::connect();
+        $row = $db->query(
+            "SELECT RFC, razonSocial, CP, nombre FROM clientes WHERE id = ? LIMIT 1",
+            [$id]
+        )->getRowArray();
+        if (!$row) {
+            return $this->response->setJSON([]);
+        }
+        return $this->response->setJSON([
+            'RFC'          => strtoupper(trim($row['RFC']         ?? '')),
+            'razonSocial'  => strtoupper(trim($row['razonSocial'] ?? '')),
+            'CP'           => trim($row['CP']   ?? ''),
+            'nombre'       => trim($row['nombre'] ?? ''),
+            'regimenFiscal'=> '616',
         ]);
     }
 
@@ -2942,6 +2982,432 @@ class AdminController extends BaseController
         ]);
     }
 
+    // ══════════════════════════════════════════════════════════════
+    // MÓDULO DE FACTURACIÓN — /admin/facturacion
+    // ══════════════════════════════════════════════════════════════
+
+    /**
+     * GET /admin/facturacion
+     * Página principal del módulo de facturación.
+     */
+    public function facturacion(): string
+    {
+        // Detectar si viene desde /caja o /admin para que la vista use la base correcta
+        $seg1   = service('uri')->setSilent()->getSegment(1);
+        $prefix = ($seg1 === 'caja') ? 'caja' : 'admin';
+
+        return view('admin/facturacion', [
+            'usuario'       => $this->getUsuarioSesion(),
+            'factUrlPrefix' => $prefix,
+        ]);
+    }
+
+    /**
+     * GET /admin/facturacion/datatable
+     * Server-side DataTable con filtros: cliente, folio, desde, hasta, estado.
+     * Solo notas cerradas (idstatus 5 = Pagada, 6 = Liquidado), nota padre (referencia=0).
+     */
+    public function facturacionDatatable(): \CodeIgniter\HTTP\Response
+    {
+        $draw        = (int) $this->request->getGet('draw');
+        $start       = (int) $this->request->getGet('start');
+        $length      = (int) $this->request->getGet('length');
+        $search      = $this->request->getGet('search')['value'] ?? '';
+        $orderColIdx = (int) ($this->request->getGet('order')[0]['column'] ?? 0);
+        $orderDir    = $this->request->getGet('order')[0]['dir'] ?? 'desc';
+
+        // Filtros del módulo de facturación
+        $filtClienteId      = (int) ($this->request->getGet('clienteId') ?? 0);  // ID exacto vía Select2
+        $filtFolio          = trim($this->request->getGet('folio')   ?? '');
+        $filtDesde          = trim($this->request->getGet('desde')   ?? '');
+        $filtHasta          = trim($this->request->getGet('hasta')   ?? '');
+        $filtEstado         = $this->request->getGet('estado') ?? '';  // '', '0', '1', '2'
+        $ocultarFacturados  = $this->request->getGet('ocultarFacturados') == '1';
+
+        $cols     = ['n.folio', 'n.fecha_inicial', 'c.nombre', 'u.usuario', 'n.total',
+                     'n.uuid_fiscal', 'n.folio'];
+        $orderCol = $cols[$orderColIdx] ?? 'n.folio';
+        $orderDir = $orderDir === 'asc' ? 'ASC' : 'DESC';
+
+        try {
+            $db = \Config\Database::connect();
+
+            // ── Base SQL igual que consultaDatatable ──────────────────
+            $baseSql = "FROM notas_1 n
+                        LEFT JOIN clientes c ON c.id  = n.idCliente
+                        LEFT JOIN usuarios u ON u.Id  = n.idVendedor";
+
+            // ── Condiciones base: solo notas pagadas/liquidadas padre ─
+            $whereClauses = [];
+            $params       = [];
+
+            $whereClauses[] = "n.status IN (5, 6)";
+            $whereClauses[] = "COALESCE(n.referencia, 0) = 0";
+
+            // Total base (solo condiciones de negocio, sin filtros de usuario)
+            $baseWhere = "WHERE n.status IN (5, 6) AND COALESCE(n.referencia, 0) = 0";
+            $total     = (int) $db->query("SELECT COUNT(*) AS total $baseSql $baseWhere")->getRow()->total;
+
+            // Filtro cliente (ID exacto seleccionado por Select2)
+            if ($filtClienteId > 0) {
+                $whereClauses[] = "n.idCliente = ?";
+                $params[]        = $filtClienteId;
+            }
+
+            // Filtro folio (opcional — sin folio muestra todos del cliente)
+            if ($filtFolio !== '') {
+                $whereClauses[] = "n.folio = ?";
+                $params[]        = (int) $filtFolio;
+            }
+
+            // Filtro fechas
+            if ($filtDesde !== '') {
+                $whereClauses[] = "DATE(n.fecha_inicial) >= ?";
+                $params[]        = $filtDesde;
+            }
+            if ($filtHasta !== '') {
+                $whereClauses[] = "DATE(n.fecha_inicial) <= ?";
+                $params[]        = $filtHasta;
+            }
+
+            // Filtro estado facturación
+            if ($filtEstado !== '') {
+                if ($filtEstado == '1') {
+                    // Facturado: tiene UUID
+                    $whereClauses[] = "n.uuid_fiscal IS NOT NULL AND n.uuid_fiscal != ''";
+                } elseif ($filtEstado == '0') {
+                    // No facturado: sin UUID y no pendiente SAT
+                    $whereClauses[] = "(n.uuid_fiscal IS NULL OR n.uuid_fiscal = '')";
+                    $whereClauses[] = "COALESCE(n.status_facturacion, 0) != 1";
+                } elseif ($filtEstado == '2') {
+                    // Pendiente SAT: sin UUID pero marcado como pendiente
+                    $whereClauses[] = "(n.uuid_fiscal IS NULL OR n.uuid_fiscal = '')";
+                    $whereClauses[] = "COALESCE(n.status_facturacion, 0) = 1";
+                }
+            }
+
+            // Ocultar ya facturados (uuid_fiscal presente o status_facturacion=2)
+            if ($ocultarFacturados) {
+                $whereClauses[] = "(n.uuid_fiscal IS NULL OR n.uuid_fiscal = '')";
+                $whereClauses[] = "COALESCE(n.status_facturacion, 0) != 2";
+            }
+
+            // Búsqueda global del DataTable
+            if ($search !== '') {
+                $s               = '%' . $search . '%';
+                $whereClauses[]  = "(c.nombre LIKE ? OR n.folio LIKE ? OR u.usuario LIKE ?)";
+                $params[]        = $s;
+                $params[]        = $s;
+                $params[]        = $s;
+            }
+
+            $where    = $whereClauses ? "WHERE " . implode(" AND ", $whereClauses) : "";
+            $filtered = (int) $db->query(
+                "SELECT COUNT(*) AS cnt $baseSql $where", $params
+            )->getRow()->cnt;
+
+            $data = $db->query(
+                "SELECT n.folio,
+                        n.fecha_inicial,
+                        COALESCE(c.nombre, '—')  AS cliente,
+                        COALESCE(u.usuario, '—') AS vendedor,
+                        n.total,
+                        n.status                              AS idstatus,
+                        COALESCE(n.uuid_fiscal, '')           AS uuid_fiscal,
+                        COALESCE(n.status_facturacion, 0)     AS status_facturacion,
+                        n.factura
+                 $baseSql $where
+                 ORDER BY $orderCol $orderDir
+                 LIMIT ? OFFSET ?",
+                array_merge($params, [$length, $start])
+            )->getResultArray();
+
+            return $this->response->setJSON([
+                'draw'            => $draw,
+                'recordsTotal'    => $total,
+                'recordsFiltered' => $filtered,
+                'data'            => $data,
+            ]);
+
+        } catch (\Exception $e) {
+            log_message('error', 'AdminController::facturacionDatatable — ' . $e->getMessage());
+            return $this->response->setJSON([
+                'draw'            => $draw,
+                'recordsTotal'    => 0,
+                'recordsFiltered' => 0,
+                'data'            => [],
+                'error'           => 'Error al cargar datos: ' . $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * GET /admin/facturacion/resumen
+     * Devuelve totales (monto + conteo) de notas facturadas y no facturadas.
+     */
+    public function facturacionResumen(): \CodeIgniter\HTTP\Response
+    {
+        $db  = \Config\Database::connect();
+        $req = $this->request;
+
+        $clienteId = (int) ($req->getGet('clienteId') ?? 0);
+        $folio     = trim($req->getGet('folio')   ?? '');
+        $desde     = trim($req->getGet('desde')   ?? '');
+        $hasta     = trim($req->getGet('hasta')   ?? '');
+
+        $where  = ["n.status IN (5,6)", "COALESCE(n.referencia, 0) = 0"];
+        $params = [];
+
+        if ($clienteId > 0)  { $where[] = "n.idCliente = ?"; $params[] = $clienteId; }
+        if ($folio     !== '') { $where[] = "n.folio = ?";   $params[] = (int)$folio; }
+        if ($desde   !== '') { $where[] = "DATE(n.fecha_inicial) >= ?"; $params[] = $desde; }
+        if ($hasta   !== '') { $where[] = "DATE(n.fecha_inicial) <= ?"; $params[] = $hasta; }
+
+        $wc = 'WHERE ' . implode(' AND ', $where);
+
+        $resFacturado = $db->query("
+            SELECT COUNT(*) AS cnt, COALESCE(SUM(n.sumaImportes),0) AS monto
+            FROM notas_1 n LEFT JOIN clientes c ON c.id = n.idCliente
+            $wc AND n.uuid_fiscal IS NOT NULL AND n.uuid_fiscal != ''
+        ", $params)->getRowArray();
+
+        $resNoFact = $db->query("
+            SELECT COUNT(*) AS cnt, COALESCE(SUM(n.sumaImportes),0) AS monto
+            FROM notas_1 n LEFT JOIN clientes c ON c.id = n.idCliente
+            $wc AND (n.uuid_fiscal IS NULL OR n.uuid_fiscal = '')
+        ", $params)->getRowArray();
+
+        return $this->response->setJSON([
+            'facturado_monto'    => round((float)($resFacturado['monto']  ?? 0), 2),
+            'facturado_count'    => (int)($resFacturado['cnt']   ?? 0),
+            'no_facturado_monto' => round((float)($resNoFact['monto'] ?? 0), 2),
+            'no_facturado_count' => (int)($resNoFact['cnt']  ?? 0),
+        ]);
+    }
+
+    /**
+     * GET /admin/facturacion/folios-pendientes
+     * Devuelve IDs de folios no facturados (para Factura Global sin selección manual).
+     */
+    public function facturacionFoliosPendientes(): \CodeIgniter\HTTP\Response
+    {
+        $db  = \Config\Database::connect();
+        $req = $this->request;
+
+        $clienteId = (int) ($req->getGet('clienteId') ?? 0);
+        $desde     = trim($req->getGet('desde')   ?? '');
+        $hasta     = trim($req->getGet('hasta')   ?? '');
+
+        $where  = [
+            "n.status IN (5,6)",
+            "COALESCE(n.referencia, 0) = 0",
+            "(n.uuid_fiscal IS NULL OR n.uuid_fiscal = '')",
+            "COALESCE(n.status_facturacion, 0) != 2",
+        ];
+        $params = [];
+
+        if ($clienteId > 0) { $where[] = "n.idCliente = ?"; $params[] = $clienteId; }
+        if ($desde   !== '') { $where[] = "DATE(n.fecha_inicial) >= ?"; $params[] = $desde; }
+        if ($hasta   !== '') { $where[] = "DATE(n.fecha_inicial) <= ?"; $params[] = $hasta; }
+
+        $wc = 'WHERE ' . implode(' AND ', $where);
+
+        $rows = $db->query("
+            SELECT n.folio
+            FROM notas_1 n LEFT JOIN clientes c ON c.id = n.idCliente
+            $wc
+            ORDER BY n.folio ASC
+            LIMIT 500
+        ", $params)->getResultArray();
+
+        return $this->response->setJSON([
+            'folios' => array_column($rows, 'folio'),
+        ]);
+    }
+
+    /**
+     * POST /admin/facturacion/consolidada
+     * Genera UN solo CFDI con TODOS los productos de los folios enviados.
+     * Todos los folios deben pertenecer al mismo cliente y no estar timbrados.
+     */
+    public function facturacionConsolidada(): \CodeIgniter\HTTP\Response
+    {
+        $db = \Config\Database::connect();
+
+        // ── Parsear folios ────────────────────────────────────────────
+        $foliosRaw = $this->request->getPost('folios');
+        $folios    = is_string($foliosRaw)
+            ? (json_decode($foliosRaw, true) ?: [])
+            : (array)($foliosRaw ?? []);
+        $folios = array_values(array_unique(array_filter(array_map('intval', $folios), fn($f) => $f > 0)));
+
+        if (empty($folios)) {
+            return $this->response->setJSON(['success' => false, 'message' => 'No se enviaron folios.']);
+        }
+
+        // ── Datos SAT del modal ──────────────────────────────────────
+        $datosSAT = [
+            'rfcReceptor'           => strtoupper(trim($this->request->getPost('rfcReceptor')           ?? '')),
+            'razonSocialReceptor'   => strtoupper(trim($this->request->getPost('razonSocialReceptor')   ?? '')),
+            'cpReceptor'            => trim($this->request->getPost('cpReceptor')                       ?? ''),
+            'usoCFDI'               => trim($this->request->getPost('usoCFDI')                          ?? 'S01'),
+            'regimenFiscalReceptor' => trim($this->request->getPost('regimenFiscalReceptor')            ?? '616'),
+            'formaPago'             => trim($this->request->getPost('formaPagoCFDI')                    ?? '01'),
+            'metodoPago'            => trim($this->request->getPost('metodoPagoCFDI')                   ?? 'PUE'),
+        ];
+
+        if (!$datosSAT['rfcReceptor'] || !$datosSAT['razonSocialReceptor'] || !$datosSAT['cpReceptor']) {
+            return $this->response->setJSON(['success' => false, 'message' => 'Faltan datos fiscales (RFC, Razón Social o CP).']);
+        }
+
+        try {
+            $ph = implode(',', array_fill(0, count($folios), '?'));
+
+            // ── Cargar y validar notas ────────────────────────────────
+            $notas = $db->query(
+                "SELECT folio, idCliente, sumaImportes, total, precioMayoreo, uuid_fiscal
+                 FROM notas_1
+                 WHERE folio IN ($ph)
+                   AND status IN (5,6)
+                   AND COALESCE(referencia,0) = 0",
+                $folios
+            )->getResultArray();
+
+            if (count($notas) !== count($folios)) {
+                return $this->response->setJSON(['success' => false, 'message' => 'Uno o más folios no son válidos o no están pagados.']);
+            }
+
+            $clienteIds = array_unique(array_column($notas, 'idCliente'));
+            if (count($clienteIds) > 1) {
+                return $this->response->setJSON(['success' => false, 'message' => 'Los folios pertenecen a clientes distintos.']);
+            }
+
+            $yaFact = array_filter($notas, fn($n) => !empty($n['uuid_fiscal']));
+            if (!empty($yaFact)) {
+                return $this->response->setJSON(['success' => false,
+                    'message' => 'Folios ya facturados: ' . implode(', ', array_column($yaFact, 'folio'))]);
+            }
+
+            $idCliente = (int)$clienteIds[0];
+            $cliente   = $db->query("SELECT * FROM clientes WHERE id = ? LIMIT 1", [$idCliente])->getRowArray() ?? [];
+
+            // ── Recolectar todos los productos ────────────────────────
+            $detalleConsolidado = [];
+            foreach ($notas as $nota) {
+                $f       = (int)$nota['folio'];
+                $detalle = $db->query(
+                    "SELECT n2.cantidad,
+                            n2.estilo AS sku,
+                            CONCAT(COALESCE(p.estilo,''),'-',COALESCE(p.Descripcion_Larga,''),
+                                   '-',COALESCE(p.Talla,''),'-',COALESCE(p.Color,'')) AS descripcion,
+                            n2.pUnitario, n2.pUnitarioM,
+                            (n2.cantidad * n2.pUnitario)  AS importeMenudeo,
+                            (n2.cantidad * n2.pUnitarioM) AS importeMayoreo
+                     FROM notas_2 n2
+                     LEFT JOIN productosyazbek p ON p.sku = n2.estilo
+                     WHERE n2.folio = ?
+                     ORDER BY n2.Id_Notas_2 ASC",
+                    [$f]
+                )->getResultArray();
+
+                $storedSuma = (float)($nota['sumaImportes'] ?? 0);
+                if ($storedSuma > 0) {
+                    $sumMenu = array_sum(array_map(fn($d) => $d['cantidad'] * (float)$d['pUnitario'], $detalle));
+                    $sumMay  = array_sum(array_map(fn($d) => $d['cantidad'] * (float)($d['pUnitarioM'] ?: $d['pUnitario']), $detalle));
+                    $esMayoreo = abs($sumMay - $storedSuma) < abs($sumMenu - $storedSuma);
+                } else {
+                    $esMayoreo = (int)($nota['precioMayoreo'] ?? 0) === 1;
+                }
+
+                foreach ($detalle as $linea) {
+                    $usarMay = $esMayoreo && !empty($linea['pUnitarioM']) && (float)$linea['pUnitarioM'] > 0;
+                    $linea['precio']  = $usarMay ? (float)$linea['pUnitarioM']     : (float)$linea['pUnitario'];
+                    $linea['importe'] = $usarMay ? (float)$linea['importeMayoreo'] : (float)$linea['importeMenudeo'];
+                    $detalleConsolidado[] = $linea;
+                }
+            }
+
+            if (empty($detalleConsolidado)) {
+                return $this->response->setJSON(['success' => false, 'message' => 'No se encontraron productos en los folios.']);
+            }
+
+            // ── Nota virtual con total consolidado ────────────────────
+            sort($folios);
+            $folioBase = $folios[0];
+            $totalBase = array_sum(array_map(fn($l) => (float)$l['importe'], $detalleConsolidado));
+            $notaVirtual = [
+                'sumaImportes'  => $totalBase,
+                'total'         => round($totalBase * 1.16, 2),
+                'precioMayoreo' => 0,
+                'idCliente'     => $idCliente,
+            ];
+
+            // ── Marcar todos como pendiente SAT ──────────────────────
+            foreach ($folios as $f) {
+                $db->query(
+                    "UPDATE notas_1
+                     SET factura=1, rfc_receptor=?, razon_social_receptor=?, cp_receptor=?,
+                         uso_cfdi=?, regimen_fiscal_receptor=?, forma_pago_cfdi=?,
+                         status_facturacion=1
+                     WHERE folio=?",
+                    [$datosSAT['rfcReceptor'], $datosSAT['razonSocialReceptor'], $datosSAT['cpReceptor'],
+                     $datosSAT['usoCFDI'], $datosSAT['regimenFiscalReceptor'], $datosSAT['formaPago'], $f]
+                );
+            }
+
+            // ── Timbrar con DfactureService ───────────────────────────
+            $dfacture  = new \App\Libraries\DfactureService();
+            $resultado = $dfacture->timbrarNota($folioBase, $notaVirtual, $detalleConsolidado, $cliente, $datosSAT);
+
+            if (!$resultado['success']) {
+                // Revertir estado
+                $db->query("UPDATE notas_1 SET status_facturacion=0 WHERE folio IN ($ph)", $folios);
+                return $this->response->setJSON(['success' => false, 'message' => $resultado['message'] ?? 'Error al timbrar.']);
+            }
+
+            $uuid        = $resultado['uuid'];
+            $xmlTimbrado = $resultado['xml'];
+
+            // ── Guardar UUID en TODOS los folios ──────────────────────
+            $db->query(
+                "UPDATE notas_1
+                 SET uuid_fiscal=?, cfdi_xml=?, cfdi_fecha_timbrado=NOW(),
+                     cfdi_error=NULL, status_facturacion=2
+                 WHERE folio IN ($ph)",
+                array_merge([$uuid, $xmlTimbrado], $folios)
+            );
+
+            \App\Libraries\AuditService::log(\App\Libraries\AuditService::VENTA_CERRADA, 'notas_1', $folioBase,
+                'Factura global consolidada UUID=' . $uuid . ' folios=' . implode(',', $folios));
+
+            // ── Enviar correo ─────────────────────────────────────────
+            try {
+                $cfgRows    = $db->query("SELECT clave, valor FROM ticket_config")->getResultArray();
+                $cfgMap     = array_column($cfgRows, 'valor', 'clave');
+                $xmlDecoded = base64_decode($xmlTimbrado);
+                $pdfService = new \App\Libraries\CfdiPdfService();
+                $pdfBytes   = $pdfService->generarPDF($xmlDecoded, $cfgMap);
+                $emailSvc   = new \App\Libraries\CfdiEmailService();
+                $emailSvc->enviar($xmlDecoded, $pdfBytes, $uuid,
+                    'Consolidado (' . count($folios) . ' folios)',
+                    $cliente['mail'] ?? '', $cliente['nombre'] ?? '',
+                    $folios);
+            } catch (\Throwable $eEmail) {
+                log_message('error', '[facturacionConsolidada] correo: ' . $eEmail->getMessage());
+            }
+
+            return $this->response->setJSON([
+                'success' => true,
+                'uuid'    => $uuid,
+                'folios'  => count($folios),
+            ]);
+
+        } catch (\Exception $e) {
+            log_message('error', 'facturacionConsolidada: ' . $e->getMessage());
+            return $this->response->setJSON(['success' => false, 'message' => 'Error: ' . $e->getMessage()]);
+        }
+    }
+
     // ──────────────────────────────────────────────────────────────
     // ──────────────────────────────────────────────────────────────
     // GET  /admin/cfdi-config         — Ver configuración de facturación
@@ -2950,7 +3416,7 @@ class AdminController extends BaseController
     public function cfdiConfig(): string
     {
         $db  = \Config\Database::connect();
-        $rows = $db->query("SELECT clave, valor FROM ticket_config WHERE clave LIKE 'cfdi_%' OR clave LIKE 'smtp_%'")->getResultArray();
+        $rows = $db->query("SELECT clave, valor FROM ticket_config WHERE clave LIKE 'cfdi_%' OR clave LIKE 'smtp_%' OR clave = 'empresa_email_facturacion'")->getResultArray();
         $cfg  = array_column($rows, 'valor', 'clave');
 
         // ¿Existen los archivos CSD?
