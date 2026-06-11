@@ -169,7 +169,7 @@
         if ($seg2 === 'inventario') $menuActivo = 'productos';
         elseif (in_array($seg2, ['caja', 'reportediario', 'facturacion'])) $menuActivo = 'contabilidad';
         elseif (($seg1 === 'admin' && in_array($seg2, ['venta','consulta'])) || ($seg1 === 'mostrador' && in_array($seg2, ['venta','mayoreo','consulta'])) || $seg1 === 'reportes') $menuActivo = 'ventas';
-        elseif (in_array($seg2, ['usuarios', 'mensajes', 'importar', 'exportar', 'clientes', 'auditoria', 'ticket-config', 'cfdi-config']) || ($seg1 === 'mostrador' && $seg2 === 'clientes')) $menuActivo = 'admon';
+        elseif (in_array($seg2, ['usuarios', 'mensajes', 'importar', 'exportar', 'clientes', 'auditoria', 'ticket-config', 'cfdi-config', 'backup']) || ($seg1 === 'mostrador' && $seg2 === 'clientes')) $menuActivo = 'admon';
 
         // Ítem activo del sub-menu
         $subActivo = '';
@@ -192,6 +192,7 @@
         elseif ($seg2 === 'ticket-config') $subActivo = 'ticket-config';
         elseif ($seg2 === 'cfdi-config')   $subActivo = 'cfdi-config';
         elseif ($seg2 === 'facturacion')   $subActivo = 'facturacion';
+        elseif ($seg2 === 'backup')        $subActivo = 'backup';
     ?>
     <div class="menu">
         <div class="main-menu">
@@ -337,6 +338,12 @@
                         <a href="<?= base_url('admin/cfdi-config') ?>">
                             <i class="simple-icon-badge"></i>
                             <span class="d-inline-block">Config. Facturación</span>
+                        </a>
+                    </li>
+                    <li class="<?= $subActivo === 'backup' ? 'active' : '' ?>" data-submenu="backup">
+                        <a href="<?= base_url('admin/backup') ?>">
+                            <i class="iconsminds-data-storage"></i>
+                            <span class="d-inline-block">Respaldos BD</span>
                         </a>
                     </li>
                 </ul>

@@ -144,6 +144,13 @@ $routes->group('admin', ['filter' => 'role:1'], function ($routes) {
     $routes->get('clientes/(:num)/datos-fiscales-cliente',    'AdminController::datosFiscalesCliente/$1');
     $routes->post('clientes/(:num)/guardar-correo',           'AdminController::guardarCorreoCliente/$1');
 
+    // ── Respaldos de Base de Datos ──────────────────────────────
+    $routes->get('backup',                           'AdminController::backup');
+    $routes->get('backup/descargar/(:segment)',      'AdminController::backupDescargar/$1');
+    $routes->post('backup/eliminar/(:segment)',      'AdminController::backupEliminar/$1');
+    $routes->post('backup/eliminar-todo',            'AdminController::backupEliminarTodo');
+    $routes->post('backup/generar',                  'AdminController::backupGenerar');
+
     // Facturar folio (genera CFDI desde Consulta Folios — solo Admin)
     $routes->post('folio/(:num)/facturar', 'AdminController::facturarFolio/$1');
 

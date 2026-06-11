@@ -3580,4 +3580,187 @@ class AdminController extends BaseController
             'acceso' => $session->get('user_acceso'),
         ];
     }
+
+    // ══════════════════════════════════════════════════════════════
+    // RESPALDOS DE BASE DE DATOS
+    // ══════════════════════════════════════════════════════════════
+
+    /** GET /admin/backup — Lista los respaldos disponibles */
+    public function backup(): string
+    {
+        $backupDir = WRITEPATH . 'backups' . DIRECTORY_SEPARATOR;
+        if (!is_dir($backupDir)) mkdir($backupDir, 0755, true);
+
+        $archivos = [];
+        foreach (glob($backupDir . 'backup_*.sql') as $file) {
+            $archivos[] = [
+                'nombre' => basename($file),
+                'tamano' => filesize($file),
+                'fecha'  => date('d/m/Y H:i:s', filemtime($file)),
+                'ts'     => filemtime($file),
+            ];
+        }
+        usort($archivos, fn($a, $b) => $b['ts'] - $a['ts']);
+
+        return view('admin/backup', [
+            'archivos' => $archivos,
+            'usuario'  => $this->getUsuarioSesion(),
+        ]);
+    }
+
+    /** GET /admin/backup/descargar/{file} — Descarga un respaldo */
+    public function backupDescargar(string $filename): void
+    {
+        $filename = preg_replace('/[^a-zA-Z0-9_\-.]/', '', $filename);
+        $path = WRITEPATH . 'backups' . DIRECTORY_SEPARATOR . $filename;
+
+        if (!file_exists($path) || !str_starts_with($filename, 'backup_')) {
+            show_404();
+        }
+
+        // Nombre amigable: BD-Yazbek-2026-06-11_10-07-16.sql
+        // El archivo original es: backup_nissipro_0525_2026-06-11_10-07-16.sql
+        $downloadName = $filename;
+        if (preg_match('/backup_.+_(\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2})\.sql$/', $filename, $m)) {
+            $downloadName = 'BD-Yazbek-' . $m[1] . '.sql';
+        }
+
+        header('Content-Type: application/octet-stream');
+        header('Content-Disposition: attachment; filename="' . $downloadName . '"');
+        header('Content-Length: ' . filesize($path));
+        header('Cache-Control: no-cache');
+        readfile($path);
+        exit;
+    }
+
+    /** POST /admin/backup/eliminar/{file} — Elimina un respaldo */
+    public function backupEliminar(string $filename): \CodeIgniter\HTTP\RedirectResponse
+    {
+        $filename = preg_replace('/[^a-zA-Z0-9_\-.]/', '', $filename);
+        $path = WRITEPATH . 'backups' . DIRECTORY_SEPARATOR . $filename;
+
+        if (file_exists($path) && str_starts_with($filename, 'backup_')) {
+            unlink($path);
+            return redirect()->to('/admin/backup')->with('success', 'Respaldo eliminado.');
+        }
+        return redirect()->to('/admin/backup')->with('error', 'Archivo no encontrado.');
+    }
+
+    /** POST /admin/backup/eliminar-todo — Elimina todos los respaldos */
+    public function backupEliminarTodo(): \CodeIgniter\HTTP\RedirectResponse
+    {
+        $backupDir = WRITEPATH . 'backups' . DIRECTORY_SEPARATOR;
+        $archivos  = glob($backupDir . 'backup_*.sql') ?: [];
+        $eliminados = 0;
+
+        foreach ($archivos as $file) {
+            if (is_file($file)) {
+                unlink($file);
+                $eliminados++;
+            }
+        }
+
+        return redirect()->to('/admin/backup')
+            ->with('success', "Se eliminaron {$eliminados} respaldo(s).");
+    }
+
+    /** POST /admin/backup/generar — Genera un respaldo manual desde el panel */
+    public function backupGenerar(): \CodeIgniter\HTTP\RedirectResponse
+    {
+        $dbCfg  = config('Database')->default;
+        $host   = $dbCfg['hostname'] ?? 'localhost';
+        $port   = $dbCfg['port']     ?? 3306;
+        $user   = $dbCfg['username'] ?? 'root';
+        $pass   = $dbCfg['password'] ?? '';
+        $dbname = $dbCfg['database'];
+
+        $backupDir = WRITEPATH . 'backups' . DIRECTORY_SEPARATOR;
+        if (!is_dir($backupDir)) mkdir($backupDir, 0755, true);
+
+        $timestamp  = date('Y-m-d_H-i-s');
+        $filename   = "backup_{$dbname}_{$timestamp}.sql";
+        $outputPath = $backupDir . $filename;
+
+        $mysqldump = $this->findMysqldump();
+        if (!$mysqldump) {
+            return redirect()->to('/admin/backup')
+                ->with('error', 'No se encontró mysqldump. Verifica la instalación de XAMPP/MySQL.');
+        }
+
+        // Construir argumentos sin shell — proc_open evita el problema de redirección
+        // en Windows donde exec() no tiene shell y > no funciona
+        $args = [$mysqldump, "-h{$host}", "-P{$port}", "-u{$user}"];
+        if ($pass !== '') $args[] = "-p{$pass}";
+        // Detectar tablas corruptas (sin engine en information_schema) y omitirlas
+        $skipTables = $this->detectTablasCorrompidas($dbname);
+        foreach ($skipTables as $t) {
+            $args[] = "--ignore-table={$dbname}.{$t}";
+        }
+        array_push($args, '--single-transaction', '--routines', '--triggers', $dbname);
+
+        $descriptorspec = [
+            0 => ['pipe', 'r'],              // stdin
+            1 => ['file', $outputPath, 'w'], // stdout → archivo .sql
+            2 => ['pipe', 'w'],              // stderr → pipe
+        ];
+
+        $pipes    = [];
+        $proc     = proc_open($args, $descriptorspec, $pipes);
+        $stderr   = '';
+        $exitCode = 1;
+
+        if (is_resource($proc)) {
+            fclose($pipes[0]);
+            $stderr   = stream_get_contents($pipes[2]);
+            fclose($pipes[2]);
+            $exitCode = proc_close($proc);
+        }
+
+        if ($exitCode !== 0 || !file_exists($outputPath) || filesize($outputPath) < 100) {
+            if (file_exists($outputPath)) unlink($outputPath);
+            $msg = $stderr ?: 'Error desconocido. Verifica que mysqldump esté disponible.';
+            return redirect()->to('/admin/backup')
+                ->with('error', 'Error al generar el respaldo: ' . $msg);
+        }
+
+        $size = round(filesize($outputPath) / 1024, 1);
+        return redirect()->to('/admin/backup')
+            ->with('success', "Respaldo generado: {$filename} ({$size} KB)");
+    }
+
+    /** Detecta tablas sin engine (corruptas/huérfanas) para omitirlas en el respaldo */
+    private function detectTablasCorrompidas(string $dbname): array
+    {
+        try {
+            $db   = \Config\Database::connect();
+            $rows = $db->query(
+                "SELECT TABLE_NAME FROM information_schema.TABLES
+                 WHERE TABLE_SCHEMA = ? AND ENGINE IS NULL",
+                [$dbname]
+            )->getResultArray();
+            return array_column($rows, 'TABLE_NAME');
+        } catch (\Throwable $e) {
+            return [];
+        }
+    }
+
+    /** Busca mysqldump en rutas habituales de XAMPP y MySQL */
+    private function findMysqldump(): ?string
+    {
+        $candidates = [
+            'C:\\xampp\\mysql\\bin\\mysqldump.exe',
+            'C:\\Program Files\\MySQL\\MySQL Server 8.0\\bin\\mysqldump.exe',
+            'C:\\Program Files\\MySQL\\MySQL Server 5.7\\bin\\mysqldump.exe',
+            '/usr/bin/mysqldump',
+            '/usr/local/bin/mysqldump',
+        ];
+        foreach ($candidates as $p) {
+            if (file_exists($p)) return $p;
+        }
+        exec('where mysqldump 2>NUL', $out, $code);
+        if ($code === 0 && !empty($out[0])) return trim($out[0]);
+        exec('which mysqldump 2>/dev/null', $out, $code);
+        if ($code === 0 && !empty($out[0])) return trim($out[0]);
+        return null;
+    }
 }

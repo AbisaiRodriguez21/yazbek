@@ -67,11 +67,27 @@
         <div class="card">
             <div class="card-header font-weight-bold" style="padding-top: 1rem; padding-bottom: 1rem;">Agregar Producto</div>
             <div class="card-body">
-                <div class="form-group">
+                <div class="form-group" id="selectProductoWrapper" style="position:relative; z-index:10;">
                     <label>Buscar por SKU / Descripción</label>
                     <select id="selectProducto" class="form-control select2" style="width:100%">
                         <option value="">Escribe para buscar...</option>
                     </select>
+                </div>
+                <div id="preciosProducto" style="display:none;" class="mb-3">
+                    <div class="row no-gutters">
+                        <div class="col-6 pr-1">
+                            <div class="text-center py-1 px-1 rounded" style="background:#e8f4fd;border:1px solid #b8daff;">
+                                <div style="font-size:0.6rem;color:#666;text-transform:uppercase;letter-spacing:.06em;">Menudeo</div>
+                                <div class="font-weight-bold text-primary" id="precioMenudeo" style="font-size:0.85rem;">—</div>
+                            </div>
+                        </div>
+                        <div class="col-6 pl-1">
+                            <div class="text-center py-1 px-1 rounded" style="background:#e8f8ee;border:1px solid #b8dfc8;">
+                                <div style="font-size:0.6rem;color:#666;text-transform:uppercase;letter-spacing:.06em;">Mayoreo</div>
+                                <div class="font-weight-bold text-success" id="precioMayoreo" style="font-size:0.85rem;">—</div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
                 <div class="form-group">
                     <label>Cantidad <small id="stockDisponible" class="text-muted"></small></label>
@@ -159,10 +175,17 @@ var BASE_PREFIX = '<?= $basePrefix ?>';
     if (typeof $.fn.select2 === 'undefined') { setTimeout(initStp2, 100); return; }
 
 // Select2 con AJAX para buscar productos
+// Fix Select2: prevenir scroll de página al enfocar el input de búsqueda
+$('#selectProducto').on('select2:open', function() {
+    var f = document.querySelector('.select2-container--open .select2-search__field');
+    if (f) f.focus({ preventScroll: true });
+});
+
 $('#selectProducto').select2({
     theme: 'bootstrap',
     placeholder: 'Escribe SKU o descripción...',
     minimumInputLength: 2,
+    dropdownParent: $('#selectProductoWrapper'),
     language: {
         inputTooShort: function() { return 'Escribe al menos 2 caracteres...'; },
         searching: function() { return 'Buscando...'; },
@@ -191,6 +214,8 @@ $('#selectProducto').select2({
                         sku: p.sku,
                         descripcion: p.descripcion,
                         piezas: piezas,
+                        precio: parseFloat(p.precio) || 0,
+                        precioMayoreo: parseFloat(p.precioMayoreo) || 0,
                         disabled: sinStock
                     };
                 })
@@ -218,10 +243,15 @@ $('#inputCantidad').on('input', function() {
     }
 });
 
-// Mostrar stock al seleccionar producto
+// Mostrar stock y precios al seleccionar producto
 $('#selectProducto').on('select2:select', function(e) {
     var data  = e.params.data;
     var stock = data.piezas || 0;
+
+    // Mostrar precios
+    $('#precioMenudeo').text('$' + (data.precio || 0).toFixed(2));
+    $('#precioMayoreo').text('$' + (data.precioMayoreo || 0).toFixed(2));
+    $('#preciosProducto').show();
 
     if (stock <= 0) {
         // Producto existe pero sin existencias — bloquear
@@ -244,6 +274,9 @@ $('#selectProducto').on('select2:select', function(e) {
 $('#selectProducto').on('select2:clear select2:unselect', function() {
     $('#stockDisponible').text('');
     $('#inputCantidad').removeAttr('max');
+    $('#preciosProducto').hide();
+    $('#precioMenudeo').text('—');
+    $('#precioMayoreo').text('—');
 });
 
 // Agregar producto
@@ -293,6 +326,9 @@ $('#btnAgregar').on('click', function() {
             $('#msgAgregar').html('<span class="text-success">Producto agregado.</span>');
             $('#selectProducto').val(null).trigger('change');
             $('#inputCantidad').val(1);
+            $('#preciosProducto').hide();
+            $('#precioMenudeo').text('—');
+            $('#precioMayoreo').text('—');
             $('#hidCsrfHash').val(resp.csrf_hash);
         } else {
             $('#msgAgregar').html('<span class="text-danger">' + (resp.message || 'Error al agregar.') + '</span>');

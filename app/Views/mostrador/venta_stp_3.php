@@ -274,7 +274,7 @@
 
                     <div class="text-right">
                         <button type="button" id="btnGuardar" class="btn btn-success btn-lg">
-                            <i class="iconsminds-yes"></i> Cerrar Nota
+                            <i class="iconsminds-yes"></i> Finalizar Nota
                         </button>
                     </div>
                 </form>
