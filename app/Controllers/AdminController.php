@@ -3681,51 +3681,158 @@ class AdminController extends BaseController
         $filename   = "backup_{$dbname}_{$timestamp}.sql";
         $outputPath = $backupDir . $filename;
 
+        // ── Intentar mysqldump primero (local/VPS) ───────────────────
         $mysqldump = $this->findMysqldump();
-        if (!$mysqldump) {
-            return redirect()->to('/admin/backup')
-                ->with('error', 'No se encontró mysqldump. Verifica la instalación de XAMPP/MySQL.');
+        $usedPhp   = false;
+
+        if ($mysqldump && function_exists('proc_open')) {
+            $args = [$mysqldump, "-h{$host}", "-P{$port}", "-u{$user}"];
+            if ($pass !== '') $args[] = "-p{$pass}";
+            $skipTables = $this->detectTablasCorrompidas($dbname);
+            foreach ($skipTables as $t) {
+                $args[] = "--ignore-table={$dbname}.{$t}";
+            }
+            array_push($args, '--single-transaction', '--routines', '--triggers', $dbname);
+
+            $descriptorspec = [
+                0 => ['pipe', 'r'],
+                1 => ['file', $outputPath, 'w'],
+                2 => ['pipe', 'w'],
+            ];
+            $pipes    = [];
+            $proc     = proc_open($args, $descriptorspec, $pipes);
+            $stderr   = '';
+            $exitCode = 1;
+
+            if (is_resource($proc)) {
+                fclose($pipes[0]);
+                $stderr   = stream_get_contents($pipes[2]);
+                fclose($pipes[2]);
+                $exitCode = proc_close($proc);
+            }
+
+            if ($exitCode !== 0 || !file_exists($outputPath) || filesize($outputPath) < 100) {
+                if (file_exists($outputPath)) unlink($outputPath);
+                // mysqldump falló — caer en fallback PHP
+                $mysqldump = null;
+            }
+        } else {
+            $mysqldump = null; // forzar fallback
         }
 
-        // Construir argumentos sin shell — proc_open evita el problema de redirección
-        // en Windows donde exec() no tiene shell y > no funciona
-        $args = [$mysqldump, "-h{$host}", "-P{$port}", "-u{$user}"];
-        if ($pass !== '') $args[] = "-p{$pass}";
-        // Detectar tablas corruptas (sin engine en information_schema) y omitirlas
-        $skipTables = $this->detectTablasCorrompidas($dbname);
-        foreach ($skipTables as $t) {
-            $args[] = "--ignore-table={$dbname}.{$t}";
-        }
-        array_push($args, '--single-transaction', '--routines', '--triggers', $dbname);
-
-        $descriptorspec = [
-            0 => ['pipe', 'r'],              // stdin
-            1 => ['file', $outputPath, 'w'], // stdout → archivo .sql
-            2 => ['pipe', 'w'],              // stderr → pipe
-        ];
-
-        $pipes    = [];
-        $proc     = proc_open($args, $descriptorspec, $pipes);
-        $stderr   = '';
-        $exitCode = 1;
-
-        if (is_resource($proc)) {
-            fclose($pipes[0]);
-            $stderr   = stream_get_contents($pipes[2]);
-            fclose($pipes[2]);
-            $exitCode = proc_close($proc);
+        // ── Fallback PHP puro (hosting compartido / Hostinger) ───────
+        if ($mysqldump === null) {
+            [$ok, $errMsg] = $this->generateBackupPhp($outputPath, $host, (int)$port, $user, $pass, $dbname);
+            if (!$ok) {
+                if (file_exists($outputPath)) unlink($outputPath);
+                return redirect()->to('/admin/backup')
+                    ->with('error', 'Error al generar el respaldo: ' . $errMsg);
+            }
+            $usedPhp = true;
         }
 
-        if ($exitCode !== 0 || !file_exists($outputPath) || filesize($outputPath) < 100) {
+        if (!file_exists($outputPath) || filesize($outputPath) < 100) {
             if (file_exists($outputPath)) unlink($outputPath);
-            $msg = $stderr ?: 'Error desconocido. Verifica que mysqldump esté disponible.';
             return redirect()->to('/admin/backup')
-                ->with('error', 'Error al generar el respaldo: ' . $msg);
+                ->with('error', 'El respaldo generado está vacío o es inválido.');
         }
 
-        $size = round(filesize($outputPath) / 1024, 1);
+        $size   = round(filesize($outputPath) / 1024, 1);
         return redirect()->to('/admin/backup')
             ->with('success', "Respaldo generado: {$filename} ({$size} KB)");
+    }
+
+    /**
+     * Genera un dump SQL completo usando PDO — sin mysqldump ni exec().
+     * Compatible con hosting compartido (Hostinger, cPanel, etc.).
+     *
+     * @return array{bool, string}  [éxito, mensaje_error]
+     */
+    private function generateBackupPhp(
+        string $outputPath,
+        string $host,
+        int    $port,
+        string $user,
+        string $pass,
+        string $dbname
+    ): array {
+        try {
+            $dsn = "mysql:host={$host};port={$port};dbname={$dbname};charset=utf8mb4";
+            $pdo = new \PDO($dsn, $user, $pass, [
+                \PDO::ATTR_ERRMODE            => \PDO::ERRMODE_EXCEPTION,
+                \PDO::MYSQL_ATTR_INIT_COMMAND => "SET NAMES utf8mb4",
+            ]);
+
+            $fp = fopen($outputPath, 'w');
+            if (!$fp) {
+                return [false, 'No se pudo crear el archivo de respaldo en ' . $outputPath];
+            }
+
+            // Cabecera
+            fwrite($fp, "-- Yazbek Database Backup (PHP native)\n");
+            fwrite($fp, "-- Generated: " . date('Y-m-d H:i:s') . "\n");
+            fwrite($fp, "-- Database: {$dbname}\n\n");
+            fwrite($fp, "SET NAMES utf8mb4;\n");
+            fwrite($fp, "SET FOREIGN_KEY_CHECKS=0;\n\n");
+
+            // Listar tablas con ENGINE (omitir corruptas sin engine)
+            $tables = $pdo->query(
+                "SELECT TABLE_NAME FROM information_schema.TABLES
+                 WHERE TABLE_SCHEMA = " . $pdo->quote($dbname) . "
+                   AND ENGINE IS NOT NULL
+                 ORDER BY TABLE_NAME"
+            )->fetchAll(\PDO::FETCH_COLUMN);
+
+            foreach ($tables as $table) {
+                // Estructura
+                $createRow = $pdo->query("SHOW CREATE TABLE `{$table}`")->fetch(\PDO::FETCH_NUM);
+                fwrite($fp, "-- --------------------------------------------------------\n");
+                fwrite($fp, "-- Table: `{$table}`\n");
+                fwrite($fp, "-- --------------------------------------------------------\n\n");
+                fwrite($fp, "DROP TABLE IF EXISTS `{$table}`;\n");
+                fwrite($fp, $createRow[1] . ";\n\n");
+
+                // Datos en lotes de 200 filas
+                $stmt = $pdo->query("SELECT * FROM `{$table}`");
+                $cols = $stmt->columnCount();
+                if ($cols === 0) continue;
+
+                $colNames = [];
+                for ($i = 0; $i < $cols; $i++) {
+                    $meta       = $stmt->getColumnMeta($i);
+                    $colNames[] = '`' . $meta['name'] . '`';
+                }
+                $colList   = implode(', ', $colNames);
+                $batchSize = 200;
+                $batch     = [];
+
+                while ($row = $stmt->fetch(\PDO::FETCH_NUM)) {
+                    $values = array_map(
+                        fn($v) => $v === null ? 'NULL' : $pdo->quote($v),
+                        $row
+                    );
+                    $batch[] = '(' . implode(', ', $values) . ')';
+
+                    if (count($batch) >= $batchSize) {
+                        fwrite($fp, "INSERT INTO `{$table}` ({$colList}) VALUES\n"
+                            . implode(",\n", $batch) . ";\n");
+                        $batch = [];
+                    }
+                }
+                if (!empty($batch)) {
+                    fwrite($fp, "INSERT INTO `{$table}` ({$colList}) VALUES\n"
+                        . implode(",\n", $batch) . ";\n");
+                }
+                fwrite($fp, "\n");
+            }
+
+            fwrite($fp, "SET FOREIGN_KEY_CHECKS=1;\n");
+            fclose($fp);
+
+            return [true, ''];
+        } catch (\Throwable $e) {
+            return [false, $e->getMessage()];
+        }
     }
 
     /** Detecta tablas sin engine (corruptas/huérfanas) para omitirlas en el respaldo */
@@ -3753,14 +3860,18 @@ class AdminController extends BaseController
             'C:\\Program Files\\MySQL\\MySQL Server 5.7\\bin\\mysqldump.exe',
             '/usr/bin/mysqldump',
             '/usr/local/bin/mysqldump',
+            '/usr/local/mysql/bin/mysqldump',
         ];
         foreach ($candidates as $p) {
             if (file_exists($p)) return $p;
         }
-        exec('where mysqldump 2>NUL', $out, $code);
-        if ($code === 0 && !empty($out[0])) return trim($out[0]);
-        exec('which mysqldump 2>/dev/null', $out, $code);
-        if ($code === 0 && !empty($out[0])) return trim($out[0]);
+        // Intentar localizar con PATH
+        if (function_exists('exec')) {
+            exec('where mysqldump 2>NUL', $out, $code);
+            if ($code === 0 && !empty($out[0])) return trim($out[0]);
+            exec('which mysqldump 2>/dev/null', $out2, $code2);
+            if ($code2 === 0 && !empty($out2[0])) return trim($out2[0]);
+        }
         return null;
     }
 }

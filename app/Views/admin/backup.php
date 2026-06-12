@@ -71,8 +71,7 @@
             <div class="card-body backup-info">
                 <p class="text-muted mb-2">
                     Los respaldos automáticos se ejecutan cada noche de
-                    <strong>lunes a sábado a las 00:00 h</strong>
-                    mediante el Programador de Tareas de Windows.
+                    <strong>lunes a sábado a las 00:00 h</strong>.
                 </p>
                 <p class="text-muted mb-4">
                     Cada lunes se elimina la semana anterior para liberar espacio.
