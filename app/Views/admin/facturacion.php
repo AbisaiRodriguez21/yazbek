@@ -68,7 +68,6 @@
 <?= $this->endSection() ?>
 
 <?= $this->section('content') ?>
-{{-- CSS duplicado aquí para que no se pierda al navegar con PJAX --}}
 <style>
 .fact-summary-card{border-radius:8px;padding:18px 22px;display:flex;align-items:center;gap:16px;box-shadow:0 2px 10px rgba(0,0,0,.08);background:#fff;margin-bottom:20px}
 .fact-summary-card .fsc-icon{width:48px;height:48px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:1.35rem;flex-shrink:0}
