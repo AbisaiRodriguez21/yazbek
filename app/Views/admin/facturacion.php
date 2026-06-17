@@ -602,6 +602,7 @@ $(document).ready(function () {
                     return '<input type="checkbox" class="chk-folio"'
                          + ' data-folio="' + row.folio + '"'
                          + ' data-cliente="' + row.cliente.replace(/"/g,'&quot;') + '"'
+                         + ' data-clienteid="' + (row.idCliente || 0) + '"'
                          + checked + '>';
                 }
             },
@@ -672,16 +673,17 @@ $(document).ready(function () {
     $('#chkFactAll').on('change', function () {
         var marcar = this.checked;
         $('#tablaFacturacion .chk-folio').each(function () {
-            var folio   = parseInt($(this).data('folio'), 10);
-            var cliente = $(this).data('cliente') || '';
+            var folio      = parseInt($(this).data('folio'), 10);
+            var cliente    = $(this).data('cliente') || '';
+            var clienteId  = parseInt($(this).data('clienteid'), 10) || 0;
             if (marcar) {
-                // Validar mismo cliente
-                var clienteActual = factObtenerClienteSeleccionado();
-                if (clienteActual && clienteActual !== cliente) {
+                // Validar mismo cliente por ID
+                var idActual = factObtenerClienteIdSeleccionado();
+                if (idActual && idActual !== clienteId) {
                     // No agregar — cliente distinto
                     return;
                 }
-                factSeleccion[folio] = { folio: folio, cliente: cliente };
+                factSeleccion[folio] = { folio: folio, cliente: cliente, clienteId: clienteId };
                 $(this).prop('checked', true);
             } else {
                 delete factSeleccion[folio];
@@ -693,17 +695,19 @@ $(document).ready(function () {
 
     /* ── Checkbox individual con validación de cliente ── */
     $('#tablaFacturacion tbody').on('change', '.chk-folio', function () {
-        var folio   = parseInt($(this).data('folio'), 10);
-        var cliente = $(this).data('cliente') || '';
+        var folio      = parseInt($(this).data('folio'), 10);
+        var cliente    = $(this).data('cliente') || '';
+        var clienteId  = parseInt($(this).data('clienteid'), 10) || 0;
 
         if (this.checked) {
-            var clienteActual = factObtenerClienteSeleccionado();
-            if (clienteActual && clienteActual !== cliente) {
+            var idActual      = factObtenerClienteIdSeleccionado();
+            var nombreActual  = factObtenerClienteSeleccionado();
+            if (idActual && idActual !== clienteId) {
                 $(this).prop('checked', false);
-                alert('⚠️ No puedes mezclar clientes.\n\nYa tienes notas de "' + clienteActual + '" seleccionadas.\nSolo puedes facturar notas del mismo cliente a la vez.');
+                alert('⚠️ No puedes mezclar clientes.\n\nYa tienes notas de "' + (nombreActual || idActual) + '" seleccionadas.\nSolo puedes facturar notas del mismo cliente a la vez.');
                 return;
             }
-            factSeleccion[folio] = { folio: folio, cliente: cliente };
+            factSeleccion[folio] = { folio: folio, cliente: cliente, clienteId: clienteId };
             delete factDeseleccionados[folio]; // el usuario lo re-marcó → ya no está deseleccionado
         } else {
             delete factSeleccion[folio];
@@ -864,7 +868,7 @@ $(document).ready(function () {
             .catch(function () { return { folios: [] }; })
             .then(function (resp) {
                 (resp.folios || []).forEach(function (f) {
-                    factSeleccion[f] = { folio: f, cliente: data.text };
+                    factSeleccion[f] = { folio: f, cliente: data.text, clienteId: parseInt(data.id, 10) || 0 };
                 });
                 factDt.ajax.reload(null, false);
             });
@@ -1181,6 +1185,13 @@ function factObtenerClienteSeleccionado() {
     var keys = Object.keys(factSeleccion);
     if (keys.length === 0) return null;
     return factSeleccion[keys[0]].cliente;
+}
+
+/* Devuelve el ID numérico del cliente ya seleccionado (o null si no hay ninguno) */
+function factObtenerClienteIdSeleccionado() {
+    var keys = Object.keys(factSeleccion);
+    if (keys.length === 0) return null;
+    return factSeleccion[keys[0]].clienteId || null;
 }
 
 function factCargarResumen() {

@@ -3110,6 +3110,7 @@ class AdminController extends BaseController
                 "SELECT n.folio,
                         n.fecha_inicial,
                         COALESCE(c.nombre, '—')  AS cliente,
+                        COALESCE(n.idCliente, 0) AS idCliente,
                         COALESCE(u.usuario, '—') AS vendedor,
                         n.total,
                         n.status                              AS idstatus,

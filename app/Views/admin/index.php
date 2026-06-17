@@ -201,9 +201,9 @@ $mesActualNum = (int)date('n');
             <div class="card-body d-flex flex-column">
                 <div class="d-flex justify-content-between align-items-start mb-1">
                     <h5 class="card-title mb-0">Forma de pago — <span id="labelFechaHoyPago"><?= date('d/m/Y') ?></span></h5>
-                    <a href="<?= base_url('admin/reportediario/dia') ?>" class="btn btn-sm btn-outline-success" title="Exportar reporte del día">
+                    <button id="btnExportarPago" class="btn btn-sm btn-outline-success" title="Exportar métodos de pago" onclick="exportarMetodosPago()">
                         <i class="simple-icon-cloud-download mr-1"></i> Exportar
-                    </a>
+                    </button>
                 </div>
                 <p class="text-muted mb-3" style="font-size:.78rem">Distribución de métodos de pago (notas Pagada + Anticipo)</p>
                 <div class="chart-container flex-grow-1" style="min-height:220px">
@@ -1096,6 +1096,30 @@ $mesActualNum = (int)date('n');
     /* ══════════════════════════════════════════════════════════
        GRÁFICA HOY: Forma de pago del día (donut grande)
     ══════════════════════════════════════════════════════════ */
+    var _datosPagoHoy = [];   // cache para exportar
+
+    window.exportarMetodosPago = function exportarMetodosPago() {
+        if (!_datosPagoHoy.length) { alert('Sin datos de pago para exportar.'); return; }
+        var total = _datosPagoHoy.reduce(function(s, r){ return s + parseFloat(r.total); }, 0);
+        var fecha = document.getElementById('labelFechaHoyPago') ? document.getElementById('labelFechaHoyPago').textContent : '';
+        var filas = [['Método de Pago', 'Monto', 'Porcentaje']];
+        _datosPagoHoy.forEach(function(r) {
+            var pct = total > 0 ? (parseFloat(r.total) / total * 100).toFixed(2) : '0.00';
+            filas.push([r.tipo, parseFloat(r.total).toFixed(2), pct + '%']);
+        });
+        filas.push(['TOTAL', total.toFixed(2), '100%']);
+        var csv = filas.map(function(row){ return row.map(function(c){ return '"' + String(c).replace(/"/g,'""') + '"'; }).join(','); }).join('\r\n');
+        var blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
+        var url  = URL.createObjectURL(blob);
+        var a    = document.createElement('a');
+        a.href     = url;
+        a.download = 'metodos_pago_' + fecha.replace(/\//g,'-') + '.csv';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    }
+
     function renderTipoPagoHoy(filas, fecha) {
         var legendEl = document.getElementById('legendTipoPagoHoy');
         var ec = initChart('chartTipoPagoHoy');
@@ -1109,6 +1133,7 @@ $mesActualNum = (int)date('n');
             return;
         }
 
+        _datosPagoHoy = filas;   // guardar para exportar
         var COLORS = ['#145388','#28a745','#fd7e14','#6f42c1','#17a2b8','#e83e8c','#20c997','#ffc107'];
         var datos  = filas.map(function(r,i){ return { value: parseFloat(r.total), name: r.tipo, itemStyle:{ color: COLORS[i % COLORS.length] } }; });
         var totalHoy = filas.reduce(function(s,r){ return s + parseFloat(r.total); }, 0);
