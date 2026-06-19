@@ -1533,6 +1533,9 @@ class AdminController extends BaseController
             }
         }
 
+        // Los folios hijo (anticipo) no tienen productos propios; usar los del padre
+        $folioProductos = ($referencia !== 0) ? $referencia : $folio;
+
         $productos = $db->query(
             "SELECT n2.cantidad,
                     n2.estilo AS sku,
@@ -1546,12 +1549,25 @@ class AdminController extends BaseController
              LEFT JOIN productosyazbek p ON p.sku = n2.estilo
              WHERE n2.folio = ?
              ORDER BY n2.Id_Notas_2 ASC",
-            [$folio]
+            [$folioProductos]
         )->getResultArray();
+
+        // Para folios hijo, usar sumaImportes y precioMayoreo del padre para detectar el tipo de precio
+        if ($referencia !== 0) {
+            $notaPadre = $db->query(
+                "SELECT sumaImportes, precioMayoreo FROM notas_1 WHERE folio = ? LIMIT 1",
+                [$referencia]
+            )->getRowArray();
+            $storedSuma = (float)($notaPadre['sumaImportes'] ?? 0);
+            if ($storedSuma <= 0) {
+                $nota['precioMayoreo'] = $notaPadre['precioMayoreo'] ?? $nota['precioMayoreo'];
+            }
+        } else {
+            $storedSuma = (float)($nota['sumaImportes'] ?? 0);
+        }
 
         // Determinar qué precio se usó realmente comparando contra sumaImportes guardado.
         // Esto es confiable tanto para notas históricas (sistema antiguo) como nuevas.
-        $storedSuma = (float)($nota['sumaImportes'] ?? 0);
         if ($storedSuma > 0) {
             $sumMenudeo = array_sum(array_map(fn($p) => $p['cantidad'] * (float)$p['pUnitario'], $productos));
             $sumMayoreo = array_sum(array_map(fn($p) => $p['cantidad'] * (float)($p['pUnitarioM'] ?: $p['pUnitario']), $productos));

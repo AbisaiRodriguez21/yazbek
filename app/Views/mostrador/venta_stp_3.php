@@ -97,10 +97,18 @@
                                 <span class="input-group-text">$</span>
                             </div>
                             <input type="number" id="inputDescuento" name="descuento"
-                                   class="form-control" value="0" min="0" step="0.01"
-                                   placeholder="0.00">
+                                   class="form-control"
+                                   value="<?= (float)($nota['descuento'] ?? 0) ?>"
+                                   min="0" step="0.01" placeholder="0.00"
+                                   <?= !empty($descuentoFijo) ? 'readonly style="background:#f8f9fa;cursor:not-allowed;"' : '' ?>>
                         </div>
+                        <?php if (!empty($descuentoFijo)): ?>
+                        <small class="form-text text-warning">
+                            <i class="simple-icon-lock"></i> Descuento fijo de la nota original — no se puede modificar en pagos subsecuentes.
+                        </small>
+                        <?php else: ?>
                         <small class="form-text text-muted">Se resta del subtotal antes de calcular el IVA.</small>
+                        <?php endif; ?>
                     </div>
 
                     <!-- Totales calculados -->

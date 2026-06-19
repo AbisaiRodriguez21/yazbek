@@ -224,6 +224,13 @@ class MostradorController extends BaseController
         // Detectar si se accede desde admin o mostrador para las URLs de navegación
         $base = $this->request->getUri()->getSegment(1) === 'admin' ? 'admin' : 'mostrador';
 
+        // Si ya hay pagos activos (no cancelados), el descuento queda fijo —
+        // fue acordado en el primer pago y no debe modificarse en pagos subsecuentes.
+        $hayPagosActivos = !empty(array_filter(
+            $pagosExistentes,
+            fn($p) => (int)($p['nota_status'] ?? 0) !== 3
+        ));
+
         return view('mostrador/venta_stp_3', [
             'usuario'             => $this->getUsuarioSesion(),
             'nota'                => $nota,
@@ -234,6 +241,7 @@ class MostradorController extends BaseController
             'esMayoreo'           => $carrito['esMayoreo'],
             'tipoPagos'           => $tipoPagos,
             'pagosExistentes'     => $pagosExistentes,
+            'descuentoFijo'       => $hayPagosActivos,
             'base'                => $base,
             'clienteRFC'          => $clienteRFC,
             'clienteRazonSocial'  => $clienteRazonSocial,
