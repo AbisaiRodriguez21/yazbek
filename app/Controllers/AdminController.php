@@ -3266,7 +3266,8 @@ class AdminController extends BaseController
 
             // ── Cargar y validar notas ────────────────────────────────
             $notas = $db->query(
-                "SELECT folio, idCliente, sumaImportes, total, precioMayoreo, uuid_fiscal
+                "SELECT folio, idCliente, sumaImportes, total, precioMayoreo, uuid_fiscal,
+                        COALESCE(descuento, 0) AS descuento
                  FROM notas_1
                  WHERE folio IN ($ph)
                    AND status IN (5,6)
@@ -3315,7 +3316,10 @@ class AdminController extends BaseController
                 if ($storedSuma > 0) {
                     $sumMenu = array_sum(array_map(fn($d) => $d['cantidad'] * (float)$d['pUnitario'], $detalle));
                     $sumMay  = array_sum(array_map(fn($d) => $d['cantidad'] * (float)($d['pUnitarioM'] ?: $d['pUnitario']), $detalle));
-                    $esMayoreo = abs($sumMay - $storedSuma) < abs($sumMenu - $storedSuma);
+                    // Usar la suma pre-descuento como referencia para detectar menudeo/mayoreo
+                    // correctamente aunque sumaImportes esté guardado como valor post-descuento.
+                    $preDescRef = $storedSuma + (float)($nota['descuento'] ?? 0);
+                    $esMayoreo = abs($sumMay - $preDescRef) < abs($sumMenu - $preDescRef);
                 } else {
                     $esMayoreo = (int)($nota['precioMayoreo'] ?? 0) === 1;
                 }
@@ -3334,11 +3338,15 @@ class AdminController extends BaseController
 
             // ── Nota virtual con total consolidado ────────────────────
             sort($folios);
-            $folioBase = $folios[0];
-            $totalBase = array_sum(array_map(fn($l) => (float)$l['importe'], $detalleConsolidado));
+            $folioBase       = $folios[0];
+            $totalBase       = array_sum(array_map(fn($l) => (float)$l['importe'], $detalleConsolidado));
+            $descuentoTotal  = array_sum(array_map(fn($n) => (float)($n['descuento'] ?? 0), $notas));
+            $subtotalConDesc = max(0, $totalBase - $descuentoTotal);
             $notaVirtual = [
                 'sumaImportes'  => $totalBase,
-                'total'         => round($totalBase * 1.16, 2),
+                'descuento'     => $descuentoTotal,
+                'subTotal'      => $subtotalConDesc,
+                'total'         => round($subtotalConDesc * 1.16, 2),
                 'precioMayoreo' => 0,
                 'idCliente'     => $idCliente,
             ];

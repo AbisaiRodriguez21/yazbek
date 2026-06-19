@@ -162,8 +162,6 @@ function accionesNota(n) {
         if (idstatus === 5) {
             btns += '<a href="#" class="btn btn-xs btn-outline-secondary mr-1"'
                   + ' onclick="mostradorVerFolio(' + n.folio + '); return false;">Ver</a>';
-            btns += '<a href="#" class="btn btn-xs btn-outline-dark mr-1"'
-                  + ' onclick="mostradorVerTicket(' + n.folio + '); return false;">Ver Ticket</a>';
         }
         if (idstatus === 1) {
             btns += '<a href="' + BASE + n.folio + '/productos" class="btn btn-xs btn-outline-secondary mr-1">Editar</a>';
@@ -177,6 +175,12 @@ function accionesNota(n) {
             btns += '<a href="#" class="btn btn-xs btn-warning"'
                   + ' onclick="mostradorRevivirFolio(' + n.folio + '); return false;">Revivir</a>';
         }
+    }
+
+    // Ver Ticket disponible para todos los folios (padre e hijo) excepto cancelados
+    if (idstatus !== 3) {
+        btns += '<a href="#" class="btn btn-xs btn-outline-dark mr-1"'
+              + ' onclick="mostradorVerTicket(' + n.folio + '); return false;">Ver Ticket</a>';
     }
 
     if (!btns) btns = '<span class="text-muted">—</span>';

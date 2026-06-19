@@ -278,8 +278,8 @@ function accionesNota(n) {
                + '<i class="simple-icon-eye"></i>Ver detalle</a>';
     }
 
-    // Ver Ticket
-    if ((idstatus === 5 || idstatus === 6) && esPadre) {
+    // Ver Ticket — disponible para todos los folios (padre e hijo) excepto cancelados
+    if (idstatus !== 3) {
         items += '<a class="dropdown-item" href="#" onclick="adminVerTicket(' + n.folio + '); return false;">'
                + '<i class="simple-icon-printer"></i>Ver Ticket</a>';
     }

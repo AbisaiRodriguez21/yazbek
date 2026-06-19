@@ -32,9 +32,30 @@
                         <div class="card-body pl-0 align-self-center d-flex flex-column flex-lg-row justify-content-between min-width-zero">
                             <div class="min-width-zero">
                                 <a href="<?= base_url('admin/inventario/exportar') ?>">
-                                    <p class="list-item-heading mb-1 truncate">Reporte diario</p>
+                                    <p class="list-item-heading mb-1 truncate">Exportar inventario</p>
                                 </a>
                                 <p class="mb-2 text-muted text-small">Exportar inventario completo: <?= date('Y-m-d') ?></p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- RD — Reporte diario de ventas -->
+            <div class="col-md-6 col-lg-6 col-12 mb-4">
+                <div class="card d-flex flex-row pt-3 pb-3">
+                    <a href="<?= base_url('admin/reportediario') ?>" class="d-flex">
+                        <div class="rounded-circle m-4 align-self-center list-thumbnail-letters small bg-warning">
+                            RD
+                        </div>
+                    </a>
+                    <div class="d-flex flex-grow-1 min-width-zero">
+                        <div class="card-body pl-0 align-self-center d-flex flex-column flex-lg-row justify-content-between min-width-zero">
+                            <div class="min-width-zero">
+                                <a href="<?= base_url('admin/reportediario') ?>">
+                                    <p class="list-item-heading mb-1 truncate">Reporte diario de ventas</p>
+                                </a>
+                                <p class="mb-2 text-muted text-small">Exportar ventas por rango de fechas</p>
                             </div>
                         </div>
                     </div>

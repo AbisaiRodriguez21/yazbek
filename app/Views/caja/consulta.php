@@ -170,6 +170,9 @@ var URL_CANCELAR = '<?= base_url('caja/cancelar/') ?>';
                 if (idstatus === 5) {
                     btns += '<button class="btn btn-xs btn-outline-primary mr-1"'
                           + ' onclick="cajaVerFolioModal(' + row.folio + ')">Ver</button>';
+                }
+                // Ver Ticket: disponible para todos los status excepto cancelado
+                if (idstatus !== 3) {
                     btns += '<button class="btn btn-xs btn-outline-dark mr-1"'
                           + ' onclick="cajaVerTicket(' + row.folio + ')">Ver Ticket</button>';
                 }
@@ -395,6 +398,12 @@ function cajaAbrirModalFactura(folio) {
         document.getElementById(id).value = '';
     });
 
+    // Deshabilitar el botón mientras se cargan los datos fiscales para evitar
+    // que el click prematuro vea el RFC vacío y muestre "El RFC es requerido".
+    var btnFacturar = document.getElementById('btnCajaSfFacturar');
+    btnFacturar.disabled = true;
+    btnFacturar.innerHTML = '<i class="simple-icon-refresh mr-1"></i> Cargando...';
+
     $('#modalCajaSolicitarFactura').modal('show');
 
     fetch('<?= base_url('caja/folio/') ?>' + folio + '/datos-fiscales', {
@@ -409,7 +418,11 @@ function cajaAbrirModalFactura(folio) {
         document.getElementById('cajaSfRegimenFiscal').value = d.regimenFiscalReceptor || '616';
         document.getElementById('cajaSfFormaPago').value     = d.formaPagoCFDI         || '01';
     })
-    .catch(function() { /* campos vacíos, el usuario los llena manualmente */ });
+    .catch(function() { /* campos vacíos, el usuario los llena manualmente */ })
+    .finally(function() {
+        btnFacturar.disabled = false;
+        btnFacturar.innerHTML = '<i class="simple-icon-doc mr-1"></i> Facturar';
+    });
 }
 
 // Alias legacy

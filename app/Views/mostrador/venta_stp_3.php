@@ -89,13 +89,33 @@
                     <input type="hidden" name="Id_Notas_1" id="hidIdNotas1" value="<?= (int)$nota['Id_Notas_1'] ?>">
                     <input type="hidden" name="totalPiezas" value="<?= (int)$totalPiezas ?>">
 
-                    <input type="hidden" id="inputDescuento" name="descuento" value="0">
+                    <!-- Campo de descuento visible -->
+                    <div class="form-group">
+                        <label for="inputDescuento">Descuento ($ pesos, sin IVA)</label>
+                        <div class="input-group">
+                            <div class="input-group-prepend">
+                                <span class="input-group-text">$</span>
+                            </div>
+                            <input type="number" id="inputDescuento" name="descuento"
+                                   class="form-control" value="0" min="0" step="0.01"
+                                   placeholder="0.00">
+                        </div>
+                        <small class="form-text text-muted">Se resta del subtotal antes de calcular el IVA.</small>
+                    </div>
 
                     <!-- Totales calculados -->
                     <table class="table table-sm mb-3">
                         <tr>
                             <th>Subtotal (sin IVA):</th>
                             <td class="text-right" id="tdSubtotal">—</td>
+                        </tr>
+                        <tr id="trDescuento" style="display:none;">
+                            <th class="text-danger">Descuento:</th>
+                            <td class="text-right text-danger" id="tdDescuento">—</td>
+                        </tr>
+                        <tr id="trSubtotalConDesc" style="display:none;">
+                            <th>Subtotal con descuento:</th>
+                            <td class="text-right" id="tdSubtotalConDesc">—</td>
                         </tr>
                         <tr>
                             <th>IVA (16%):</th>
@@ -384,7 +404,7 @@
 
 <input type="hidden" id="hidCsrfName" value="<?= csrf_token() ?>">
 <input type="hidden" id="hidCsrfHash" value="<?= csrf_hash() ?>">
-<input type="hidden" id="hidSumaImportes" value="<?= $sumaImportes ?>">
+<input type="hidden" id="hidSumaImportes" name="sumaImportes" value="<?= $sumaImportes ?>">
 <input type="hidden" id="hidFolio" value="<?= (int)$nota['folio'] ?>">
 <!-- Total ya pagado en sesiones anteriores — excluye folios hijos cancelados -->
 <input type="hidden" id="hidYaPagado" value="<?= number_format($sumaPagosValidos, 2, '.', '') ?>">
@@ -399,8 +419,13 @@ var sinPagarSeleccionado = false;   // true cuando el usuario eligió "Sin Pagar
 // ¿Es folio hijo? (tiene referencia al padre)
 var esHijo = <?= (int)($nota['referencia'] ?? 0) > 0 ? 'true' : 'false' ?>;
 
-// Estado default del checkbox: solo los folios hijo (anticipo) lo activan por default
-var defaultAnticipo = esHijo;
+// Estatus actual de la nota
+var notaIdStatus = <?= (int)($nota['idstatus'] ?? $nota['status'] ?? 0) ?>;
+
+// Estado default del checkbox:
+// - Folio hijo (anticipo) → siempre marcado
+// - Nota Abierta (status 1) → marcado automáticamente porque el pago es parcial/anticipo
+var defaultAnticipo = esHijo || notaIdStatus === 1;
 
 // ID del tipo de pago "Sin Pagar" (busca por texto en el select)
 function getSinPagarId() {
@@ -459,18 +484,34 @@ var sumaImportes = parseFloat($('#hidSumaImportes').val()) || 0;
 var yaPagado     = parseFloat($('#hidYaPagado').val()) || 0;
 var descuento    = 0;
 function recalcular() {
-    var desc     = parseFloat($('#inputDescuento').val()) || 0;
-    descuento    = desc;
-    var subtotal = sumaImportes * (1 - desc / 100);
-    var iva      = subtotal * 0.16;
-    var total    = subtotal + iva;
+    var desc          = parseFloat($('#inputDescuento').val()) || 0;
+    // Validar que no supere el subtotal
+    if (desc > sumaImportes) {
+        desc = sumaImportes;
+        $('#inputDescuento').val(desc.toFixed(2));
+    }
+    descuento         = desc;
+    var subtotalBruto = sumaImportes;
+    var subtotal      = Math.max(0, subtotalBruto - desc);
+    var iva           = subtotal * 0.16;
+    var total         = subtotal + iva;
 
     // Cargos de tarjeta de los pagos nuevos
     var cargos = 0;
     pagos.forEach(function(p) { cargos += parseFloat(p.cargo || 0); });
     total += cargos;
 
-    $('#tdSubtotal').text('$' + subtotal.toFixed(2));
+    $('#tdSubtotal').text('$' + subtotalBruto.toFixed(2));
+    // Mostrar/ocultar filas de descuento
+    if (desc > 0) {
+        $('#trDescuento').show();
+        $('#trSubtotalConDesc').show();
+        $('#tdDescuento').text('-$' + desc.toFixed(2));
+        $('#tdSubtotalConDesc').text('$' + subtotal.toFixed(2));
+    } else {
+        $('#trDescuento').hide();
+        $('#trSubtotalConDesc').hide();
+    }
     $('#tdIva').text('$' + iva.toFixed(2));
     $('#tdTotal').text('$' + total.toFixed(2));
     $('#hidSubtotal').val(subtotal.toFixed(2));

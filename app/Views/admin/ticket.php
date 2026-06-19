@@ -7,7 +7,7 @@
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
-            font-size: 13px;
+            font-size: 16px;
             font-family: Tahoma, sans-serif;
             margin: 0;
             padding: 4px;
@@ -140,10 +140,12 @@
             <td colspan="2" class="right">Cargo por otros:&nbsp;</td>
             <td colspan="2" class="right">$ <?= number_format($nota['cargoPorImpresion'] ?? 0, 2) ?></td>
         </tr>
+        <?php if (($nota['descuento'] ?? 0) > 0): ?>
         <tr class="sep">
             <td colspan="2" class="right">Descuento:&nbsp;</td>
-            <td colspan="2" class="right">-$ <?= number_format($nota['descuento'] ?? 0, 2) ?></td>
+            <td colspan="2" class="right">-$ <?= number_format($nota['descuento'], 2) ?></td>
         </tr>
+        <?php endif; ?>
         <tr class="sep">
             <td colspan="2" class="right">SubTotal:&nbsp;</td>
             <td colspan="2" class="right">$ <?= number_format($nota['subTotal'] ?? 0, 2) ?></td>
@@ -224,11 +226,6 @@
                 <?php endif; ?>
             </td>
         </tr>
-        <?php if (($p['idTipoPago'] ?? 0) == 1): ?>
-        <tr>
-            <td colspan="4">Efectivo: $ <?= number_format($p['montoEfectivoIva'] ?? 0, 2) ?></td>
-        </tr>
-        <?php endif; ?>
         <tr>
             <td colspan="4">Es anticipo: <?= ($p['anticipo'] ?? 0) == 1 ? 'Si' : 'No' ?></td>
         </tr>

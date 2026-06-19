@@ -215,33 +215,71 @@ class DfactureService
     }
 
     // ── Conceptos ───────────────────────────────────────────────────
-    $xmlConceptos = '';
-    $sumaSubtotal = 0.0; 
-    $sumaIva      = 0.0; 
+    // El descuento ya está reflejado en el total de la nota.
+    // En lugar de usar atributos Descuento en el CFDI, escalamos los precios
+    // proporcionalmente para que el SubTotal del CFDI = subtotal neto de la nota.
+    $xmlConceptos    = '';
+    $sumaSubtotal    = 0.0;
+    $sumaIva         = 0.0;
+    $descuentoGlobal = (float)($nota['descuento'] ?? 0);
+    $subTotalNeto    = (float)($nota['subTotal']  ?? 0);
 
+    // Importes originales (precios de lista × cantidad) de cada línea
+    $importesBrutos = [];
     foreach ($detalle as $linea) {
         $cantidad = (int)($linea['cantidad'] ?? 1);
         $precioU  = (float)($linea['precio'] ?? $linea['pUnitario'] ?? 0);
-        
-        // CORRECCIÓN: Redondear el importe de la línea a 2 decimales desde el inicio
-        $importe  = round((float)($linea['importe'] ?? ($cantidad * $precioU)), 2);
-        $ivaLinea = round($importe * 0.16, 2);
+        $importesBrutos[] = round((float)($linea['importe'] ?? ($cantidad * $precioU)), 2);
+    }
+    $totalBruto = array_sum($importesBrutos);
 
-        $sumaSubtotal += $importe;
+    // Factor de escala: si hay descuento, reducir importes al subtotal neto
+    $hayDescuento = $descuentoGlobal > 0 && $totalBruto > 0;
+    if ($hayDescuento && $subTotalNeto <= 0) {
+        $subTotalNeto = max(0.0, $totalBruto - $descuentoGlobal);
+    }
+    $scaleFactor = ($hayDescuento && $totalBruto > 0) ? ($subTotalNeto / $totalBruto) : 1.0;
+
+    // Importes escalados; el último absorbe el residuo de redondeo
+    $importesEscalados = [];
+    $acumEscalado = 0.0;
+    foreach ($importesBrutos as $idx => $imp) {
+        if ($idx < count($importesBrutos) - 1) {
+            $sc = round($imp * $scaleFactor, 2);
+        } else {
+            $sc = $hayDescuento
+                ? round($subTotalNeto - $acumEscalado, 2)
+                : round($imp, 2);
+        }
+        $importesEscalados[] = $sc;
+        $acumEscalado += $sc;
+    }
+
+    foreach ($detalle as $idx => $linea) {
+        $cantidad        = (int)($linea['cantidad'] ?? 1);
+        $precioU         = (float)($linea['precio'] ?? $linea['pUnitario'] ?? 0);
+        $importeEscalado = $importesEscalados[$idx];
+        $precioEscalado  = ($cantidad > 0)
+            ? ($importeEscalado / $cantidad)
+            : ($precioU * $scaleFactor);
+        $ivaLinea        = round($importeEscalado * 0.16, 2);
+
+        $sumaSubtotal += $importeEscalado;
         $sumaIva      += $ivaLinea;
 
-        $valorUnitF  = number_format($precioU, 6, '.', '');
-        $importeF    = number_format($importe, 2, '.', '');
-        $ivaLineaF   = number_format($ivaLinea, 2, '.', '');
-        
-        $descripcion = htmlspecialchars($linea['descripcion'] ?? $linea['estilo'] ?? $linea['sku'] ?? 'Producto', ENT_XML1 | ENT_QUOTES);
-        $sku         = htmlspecialchars($linea['sku'] ?? $linea['estilo'] ?? '', ENT_XML1 | ENT_QUOTES);
-        
-        // Dinamismo para claves (mantiene tus defaults si no existen)
+        $valorUnitF = number_format($precioEscalado,   6, '.', '');
+        $importeF   = number_format($importeEscalado,  2, '.', '');
+        $baseF      = number_format($importeEscalado,  2, '.', '');
+        $ivaLineaF  = number_format($ivaLinea,         2, '.', '');
+
+        $descripcion   = htmlspecialchars($linea['descripcion'] ?? $linea['estilo'] ?? $linea['sku'] ?? 'Producto', ENT_XML1 | ENT_QUOTES);
+        $sku           = htmlspecialchars($linea['sku'] ?? $linea['estilo'] ?? '', ENT_XML1 | ENT_QUOTES);
+
         $claveProdServ = $linea['claveProdServ'] ?? '01010101';
         $claveUnidad   = $linea['claveUnidad']   ?? 'H87';
         $unidad        = $linea['unidad']        ?? 'PZA';
 
+        // Sin atributo Descuento: los precios ya reflejan el descuento aplicado
         $xmlConceptos .= "\n        " . '<cfdi:Concepto' .
             ' ClaveProdServ="' . $claveProdServ . '"' .
             ' NoIdentificacion="' . $sku . '"' .
@@ -253,17 +291,19 @@ class DfactureService
             ' Importe="' . $importeF . '"' .
             ' ObjetoImp="02">' .
             '<cfdi:Impuestos><cfdi:Traslados>' .
-            '<cfdi:Traslado Base="' . $importeF . '" Impuesto="002" TipoFactor="Tasa" TasaOCuota="0.160000" Importe="' . $ivaLineaF . '"/>' .
+            '<cfdi:Traslado Base="' . $baseF . '" Impuesto="002" TipoFactor="Tasa" TasaOCuota="0.160000" Importe="' . $ivaLineaF . '"/>' .
             '</cfdi:Traslados></cfdi:Impuestos>' .
             '</cfdi:Concepto>';
     }
 
-    $subtotalF = number_format($sumaSubtotal, 2, '.', '');
-    $ivaF      = number_format($sumaIva,      2, '.', '');
-    $totalF    = number_format($sumaSubtotal + $sumaIva, 2, '.', '');
+    $subtotalF = number_format($sumaSubtotal,              2, '.', '');
+    $ivaF      = number_format($sumaIva,                   2, '.', '');
+    $totalF    = number_format($sumaSubtotal + $sumaIva,   2, '.', '');
 
     // ── XML completo CFDI 4.0 ────────────────────────────────────────
     $xml = '<?xml version="1.0" encoding="UTF-8"?>' . "\n";
+
+    // Sin atributo Descuento en el Comprobante: los importes ya son netos
     $xml .= '<cfdi:Comprobante' .
         ' xmlns:cfdi="http://www.sat.gob.mx/cfd/4"' .
         ' xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"' .

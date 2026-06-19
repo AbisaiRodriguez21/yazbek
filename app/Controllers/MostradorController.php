@@ -305,7 +305,7 @@ class MostradorController extends BaseController
             $factura      = (int)   $this->request->getPost('factura');
             $descuento    = (float) $this->request->getPost('descuento');
             $totalPiezas  = (int)   $this->request->getPost('totalPiezas');
-            $sumaImportes = $subTotal;
+            $sumaImportes = (float)($this->request->getPost('sumaImportes') ?: $subTotal);
             $cargoTarjeta = 0;
             $subTotal2    = $subTotal + $iva;
             $impresion    = 1;
@@ -447,6 +447,7 @@ class MostradorController extends BaseController
                         'success'      => true,
                         'cfdi_uuid'    => '',
                         'cfdi_error'   => '',
+                        'ticket_url'   => base_url("caja/folio/{$folioN1}/ticket"),
                     ]));
 
         } catch (\Throwable $e) {
