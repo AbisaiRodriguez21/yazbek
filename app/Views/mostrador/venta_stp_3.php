@@ -98,7 +98,7 @@
                             </div>
                             <input type="number" id="inputDescuento" name="descuento"
                                    class="form-control"
-                                   value="<?= (float)($nota['descuento'] ?? 0) ?>"
+                                   value="<?= ($nota['descuento'] ?? 0) > 0 ? (float)$nota['descuento'] : '' ?>"
                                    min="0" step="0.01" placeholder="0.00"
                                    <?= !empty($descuentoFijo) ? 'readonly style="background:#f8f9fa;cursor:not-allowed;"' : '' ?>>
                         </div>
@@ -109,6 +109,32 @@
                         <?php else: ?>
                         <small class="form-text text-muted">Se resta del subtotal antes de calcular el IVA.</small>
                         <?php endif; ?>
+                    </div>
+
+                    <!-- Tipo de impresión / bordado -->
+                    <div class="form-row mb-3">
+                        <div class="form-group col-md-6 mb-0">
+                            <label for="selectImpresion">Tipo de bordado / impresión</label>
+                            <select id="selectImpresion" name="impresion" class="form-control">
+                                <?php foreach ($tiposImpresion as $ti): ?>
+                                <option value="<?= (int)$ti['id'] ?>"
+                                    <?= (int)($nota['tipoImpresion'] ?? 1) === (int)$ti['id'] ? 'selected' : '' ?>>
+                                    <?= esc($ti['descripcion']) ?>
+                                </option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                        <div class="form-group col-md-6 mb-0" id="divCargoImpresion">
+                            <label for="inputCargoImpresion">Costo extra ($)</label>
+                            <div class="input-group">
+                                <div class="input-group-prepend">
+                                    <span class="input-group-text">$</span>
+                                </div>
+                                <input type="number" id="inputCargoImpresion" name="cargoImpresion"
+                                       class="form-control" min="0" step="0.01" placeholder="0.00"
+                                       value="<?= ($nota['cargoPorImpresion'] ?? 0) > 0 ? number_format((float)$nota['cargoPorImpresion'], 2, '.', '') : '' ?>">
+                            </div>
+                        </div>
                     </div>
 
                     <!-- Totales calculados -->
@@ -124,6 +150,10 @@
                         <tr id="trSubtotalConDesc" style="display:none;">
                             <th>Subtotal con descuento:</th>
                             <td class="text-right" id="tdSubtotalConDesc">—</td>
+                        </tr>
+                        <tr id="trCargo" style="display:none;">
+                            <th>Cargo extra:</th>
+                            <td class="text-right" id="tdCargo">—</td>
                         </tr>
                         <tr>
                             <th>IVA (16%):</th>
@@ -499,10 +529,12 @@ function recalcular() {
         $('#inputDescuento').val(desc.toFixed(2));
     }
     descuento         = desc;
+    var cargoImp      = parseFloat($('#inputCargoImpresion').val()) || 0;
     var subtotalBruto = sumaImportes;
     var subtotal      = Math.max(0, subtotalBruto - desc);
-    var iva           = subtotal * 0.16;
-    var total         = subtotal + iva;
+    var baseIva       = subtotal + cargoImp;
+    var iva           = baseIva * 0.16;
+    var total         = baseIva + iva;
 
     // Cargos de tarjeta de los pagos nuevos
     var cargos = 0;
@@ -521,6 +553,12 @@ function recalcular() {
         $('#trSubtotalConDesc').hide();
     }
     $('#tdIva').text('$' + iva.toFixed(2));
+    if (cargoImp > 0) {
+        $('#trCargo').show();
+        $('#tdCargo').text('$' + cargoImp.toFixed(2));
+    } else {
+        $('#trCargo').hide();
+    }
     $('#tdTotal').text('$' + total.toFixed(2));
     $('#hidSubtotal').val(subtotal.toFixed(2));
     $('#hidIva').val(iva.toFixed(2));
@@ -567,6 +605,7 @@ function recalcular() {
 }
 
 $('#inputDescuento').on('input', recalcular);
+$('#inputCargoImpresion').on('input', recalcular);
 
 // Función central para agregar el pago al array (se llama después de confirmar referencia si aplica)
 function agregarPagoConfirmado(tipo, desc, monto, cargo, anticipo, referencia) {
@@ -731,9 +770,11 @@ function ejecutarCierreNota() {
     csrf[$('#hidCsrfName').val()] = $('#hidCsrfHash').val();
 
     var payload = $.extend({
-        folio:       $('#hidFolio').val(),
-        Id_Notas_1:  $('#hidIdNotas1').val(),
-        descuento:   $('#inputDescuento').val() || 0,
+        folio:           $('#hidFolio').val(),
+        Id_Notas_1:      $('#hidIdNotas1').val(),
+        descuento:       $('#inputDescuento').val() || 0,
+        impresion:       $('#selectImpresion').val() || 1,
+        cargoImpresion:  $('#inputCargoImpresion').val() || 0,
         subtotal:    $('#hidSubtotal').val(),
         iva:         $('#hidIva').val(),
         total:       $('#hidTotal').val(),

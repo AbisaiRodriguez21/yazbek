@@ -760,8 +760,8 @@ class CajaController extends BaseController
         // Totales
         $ti    = (int)($nota['tipoImpresion'] ?? 0);
         $otros = $ti === 1 ? 'Ninguno' : ($ti === 2 ? 'Impresion' : ($ti === 3 ? 'Bordado' : ''));
-        $html .= '<tr><td colspan="3" class="text-right"><strong>Otros</strong></td><td>' . $otros . '</td></tr>';
-        $html .= '<tr><td colspan="3" class="text-right"><strong>Cargo por otros</strong></td><td>$&nbsp;' . number_format($nota['cargoPorImpresion'] ?? 0, 2) . '</td></tr>';
+        $html .= '<tr><td colspan="3" class="text-right"><strong>Tipo bordado/impresión</strong></td><td>' . $otros . '</td></tr>';
+        $html .= '<tr><td colspan="3" class="text-right"><strong>Cargo extra</strong></td><td>$&nbsp;' . number_format($nota['cargoPorImpresion'] ?? 0, 2) . '</td></tr>';
         $html .= '<tr><td colspan="3" class="text-right"><strong>Descuento</strong></td><td>$&nbsp;' . number_format($nota['descuento'] ?? 0, 2) . '</td></tr>';
         $html .= '<tr><td colspan="3" class="text-right"><strong>SubTotal</strong></td><td>$&nbsp;' . number_format($nota['subTotal'] ?? 0, 2) . '</td></tr>';
         $html .= '<tr><td colspan="3" class="text-right"><strong>Cargo TC/TD</strong></td><td>$&nbsp;' . number_format($nota['montoTCTD'] ?? $nota['cargoTarjeta'] ?? 0, 2) . '</td></tr>';

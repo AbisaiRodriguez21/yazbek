@@ -185,7 +185,8 @@ class MostradorController extends BaseController
                              ->with('error', 'Agrega al menos un producto antes de confirmar.');
         }
 
-        $tipoPagos = $db->query("SELECT * FROM tipopago ORDER BY id ASC")->getResultArray();
+        $tipoPagos      = $db->query("SELECT * FROM tipopago ORDER BY id ASC")->getResultArray();
+        $tiposImpresion = $db->query("SELECT id, descripcion FROM impresion ORDER BY id ASC")->getResultArray();
 
         // Pagos ya registrados: del folio padre + de todos sus folios hijos (anticipos previos)
         // Se incluye n2.status para identificar folios hijos cancelados (status=3)
@@ -240,6 +241,7 @@ class MostradorController extends BaseController
             'sumaImportes'        => $carrito['sumaImportes'],
             'esMayoreo'           => $carrito['esMayoreo'],
             'tipoPagos'           => $tipoPagos,
+            'tiposImpresion'      => $tiposImpresion,
             'pagosExistentes'     => $pagosExistentes,
             'descuentoFijo'       => $hayPagosActivos,
             'base'                => $base,
@@ -316,8 +318,8 @@ class MostradorController extends BaseController
             $sumaImportes = (float)($this->request->getPost('sumaImportes') ?: $subTotal);
             $cargoTarjeta = 0;
             $subTotal2    = $subTotal + $iva;
-            $impresion    = 1;
-            $cargoImpresion = 0;
+            $impresion      = (int)  ($this->request->getPost('impresion') ?: 1);
+            $cargoImpresion = (float)($this->request->getPost('cargoImpresion') ?: 0);
 
             $listaPagosRaw = json_decode($this->request->getPost('pagos') ?? '[]', true) ?: [];
             $listaPagos = [];
@@ -403,14 +405,14 @@ class MostradorController extends BaseController
             "UPDATE notas_1
              SET sumaImportes=?, subTotal=?, cargoTarjeta=?, subTotal2=?,
                  iva=?, total=?, descuento=?, status=?,
-                 factura=?, tipoImpresion=?, totalPiezas=?,
+                 factura=?, tipoImpresion=?, cargoPorImpresion=?, totalPiezas=?,
                  rfc_receptor=?, razon_social_receptor=?, cp_receptor=?,
                  uso_cfdi=?, regimen_fiscal_receptor=?, forma_pago_cfdi=?
              WHERE folio=?",
             [
                 $sumaImportes, $subTotal, $cargoTarjeta, $subTotal2,
                 $iva, $total, $descuento, $idEstatus,
-                $factura, $impresion, $totalPiezas,
+                $factura, $impresion, $cargoImpresion, $totalPiezas,
                 $rfcReceptor ?: null, $razonSocialReceptor ?: null, $cpReceptor ?: null,
                 $usoCFDI, $regimenFiscalReceptor, $formaPagoCFDI,
                 $folioN1,
@@ -1533,8 +1535,8 @@ class MostradorController extends BaseController
         // Totales
         $ti    = (int)($nota['tipoImpresion'] ?? 0);
         $otros = $ti === 1 ? 'Ninguno' : ($ti === 2 ? 'Impresion' : ($ti === 3 ? 'Bordado' : ''));
-        $html .= '<tr><td colspan="3" class="text-right"><strong>Otros</strong></td><td>' . $otros . '</td></tr>';
-        $html .= '<tr><td colspan="3" class="text-right"><strong>Cargo por otros</strong></td><td>$&nbsp;' . number_format($nota['cargoPorImpresion'] ?? 0, 2) . '</td></tr>';
+        $html .= '<tr><td colspan="3" class="text-right"><strong>Tipo bordado/impresión</strong></td><td>' . $otros . '</td></tr>';
+        $html .= '<tr><td colspan="3" class="text-right"><strong>Cargo extra</strong></td><td>$&nbsp;' . number_format($nota['cargoPorImpresion'] ?? 0, 2) . '</td></tr>';
         $html .= '<tr><td colspan="3" class="text-right"><strong>Descuento</strong></td><td>$&nbsp;' . number_format($nota['descuento'] ?? 0, 2) . '</td></tr>';
         $html .= '<tr><td colspan="3" class="text-right no-border"><strong>SubTotal</strong></td><td>$&nbsp;' . number_format($nota['subTotal'] ?? 0, 2) . '</td></tr>';
         $html .= '<tr><td colspan="3" class="text-right"><strong>Cargo TC/TD</strong></td><td>$&nbsp;' . number_format($nota['montoTCTD'] ?? $nota['cargoTarjeta'] ?? 0, 2) . '</td></tr>';

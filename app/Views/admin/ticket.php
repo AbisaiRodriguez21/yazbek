@@ -126,20 +126,24 @@
         </tr>
         <tr><td colspan="4">&nbsp;</td></tr>
 
-        <!-- Otros -->
+        <?php
+        $tiImp  = (int)($nota['tipoImpresion'] ?? 0);
+        $cargo  = (float)($nota['cargoPorImpresion'] ?? 0);
+        $tiDesc = $tiImp === 2 ? 'Impresión' : ($tiImp === 3 ? 'Bordado' : ($tiImp >= 4 ? 'Finiquito' : ''));
+        if ($tiImp > 1 || $cargo > 0):
+        ?>
+        <!-- Otros (solo si se eligió tipo distinto a Ninguno o hay cargo) -->
         <tr class="sep">
-            <td colspan="2" class="right">Otros:&nbsp;</td>
-            <td colspan="2" class="right">
-                <?php
-                $ti = (int)($nota['tipoImpresion'] ?? 0);
-                echo $ti === 1 ? 'Ninguno' : ($ti === 2 ? 'Impresión' : ($ti === 3 ? 'Bordado' : ''));
-                ?>
-            </td>
+            <td colspan="2" class="right">Tipo bordado/impresión:&nbsp;</td>
+            <td colspan="2" class="right"><?= esc($tiDesc) ?></td>
         </tr>
+        <?php if ($cargo > 0): ?>
         <tr class="sep">
-            <td colspan="2" class="right">Cargo por otros:&nbsp;</td>
-            <td colspan="2" class="right">$ <?= number_format($nota['cargoPorImpresion'] ?? 0, 2) ?></td>
+            <td colspan="2" class="right">Cargo extra:&nbsp;</td>
+            <td colspan="2" class="right">$ <?= number_format($cargo, 2) ?></td>
         </tr>
+        <?php endif; ?>
+        <?php endif; ?>
         <?php if (($nota['descuento'] ?? 0) > 0): ?>
         <tr class="sep">
             <td colspan="2" class="right">Descuento:&nbsp;</td>

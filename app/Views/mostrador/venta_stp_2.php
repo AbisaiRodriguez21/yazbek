@@ -185,7 +185,7 @@ $('#selectProducto').select2({
     theme: 'bootstrap',
     placeholder: 'Escribe SKU o descripción...',
     minimumInputLength: 2,
-    dropdownParent: $('#selectProductoWrapper'),
+    dropdownParent: $('body'),
     language: {
         inputTooShort: function() { return 'Escribe al menos 2 caracteres...'; },
         searching: function() { return 'Buscando...'; },
