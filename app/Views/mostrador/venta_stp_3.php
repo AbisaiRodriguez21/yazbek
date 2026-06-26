@@ -91,23 +91,24 @@
 
                     <!-- Campo de descuento visible -->
                     <div class="form-group">
-                        <label for="inputDescuento">Descuento ($ pesos, sin IVA)</label>
+                        <label for="inputDescuentoPct">Descuento (%)</label>
                         <div class="input-group">
                             <div class="input-group-prepend">
-                                <span class="input-group-text">$</span>
+                                <span class="input-group-text">%</span>
                             </div>
-                            <input type="number" id="inputDescuento" name="descuento"
+                            <input type="number" id="inputDescuentoPct"
                                    class="form-control"
-                                   value="<?= ($nota['descuento'] ?? 0) > 0 ? (float)$nota['descuento'] : '' ?>"
-                                   min="0" step="0.01" placeholder="0.00"
+                                   value="<?= ($nota['descuento'] ?? 0) > 0 && $sumaImportes > 0 ? round((float)$nota['descuento'] / $sumaImportes * 100, 2) : '' ?>"
+                                   min="0" max="100" step="0.1" placeholder="0"
                                    <?= !empty($descuentoFijo) ? 'readonly style="background:#f8f9fa;cursor:not-allowed;"' : '' ?>>
                         </div>
+                        <input type="hidden" id="hidDescuentoDlr" name="descuento" value="<?= (float)($nota['descuento'] ?? 0) ?>">
                         <?php if (!empty($descuentoFijo)): ?>
                         <small class="form-text text-warning">
                             <i class="simple-icon-lock"></i> Descuento fijo de la nota original — no se puede modificar en pagos subsecuentes.
                         </small>
                         <?php else: ?>
-                        <small class="form-text text-muted">Se resta del subtotal antes de calcular el IVA.</small>
+                        <small class="form-text text-muted">= <span id="spanDescuentoDlr">$0.00</span> — se resta del subtotal antes de calcular el IVA.</small>
                         <?php endif; ?>
                     </div>
 
@@ -522,12 +523,11 @@ var sumaImportes = parseFloat($('#hidSumaImportes').val()) || 0;
 var yaPagado     = parseFloat($('#hidYaPagado').val()) || 0;
 var descuento    = 0;
 function recalcular() {
-    var desc          = parseFloat($('#inputDescuento').val()) || 0;
-    // Validar que no supere el subtotal
-    if (desc > sumaImportes) {
-        desc = sumaImportes;
-        $('#inputDescuento').val(desc.toFixed(2));
-    }
+    var pct           = parseFloat($('#inputDescuentoPct').val()) || 0;
+    if (pct > 100) { pct = 100; $('#inputDescuentoPct').val(100); }
+    var desc          = Math.min((pct / 100) * sumaImportes, sumaImportes);
+    $('#hidDescuentoDlr').val(desc.toFixed(2));
+    $('#spanDescuentoDlr').text('$' + desc.toFixed(2));
     descuento         = desc;
     var cargoImp      = parseFloat($('#inputCargoImpresion').val()) || 0;
     var subtotalBruto = sumaImportes;
@@ -604,7 +604,7 @@ function recalcular() {
     }
 }
 
-$('#inputDescuento').on('input', recalcular);
+$('#inputDescuentoPct').on('input', recalcular);
 $('#inputCargoImpresion').on('input', recalcular);
 
 // Función central para agregar el pago al array (se llama después de confirmar referencia si aplica)
@@ -772,7 +772,7 @@ function ejecutarCierreNota() {
     var payload = $.extend({
         folio:           $('#hidFolio').val(),
         Id_Notas_1:      $('#hidIdNotas1').val(),
-        descuento:       $('#inputDescuento').val() || 0,
+        descuento:       $('#hidDescuentoDlr').val() || 0,
         impresion:       $('#selectImpresion').val() || 1,
         cargoImpresion:  $('#inputCargoImpresion').val() || 0,
         subtotal:    $('#hidSubtotal').val(),
