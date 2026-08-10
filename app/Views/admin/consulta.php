@@ -256,6 +256,13 @@ function puedeRevivir(tipopago) {
     return true;
 }
 
+// Solo las notas "Sin Pagar" (crédito) se pagan en varios abonos.
+function esSinPagar(tipopago) {
+    if (!tipopago) return false;
+    var tp = (tipopago + '').toLowerCase();
+    return tp.indexOf('sin pagar') >= 0 || tp.indexOf('crédito') >= 0 || tp.indexOf('credito') >= 0;
+}
+
 // Escapa una cadena para usarla como argumento en un atributo onclick (comilla simple)
 function _sq(s) { return "'" + String(s || '').replace(/\\/g,'\\\\').replace(/'/g,"\\'") + "'"; }
 
@@ -270,6 +277,13 @@ function accionesNota(n) {
     if ((idstatus === 1 || idstatus === 4) && esPadre) {
         items += '<a class="dropdown-item" href="' + BASE_PAGO + n.folio + '/confirmar">'
                + '<i class="simple-icon-wallet"></i>Ver / Pagar</a>';
+    }
+
+    // "Sin Pagar" (crédito, se pagará en varios abonos) en proceso: se puede
+    // registrar un abono (folio hijo pendiente de recibirse y confirmarse).
+    if (idstatus === 2 && esPadre && esSinPagar(n.tipopago)) {
+        items += '<a class="dropdown-item" href="' + BASE_PAGO + n.folio + '/abono">'
+               + '<i class="simple-icon-wallet"></i>Ver / Abonar</a>';
     }
 
     // Ver modal

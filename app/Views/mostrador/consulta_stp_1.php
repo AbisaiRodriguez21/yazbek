@@ -138,6 +138,13 @@ function puedeRevivir(tipopago) {
     return true;
 }
 
+// Solo las notas "Sin Pagar" (crédito) se pagan en varios abonos.
+function esSinPagar(tipopago) {
+    if (!tipopago) return false;
+    var tp = (tipopago + '').toLowerCase();
+    return tp.indexOf('sin pagar') >= 0 || tp.indexOf('crédito') >= 0 || tp.indexOf('credito') >= 0;
+}
+
 function accionesNota(n) {
     var btns = '';
     var idstatus   = parseInt(n.idstatus, 10);
@@ -158,6 +165,13 @@ function accionesNota(n) {
         // Folio padre
         if (idstatus === 1 || idstatus === 4) {
             btns += '<a href="' + BASE + n.folio + '/confirmar" class="btn btn-xs btn-outline-primary mr-1">Ver / Pagar</a>';
+        }
+        // "Sin Pagar" (crédito, se pagará en varios abonos) en proceso: el
+        // vendedor puede registrar abonos (folio hijo pendiente de que Caja
+        // lo reciba y confirme). No aplica a otros tipos de pago — esos los
+        // cobra Caja completos, de una sola vez.
+        if (idstatus === 2 && esSinPagar(n.tipopago)) {
+            btns += '<a href="' + BASE + n.folio + '/abono" class="btn btn-xs btn-outline-primary mr-1">Ver / Abonar</a>';
         }
         if (idstatus === 5) {
             btns += '<a href="#" class="btn btn-xs btn-outline-secondary mr-1"'

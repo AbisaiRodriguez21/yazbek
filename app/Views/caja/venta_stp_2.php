@@ -122,11 +122,15 @@
                             <option value="">— Selecciona —</option>
                             <?php foreach ($tipoPagos as $tp): ?>
                             <option value="<?= (int)$tp['id'] ?>"
-                                    data-desc="<?= esc($tp['descripcion']) ?>">
+                                    data-desc="<?= esc($tp['descripcion']) ?>"
+                                    <?= (int)($nota['tipoPago'] ?? 0) === (int)$tp['id'] ? 'selected' : '' ?>>
                                 <?= esc($tp['descripcion']) ?>
                             </option>
                             <?php endforeach; ?>
                         </select>
+                        <?php if ((int)($nota['tipoPago'] ?? 0) > 0): ?>
+                        <small class="form-text text-muted">Preseleccionado según lo indicado por el vendedor.</small>
+                        <?php endif; ?>
                     </div>
                     <div class="form-group">
                         <label>Monto <span class="text-danger">*</span></label>

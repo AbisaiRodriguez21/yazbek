@@ -164,6 +164,10 @@ $routes->group('admin', ['filter' => 'role:1'], function ($routes) {
     $routes->get('venta/(:num)/confirmar',  'MostradorController::ventaStp3/$1');
     $routes->post('venta/(:num)/confirmar', 'MostradorController::ventaStp3Post/$1');
 
+    // Abono sobre nota "Sin Pagar" (crédito) accesible desde admin
+    $routes->get('venta/(:num)/abono',  'MostradorController::abono/$1');
+    $routes->post('venta/(:num)/abono', 'MostradorController::abonoPost/$1');
+
     // ── Venta Normal desde admin (paso 1 y 2) ──
     $routes->get('venta/nueva',              'AdminController::ventaNueva');
     $routes->post('venta/nueva',             'AdminController::ventaNuevaPost');
@@ -209,6 +213,10 @@ $routes->group('mostrador', ['filter' => 'role:3,4'], function ($routes) {
     // Paso 3: Confirmar y cerrar nota
     $routes->get('venta/(:num)/confirmar', 'MostradorController::ventaStp3/$1');
     $routes->post('venta/(:num)/confirmar', 'MostradorController::ventaStp3Post/$1');
+
+    // Abono sobre nota "Sin Pagar" (crédito): crea folio hijo pendiente de que caja lo reciba
+    $routes->get('venta/(:num)/abono', 'MostradorController::abono/$1');
+    $routes->post('venta/(:num)/abono', 'MostradorController::abonoPost/$1');
 
     // ── Operaciones sobre notas ──
     $routes->get('venta/(:num)/duplicar', 'MostradorController::duplicar/$1');

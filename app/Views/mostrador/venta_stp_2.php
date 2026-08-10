@@ -36,33 +36,8 @@
 </div>
 
 <div class="row">
-    <!-- Panel izquierdo: info + buscador -->
+    <!-- Panel izquierdo: buscador -->
     <div class="col-md-4">
-        <div class="card mb-3" id="panelResumen">
-            <div class="card-header font-weight-bold" style="padding-top: 1rem; padding-bottom: 1rem;">Resumen</div>
-            <div class="card-body">
-                <p class="mb-1"><strong>Folio:</strong> <?= (int)$nota['folio'] ?></p>
-                <p class="mb-1"><strong>Cliente:</strong> <?= esc($nota['cliente'] ?? '') ?></p>
-                <p class="mb-1"><strong>Vendedor:</strong> <?= esc($usuario['nombre']) ?></p>
-                <p class="mb-1"><strong>Fecha:</strong> <?= date('Y-m-d', strtotime($nota['fecha_inicial'])) ?></p>
-                <hr>
-                <p class="mb-1">
-                    <strong>Total piezas:</strong>
-                    <span id="spTotalPiezas" class="badge badge-info"><?= (int)$totalPiezas ?></span>
-                    <span id="badgeTipo" class="badge ml-1 <?= $esMayoreo ? 'badge-success' : 'badge-secondary' ?>">
-                        <?= $esMayoreo ? 'Mayoreo' : 'Menudeo' ?>
-                    </span>
-                </p>
-                <p class="mb-1">
-                    <strong>Importe:</strong>
-                    <span id="spImporte" class="text-success font-weight-bold">
-                        $<?= number_format($sumaImportes, 2) ?>
-                    </span>
-                </p>
-
-            </div>
-        </div>
-
         <!-- Agregar producto -->
         <div class="card">
             <div class="card-header font-weight-bold" style="padding-top: 1rem; padding-bottom: 1rem;">Agregar Producto</div>
@@ -101,8 +76,33 @@
         </div>
     </div>
 
-    <!-- Panel derecho: carrito -->
+    <!-- Panel derecho: resumen + carrito -->
     <div class="col-md-8">
+        <div class="card mb-3" id="panelResumen">
+            <div class="card-header font-weight-bold" style="padding-top: 1rem; padding-bottom: 1rem;">Resumen</div>
+            <div class="card-body">
+                <p class="mb-1"><strong>Folio:</strong> <?= (int)$nota['folio'] ?></p>
+                <p class="mb-1"><strong>Cliente:</strong> <?= esc($nota['cliente'] ?? '') ?></p>
+                <p class="mb-1"><strong>Vendedor:</strong> <?= esc($usuario['nombre']) ?></p>
+                <p class="mb-1"><strong>Fecha:</strong> <?= date('Y-m-d', strtotime($nota['fecha_inicial'])) ?></p>
+                <hr>
+                <p class="mb-1">
+                    <strong>Total piezas:</strong>
+                    <span id="spTotalPiezas" class="badge badge-info"><?= (int)$totalPiezas ?></span>
+                    <span id="badgeTipo" class="badge ml-1 <?= $esMayoreo ? 'badge-success' : 'badge-secondary' ?>">
+                        <?= $esMayoreo ? 'Mayoreo' : 'Menudeo' ?>
+                    </span>
+                </p>
+                <p class="mb-1">
+                    <strong>Importe:</strong>
+                    <span id="spImporte" class="text-success font-weight-bold">
+                        $<?= number_format($sumaImportes, 2) ?>
+                    </span>
+                </p>
+
+            </div>
+        </div>
+
         <div class="card">
             <div class="card-header font-weight-bold" style="padding-top: 1rem; padding-bottom: 1rem;">Productos en la Nota</div>
             <div class="card-body p-0 pt-2">

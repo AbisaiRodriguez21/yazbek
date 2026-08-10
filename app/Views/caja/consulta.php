@@ -264,8 +264,7 @@ function cajaModalCancelar() {
 function cajaModalVerificar() {
     var folio = ($('#folio_input_caja_modal').val() || '').trim();
     if (!folio) return;
-    if (!confirm('¿Marcar el folio ' + folio + ' como pagado?')) return;
-    $('#modalVerFolioCaja').modal('hide');
+    // cajaVerificarPago() ya pide confirmación — no repetirla aquí.
     cajaVerificarPago(folio);
 }
 
@@ -312,6 +311,7 @@ function cajaVerificarPago(folio) {
         .then(function(r) { return r.json(); })
         .then(function(data) {
             alert(data.mensaje || 'Pago verificado.');
+            $('#modalVerFolioCaja').modal('hide');
             $('#tablaCajaConsulta').DataTable().ajax.reload(null, false);
         })
         .catch(function() { alert('Error al verificar el pago.'); });

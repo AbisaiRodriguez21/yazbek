@@ -1294,14 +1294,21 @@ class AdminController extends BaseController
     // ──────────────────────────────────────────────────────────────
     public function liquidarAnticipo(int $folio): \CodeIgniter\HTTP\Response
     {
-        $notaModel = new \App\Models\NotaModel();
-        $nota      = $notaModel->getPorFolio($folio);
+        $nota = $this->notaModel->getPorFolio($folio);
 
         if (! $nota) {
             return $this->response->setJSON(['ok' => false, 'error' => 'Folio no encontrado.']);
         }
 
-        $notaModel->liquidarAnticipo($folio);
+        // Si el folio (o el padre que se está liquidando) todavía no tiene
+        // ningún pago registrado, se registra ahora con el tipo de pago
+        // elegido al finalizar — evita liquidar sin haber recibido el dinero.
+        $error = $this->registrarPagoSiFalta($nota);
+        if ($error) {
+            return $this->response->setJSON(['ok' => false, 'error' => $error]);
+        }
+
+        $this->notaModel->liquidarAnticipo($folio);
         AuditService::log(AuditService::VENTA_LIQUIDADA, 'notas_1', $folio,
             "Folio #{$folio} liquidado por admin");
         return $this->response->setJSON(['ok' => true, 'mensaje' => "Folio #{$folio} liquidado correctamente."]);
@@ -1834,9 +1841,10 @@ class AdminController extends BaseController
                 "SELECT n.Id_Notas_1, n.fecha_inicial,
                         c.nombre  AS NombreCliente,
                         u.usuario AS vendedor,
-                        n.folio, n.verificado, n.factura, n.descuento,
+                        n.folio, n.referencia, n.verificado, n.factura, n.descuento,
                         n.status AS statusId,
                         n.sumaImportes, n.subTotal, n.tipoPago,
+                        tpVendedor.descripcion AS tipoPagoNombre,
                         n.cargoTarjeta, n.subTotal2, n.iva, n.total,
                         n.tipoImpresion, n.cargoPorImpresion,
                         n.montoTCTD, n.totalPiezas, n.precioMayoreo,
@@ -1844,6 +1852,7 @@ class AdminController extends BaseController
                  FROM notas_1 n
                  LEFT JOIN clientes c ON n.idCliente = c.id
                  LEFT JOIN usuarios u ON u.Id        = n.idVendedor
+                 LEFT JOIN tipopago tpVendedor ON tpVendedor.id = n.tipoPago
                  WHERE n.folio = ?
                  ORDER BY n.Id_Notas_1 DESC
                  LIMIT 1",
@@ -1931,8 +1940,22 @@ class AdminController extends BaseController
         $html .= '</tr><tr>';
         $html .= '<td><strong>Estatus:&nbsp;</strong></td><td>' . esc($headerStatus) . '</td>';
         $html .= '<td>&nbsp;</td><td><strong>Folio:&nbsp;</strong></td>';
-        $html .= '<td>' . $nota['folio'] . '</td>';
+        $html .= '<td>' . $nota['folio'];
+        $referenciaPadre = (int)($nota['referencia'] ?? 0);
+        if ($referenciaPadre > 0) {
+            $html .= ' &nbsp; <strong>Referencia:&nbsp;</strong>' . $referenciaPadre;
+        }
+        $html .= '</td>';
         $html .= '</tr></table></div>';
+
+        // Tipo de pago elegido al finalizar (solo lectura) — se muestra
+        // mientras la nota siga sin ningún pago registrado.
+        if ($statusId === 2 && empty($pagos)) {
+            $tipoPagoTexto = $nota['tipoPagoNombre'] ?? null;
+            $html .= '<div class="alert alert-info py-2 mb-3"><strong>Tipo de pago (elegido al finalizar):</strong> '
+                    . ($tipoPagoTexto ? esc($tipoPagoTexto) : '<span class="text-danger">No asignado</span>')
+                    . '</div>';
+        }
 
         // Calculadora
         $html .= '<div class="col-sm-4 col-lg-4"><div class="font-w600 push-5">Calculadora</div>';
@@ -2031,12 +2054,15 @@ class AdminController extends BaseController
             $html .= '<td></td>';
             $html .= '<td colspan="2" class="text-right no-border"><button type="button" class="btn btn-danger" onclick="fn_modal_calcelar_nota()">Cancelar Nota</button></td>';
             if (! $esLiquidado) {
-                $html .= '<td colspan="2" class="text-right no-border"><button type="button" class="btn btn-success" onclick="fn_liquidar_modal()">Liquidar</button></td>';
+                $btnLabelLiquidar = ($statusId === 2 && empty($pagos)) ? 'Recibir Pago y Cerrar Nota' : 'Liquidar';
+                $html .= '<td colspan="2" class="text-right no-border"><button type="button" class="btn btn-success" onclick="fn_liquidar_modal()">' . $btnLabelLiquidar . '</button></td>';
             }
         }
 
-        // Botón Facturar en modal (solo nota pagada/liquidada, no cancelada, no ya facturada)
-        if ($statusId !== 3 && ($statusId === 5 || $esLiquidado) && empty($uuidFact)) {
+        // Botón Facturar en modal (solo folio PADRE, pagado/liquidado, no cancelado, no ya facturado)
+        // Los folios hijos (abonos) no tienen productos propios — la factura siempre
+        // se solicita sobre el padre, una sola vez.
+        if ((int)($nota['referencia'] ?? 0) === 0 && $statusId !== 3 && ($statusId === 5 || $esLiquidado) && empty($uuidFact)) {
             $btnLabel = $statusFact === 1 ? 'Facturar' : 'Solicitar Factura';
             $html .= '<tr><td colspan="4" class="text-right pt-2">'
                    . '<button type="button" class="btn btn-primary" '
@@ -2061,15 +2087,86 @@ class AdminController extends BaseController
             return $this->response->setBody('mal');
         }
         try {
-            $db = \Config\Database::connect();
-            $db->query("UPDATE notas_1 SET verificado = 'Pagado' WHERE folio = ?", [$folio]);
-            AuditService::log(AuditService::VENTA_VERIFICADA, 'notas_1', $folio,
-                "Folio #{$folio} marcado como verificado/pagado");
-            return $this->response->setBody('bien');
+            $resultado = $this->recibirPagoYLiquidar($folio);
+            return $this->response->setBody($resultado['ok'] ? 'bien' : 'mal');
         } catch (\Throwable $e) {
             log_message('error', 'cajaVerificar folio=' . $folio . ': ' . $e->getMessage());
             return $this->response->setBody('mal');
         }
+    }
+
+    // Si el folio no tiene ningún pago registrado en montosnotas todavía (nota
+    // recién finalizada, status=2), lo registra usando el tipo de pago elegido
+    // al finalizar (tipoPago) y el total de la nota — marcado como anticipo si
+    // es un folio hijo. Si ya tiene un pago, no hace nada (solo confirma).
+    // Devuelve null si registró/ya existía OK, o un mensaje de error si no se pudo.
+    private function registrarPagoSiFalta(array $nota): ?string
+    {
+        $db = \Config\Database::connect();
+
+        $tienePago = $db->query(
+            "SELECT 1 FROM montosnotas WHERE idNotas = ? LIMIT 1",
+            [$nota['Id_Notas_1']]
+        )->getRowArray();
+
+        if ($tienePago) {
+            return null;
+        }
+
+        $idTipoPago = (int) ($nota['tipoPago'] ?? 0);
+        if ($idTipoPago < 1) {
+            return "El folio #{$nota['folio']} no tiene tipo de pago asignado. Regístralo manualmente.";
+        }
+
+        $esAnticipo = (int) ($nota['referencia'] ?? 0) > 0 ? 1 : 0;
+
+        $db->query(
+            "INSERT INTO montosnotas (idNotas, idTipoPago, monto, cargos, anticipo, fecha)
+             VALUES (?, ?, ?, 0, ?, ?)",
+            [$nota['Id_Notas_1'], $idTipoPago, $nota['total'] ?? 0, $esAnticipo, date('Y-m-d H:i:s')]
+        );
+        AuditService::log(AuditService::PAGO_REGISTRADO, 'montosnotas', $nota['folio'],
+            "Pago recibido: folio #{$nota['folio']}, tipoPago {$idTipoPago}, monto $" . number_format($nota['total'] ?? 0, 2) . ", anticipo {$esAnticipo}");
+
+        return null;
+    }
+
+    // Usado por "Verificar Caja" (cajaVerificar): registra el pago si falta,
+    // marca la nota como Pagada (status 5) y, si es un folio hijo que con este
+    // pago cubre el total del padre, liquida padre e hijos (status 6) — igual
+    // que CajaController::pagoVerificado.
+    private function recibirPagoYLiquidar(int $folio): array
+    {
+        $nota = $this->notaModel->getPorFolio($folio);
+        if (! $nota) {
+            return ['ok' => false, 'mensaje' => 'Nota no encontrada.'];
+        }
+
+        $error = $this->registrarPagoSiFalta($nota);
+        if ($error) {
+            return ['ok' => false, 'mensaje' => $error];
+        }
+
+        $db = \Config\Database::connect();
+        $db->query("UPDATE notas_1 SET status = 5, verificado = 'Pagado' WHERE folio = ?", [$folio]);
+        AuditService::log(AuditService::VENTA_VERIFICADA, 'notas_1', $folio,
+            "Pago verificado: folio #{$folio}");
+
+        $referenciaPadre = (int) ($nota['referencia'] ?? 0);
+        if ($referenciaPadre > 0) {
+            $padre = $this->notaModel->getPorFolio($referenciaPadre);
+            if ($padre && (int)($padre['status'] ?? 0) !== 3) {
+                $totalPagado = $this->notaModel->getTotalPagadoAnticipo($referenciaPadre);
+                $totalNota   = (float) ($padre['total'] ?? 0);
+                if ($totalPagado >= $totalNota - 0.99) {
+                    $this->notaModel->liquidarAnticipo($referenciaPadre);
+                    AuditService::log(AuditService::VENTA_LIQUIDADA, 'notas_1', $referenciaPadre,
+                        "Folio #{$referenciaPadre} liquidado automáticamente al completar sus abonos.");
+                }
+            }
+        }
+
+        return ['ok' => true, 'mensaje' => "Pago del folio #{$folio} verificado correctamente."];
     }
 
     // ──────────────────────────────────────────────────────────────
@@ -2785,7 +2882,8 @@ class AdminController extends BaseController
                             WHERE COALESCE(nc.referencia, 0) > 0
                               AND nc.status != 3
                             GROUP BY nc.referencia
-                        ) pm_child ON pm_child.folio_padre = n.folio";
+                        ) pm_child ON pm_child.folio_padre = n.folio
+                        LEFT JOIN tipopago tpVendedor ON tpVendedor.id = n.tipoPago";
 
             $whereClauses = [];
             $params       = [];
@@ -2814,7 +2912,8 @@ class AdminController extends BaseController
                 "SELECT n.folio, n.fecha_inicial,
                         COALESCE(c.nombre, '—')   AS cliente,
                         COALESCE(u.usuario, '—')  AS vendedor,
-                        COALESCE(pm_direct.tipos_pago, pm_child.tipos_pago, NULLIF(TRIM(n.tipoPago), ''), 'A Crédito') AS tipopago,
+                        COALESCE(pm_direct.tipos_pago, pm_child.tipos_pago, tpVendedor.descripcion,
+                                 IF(n.status = 2, 'Pendiente de cobro', 'A Crédito')) AS tipopago,
                         n.total, n.status AS idstatus,
                         COALESCE(s.nombre, '')    AS status_nombre,
                         n.verificado,

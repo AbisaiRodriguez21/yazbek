@@ -169,14 +169,18 @@
                     <input type="hidden" id="hidIva" name="iva" value="">
                     <input type="hidden" id="hidTotal" name="total" value="">
 
-                    <!-- Estatus (se ajusta automáticamente según el restante) -->
                     <div class="form-group">
-                        <label>Estatus de la nota <span class="text-danger">*</span></label>
-                        <select name="estatus" id="selectEstatus" class="form-control">
-                            <option value="1" selected>Abierta</option>
-                            <option value="5">Pagada</option>
+                        <label>Tipo de Pago (con el que pagará el cliente) <span class="text-danger">*</span></label>
+                        <select name="tipoPago" id="selectTipoPagoVendedor" class="form-control" required>
+                            <option value="">— Selecciona —</option>
+                            <?php foreach ($tipoPagos as $tp): ?>
+                            <option value="<?= (int)$tp['id'] ?>"><?= esc($tp['descripcion']) ?></option>
+                            <?php endforeach; ?>
                         </select>
-                        <small id="msgEstatus" class="form-text text-muted"></small>
+                        <small class="form-text text-muted">
+                            <i class="simple-icon-info"></i> Al finalizar, la nota se envía a Caja
+                            con este tipo de pago para que reciba el dinero y la cierre.
+                        </small>
                     </div>
 
                     <!-- Factura -->
@@ -264,153 +268,20 @@
                         </div>
                     </div>
 
-                    <!-- Pagos -->
-                    <div class="card card-body bg-light mb-3" id="panelPagos">
-                        <div class="d-flex justify-content-between align-items-center mb-2">
-                            <strong>Formas de Pago</strong>
-                            <button type="button" class="btn btn-sm btn-primary" data-toggle="modal" data-target="#modalPago">
-                                <i class="iconsminds-add"></i> Agregar Pago
-                            </button>
-                        </div>
-
-                        <?php if (!empty($pagosExistentes)): ?>
-                        <!-- Pagos ya registrados (solo lectura) -->
-                        <p class="small text-muted mb-1">Pagos registrados anteriormente:</p>
-                        <ul class="list-group mb-2" id="listaPagosExistentes">
-                            <?php foreach ($pagosExistentes as $pe):
-                                $cancelado = ((int)($pe['nota_status'] ?? 0) === 3);
-                            ?>
-                            <li class="list-group-item d-flex justify-content-between align-items-center py-1<?= $cancelado ? ' list-group-item-light' : '' ?>">
-                                <span class="<?= $cancelado ? 'text-muted' : 'text-muted' ?>">
-                                    <?php if ($cancelado): ?>
-                                    <s><?= esc($pe['descripcion']) ?></s>
-                                    <?php else: ?>
-                                    <?= esc($pe['descripcion']) ?>
-                                    <?php endif; ?>
-                                    <?php if ($pe['anticipo'] && !$cancelado): ?>
-                                    <span class="badge badge-warning">Anticipo</span>
-                                    <?php endif; ?>
-                                    <?php if ($cancelado): ?>
-                                    <span class="badge badge-danger">Cancelada</span>
-                                    <?php endif; ?>
-                                    <?php if (!empty($pe['folio_origen']) && (int)$pe['folio_origen'] !== (int)$nota['folio']): ?>
-                                    <small class="text-info ml-1">Folio #<?= (int)$pe['folio_origen'] ?></small>
-                                    <?php endif; ?>
-                                </span>
-                                <span class="text-muted">
-                                    <?php if ($cancelado): ?>
-                                    <s>$<?= number_format($pe['monto'], 2) ?></s>
-                                    <?php else: ?>
-                                    $<?= number_format($pe['monto'], 2) ?>
-                                    <?php endif; ?>
-                                </span>
-                            </li>
-                            <?php endforeach; ?>
-                        </ul>
-                        <?php endif; ?>
-
-                        <!-- Nuevos pagos (esta sesión) -->
-                        <ul id="listaPagos" class="list-group">
-                            <li class="list-group-item text-muted text-center" id="liSinPagos">Sin pagos nuevos aún.</li>
-                        </ul>
-                        <?php
-                        // Solo sumar pagos de notas NO canceladas
-                        $sumaPagosValidos = array_sum(array_column(
-                            array_filter($pagosExistentes ?? [], fn($pe) => (int)($pe['nota_status'] ?? 0) !== 3),
-                            'monto'
-                        ));
-                        ?>
-                        <div class="mt-2 text-right">
-                            <?php if (!empty($pagosExistentes)): ?>
-                            <strong>Ya pagado: <span id="spYaPagado" class="text-muted">
-                                $<?= number_format($sumaPagosValidos, 2) ?>
-                            </span></strong><br>
-                            <?php endif; ?>
-                            <strong>Nuevo pago: <span id="spMontoPagado" class="text-success">$0.00</span></strong><br>
-                            <strong id="lblRestante">Restante: </strong><span id="spRestante" class="text-danger font-weight-bold">$0.00</span>
-                        </div>
-                    </div>
-
+                    <?php
+                    // Solo sumar pagos de notas NO canceladas — se usa en el panel de pagos
+                    // (admin) y en el hidden #hidYaPagado (ambos roles) más abajo.
+                    $sumaPagosValidos = array_sum(array_column(
+                        array_filter($pagosExistentes ?? [], fn($pe) => (int)($pe['nota_status'] ?? 0) !== 3),
+                        'monto'
+                    ));
+                    ?>
                     <div class="text-right">
                         <button type="button" id="btnGuardar" class="btn btn-success btn-lg">
                             <i class="iconsminds-yes"></i> Finalizar Nota
                         </button>
                     </div>
                 </form>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- Modal para agregar pago -->
-<div class="modal fade" id="modalPago" tabindex="-1" role="dialog">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">Agregar Forma de Pago</h5>
-                <button type="button" class="close" data-dismiss="modal"><span>&times;</span></button>
-            </div>
-            <div class="modal-body">
-                <!-- Indicador de restante -->
-                <div class="alert alert-info py-2 mb-3 d-flex justify-content-between align-items-center">
-                    <span class="font-weight-bold">Restante por pagar:</span>
-                    <span class="font-weight-bold" id="modalRestanteLabel" style="font-size:1.15rem;">$0.00</span>
-                </div>
-                <div class="form-group">
-                    <label>Tipo de Pago</label>
-                    <select id="modalTipoPago" class="form-control">
-                        <option value="">— Selecciona —</option>
-                        <?php foreach ($tipoPagos as $tp): ?>
-                        <option value="<?= (int)$tp['id'] ?>"
-                                data-desc="<?= esc($tp['descripcion']) ?>"
-                                data-cargo="<?= (float)($tp['cargo_pct'] ?? 0) ?>">
-                            <?= esc($tp['descripcion']) ?>
-                        </option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label>Monto</label>
-                    <div class="input-group">
-                        <div class="input-group-prepend"><span class="input-group-text">$</span></div>
-                        <input type="number" id="modalMonto" class="form-control" min="0" step="0.01" value="0">
-                    </div>
-                </div>
-                <div class="form-group">
-                    <div class="custom-control custom-checkbox">
-                        <input type="checkbox" class="custom-control-input" id="modalAnticipo">
-                        <label class="custom-control-label" for="modalAnticipo">Es Anticipo</label>
-                    </div>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-dismiss="modal">Cerrar</button>
-                <button type="button" id="btnAgregarPago" class="btn btn-primary">Agregar</button>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- ═══ MODAL: Referencia de tarjeta ══════════════════════════════════════ -->
-<div class="modal fade" id="modalRefTarjeta" tabindex="-1" role="dialog" data-backdrop="static" data-keyboard="false">
-    <div class="modal-dialog modal-sm" role="document">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title"><i class="iconsminds-credit-card"></i> Referencia de pago</h5>
-            </div>
-            <div class="modal-body">
-                <p class="text-muted" style="font-size:13px;">
-                    Ingresa el número de referencia o autorización de la terminal.
-                </p>
-                <div class="form-group mb-0">
-                    <label>No. de Referencia / Autorización</label>
-                    <input type="text" id="inputRefTarjeta" class="form-control" placeholder="Ej. 123456">
-                    <small id="refTarjetaError" class="text-danger d-none">Este campo es obligatorio.</small>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" id="btnCancelarRefTarjeta">Cancelar</button>
-                <button type="button" id="btnConfirmarRefTarjeta" class="btn btn-primary">Confirmar</button>
             </div>
         </div>
     </div>
@@ -452,94 +323,19 @@
 
 <?= $this->section('page_scripts') ?>
 <script>
-var pagos = [];   // solo pagos NUEVOS de esta sesión
-var sinPagarSeleccionado = false;   // true cuando el usuario eligió "Sin Pagar" (a crédito)
-
-// ¿Es folio hijo? (tiene referencia al padre)
-var esHijo = <?= (int)($nota['referencia'] ?? 0) > 0 ? 'true' : 'false' ?>;
-
-// Estatus actual de la nota
-var notaIdStatus = <?= (int)($nota['idstatus'] ?? $nota['status'] ?? 0) ?>;
-
-// Estado default del checkbox:
-// - Folio hijo (anticipo) → siempre marcado
-// - Nota Abierta (status 1) → marcado automáticamente porque el pago es parcial/anticipo
-var defaultAnticipo = esHijo || notaIdStatus === 1;
-
-// ID del tipo de pago "Sin Pagar" (busca por texto en el select)
-function getSinPagarId() {
-    var id = '';
-    $('#modalTipoPago option').each(function() {
-        if ($(this).text().trim() === 'Sin Pagar') { id = $(this).val(); }
-    });
-    return id;
-}
-
-// Al abrir el modal: anticipo según el tipo de folio; reset campos + muestra restante
-$('#modalPago').on('show.bs.modal', function () {
-    $('#modalAnticipo').prop('checked', defaultAnticipo);
-    $('#modalTipoPago').val('');
-
-    // Jalamos el restante actual del indicador de la página
-    var restanteTexto = ($('#spRestante').text() || '$0.00').replace(/[^0-9.]/g, '');
-    var restanteVal   = parseFloat(restanteTexto) || 0;
-
-    // Mostrar en el indicador del modal
-    $('#modalRestanteLabel').text('$' + restanteVal.toFixed(2));
-
-    // Pre-llenar el monto con el restante (mínimo 0)
-    $('#modalMonto').val(restanteVal > 0 ? restanteVal.toFixed(2) : 0);
-});
-
-// Referencia de tarjeta pendiente de confirmar
-var _refTarjetaPendiente = '';
-
-// Detecta si el tipo de pago seleccionado es tarjeta (Débito/Crédito)
-// "Cargo con tarjeta" sigue la misma lógica que Transferencia/Depósito (sin modal de referencia inmediato)
-function esTarjeta(desc) {
-    if (!desc) return false;
-    var d = desc.toLowerCase();
-    return d.indexOf('tarjeta') !== -1 && d.indexOf('cargo') === -1;
-}
-
-// Al cambiar tipo de pago:
-// "Sin Pagar" → forzar anticipo ON
-// Tarjeta → pedir referencia
-// Otro método → volver al default del folio
-$('#modalTipoPago').on('change', function () {
-    var sinPagarId = getSinPagarId();
-    var desc = $(this).find('option:selected').data('desc') || '';
-    if ($(this).val() === sinPagarId && sinPagarId !== '') {
-        $('#modalAnticipo').prop('checked', true);
-    } else {
-        $('#modalAnticipo').prop('checked', defaultAnticipo);
-    }
-    // Si es tarjeta, limpiar referencia previa al cambiar selección
-    if (!esTarjeta(desc)) {
-        _refTarjetaPendiente = '';
-    }
-});
 var sumaImportes = parseFloat($('#hidSumaImportes').val()) || 0;
-var yaPagado     = parseFloat($('#hidYaPagado').val()) || 0;
-var descuento    = 0;
 function recalcular() {
     var pct           = parseFloat($('#inputDescuentoPct').val()) || 0;
     if (pct > 100) { pct = 100; $('#inputDescuentoPct').val(100); }
     var desc          = Math.min((pct / 100) * sumaImportes, sumaImportes);
     $('#hidDescuentoDlr').val(desc.toFixed(2));
     $('#spanDescuentoDlr').text('$' + desc.toFixed(2));
-    descuento         = desc;
     var cargoImp      = parseFloat($('#inputCargoImpresion').val()) || 0;
     var subtotalBruto = sumaImportes;
     var subtotal      = Math.max(0, subtotalBruto - desc);
     var baseIva       = subtotal + cargoImp;
     var iva           = baseIva * 0.16;
     var total         = baseIva + iva;
-
-    // Cargos de tarjeta de los pagos nuevos
-    var cargos = 0;
-    pagos.forEach(function(p) { cargos += parseFloat(p.cargo || 0); });
-    total += cargos;
 
     $('#tdSubtotal').text('$' + subtotalBruto.toFixed(2));
     // Mostrar/ocultar filas de descuento
@@ -563,207 +359,18 @@ function recalcular() {
     $('#hidSubtotal').val(subtotal.toFixed(2));
     $('#hidIva').val(iva.toFixed(2));
     $('#hidTotal').val(total.toFixed(2));
-
-    // Monto de los pagos nuevos en esta sesión
-    var montoNuevo = pagos.reduce(function(acc, p) { return acc + parseFloat(p.monto); }, 0);
-    
-    // Restante = total - ya pagado antes - nuevos pagos ahora
-    var restante = total - yaPagado - montoNuevo;
-    var liquidado = restante <= 0.005;
-    var cambio    = restante < -0.005 ? Math.abs(restante) : 0;
-
-    $('#spMontoPagado').text('$' + montoNuevo.toFixed(2));
-
-    // --- MODIFICACIÓN VISUAL AQUÍ ---
-    if (liquidado) {
-        // Si está pagado (ya sea exacto o con sobrante), forzamos a mostrar $0.00
-        $('#lblRestante').text('Restante: ');
-        $('#spRestante').text('$0.00')
-                        .removeClass('text-danger').addClass('text-success');
-    } else {
-        // Saldo pendiente
-        $('#lblRestante').text('Restante: ');
-        $('#spRestante').text('$' + restante.toFixed(2))
-                        .removeClass('text-success').addClass('text-danger');
-    }
-    // --------------------------------
-
-    if (liquidado) {
-        // Liquidado: poner Pagada automáticamente
-        $('#selectEstatus').val('5');
-        if (cambio > 0) {
-            // Se mantiene tu mensaje útil en la parte inferior sobre cuánto cambio dar
-            $('#msgEstatus').text('✔ Nota cubierta — cambio a entregar al cliente: $' + cambio.toFixed(2));
-        } else {
-            $('#msgEstatus').text('✔ Nota liquidada — se marcará como Pagada.');
-        }
-    } else {
-        // Hay saldo pendiente: poner Abierta automáticamente
-        $('#selectEstatus').val('1');
-        $('#msgEstatus').text('⚠ Hay saldo pendiente — se guardará como Abierta. Cambia a Anticipo si aplica.');
-    }
 }
 
 $('#inputDescuentoPct').on('input', recalcular);
 $('#inputCargoImpresion').on('input', recalcular);
 
-// Función central para agregar el pago al array (se llama después de confirmar referencia si aplica)
-function agregarPagoConfirmado(tipo, desc, monto, cargo, anticipo, referencia) {
-    // Si había "Sin Pagar" seleccionado antes, se reemplaza con pago real
-    sinPagarSeleccionado = false;
-
-    // Calcular cuánto falta por pagar antes de agregar este pago
-    var yaPagadoActual = pagos.reduce(function(acc, p) { return acc + parseFloat(p.monto); }, 0);
-    var totalActual    = parseFloat($('#hidTotal').val()) || 0;
-    var yaPagadoPrev   = parseFloat($('#hidYaPagado').val()) || 0;
-    var pendiente      = totalActual - yaPagadoPrev - yaPagadoActual;
-
-    if (monto > pendiente + 0.005) {
-        var excedente = (monto - pendiente).toFixed(2);
-        var confirmar = confirm(
-            '⚠ El pago de $' + monto.toFixed(2) + ' excede lo que resta por cobrar ($' + Math.max(0, pendiente).toFixed(2) + ').\n' +
-            'Se está cobrando $' + excedente + ' de más.\n\n' +
-            '¿Deseas agregarlo de todas formas?'
-        );
-        if (!confirmar) return;
-    }
-
-    pagos.push({ tipo: tipo, desc: desc, monto: monto, cargo: cargo, anticipo: anticipo, referencia: referencia || '' });
-    renderPagos();
-    recalcular();
-    $('#modalPago').modal('hide');
-    $('#modalTipoPago').val('');
-    $('#modalMonto').val(0);
-    $('#modalAnticipo').prop('checked', esHijo);
-    _refTarjetaPendiente = '';
-}
-
-$('#btnAgregarPago').on('click', function() {
-    var tipo     = $('#modalTipoPago').val();
-    var desc     = $('#modalTipoPago option:selected').data('desc');
-    var monto    = parseFloat($('#modalMonto').val()) || 0;
-    var anticipo = $('#modalAnticipo').is(':checked') ? 1 : 0;
-    var cargoPct = parseFloat($('#modalTipoPago option:selected').data('cargo')) || 0;
-    var cargo    = monto * cargoPct / 100;
-
-    // Sin selección: obligatorio elegir método
-    if (!tipo) {
-        alert('Debes seleccionar un método de pago.');
-        return;
-    }
-
-    // "Sin Pagar" = a crédito: no requiere monto, solo marca la bandera
-    if (desc === 'Sin Pagar') {
-        sinPagarSeleccionado = true;
-        pagos = [];
-        renderPagos();
-        recalcular();
-        $('#modalPago').modal('hide');
-        $('#modalTipoPago').val('');
-        $('#modalMonto').val(0);
-        $('#modalAnticipo').prop('checked', defaultAnticipo);
-        return;
-    }
-
-    // Método de pago real: requiere monto
-    if (monto <= 0) {
-        alert('Ingresa un monto válido.');
-        return;
-    }
-
-    // Si es tarjeta, pedir referencia antes de agregar
-    if (esTarjeta(desc)) {
-        // Guardar los datos del pago actual para usarlos al confirmar
-        _refTarjetaPendiente = '';
-        $('#inputRefTarjeta').val('');
-        $('#refTarjetaError').addClass('d-none');
-
-        // Guardar en variables temporales para el callback del modal de referencia
-        $('#modalRefTarjeta').data('pago', { tipo: tipo, desc: desc, monto: monto, cargo: cargo, anticipo: anticipo });
-        $('#modalPago').modal('hide');
-        // Pequeño delay para que el primer modal termine de cerrar
-        setTimeout(function() { $('#modalRefTarjeta').modal('show'); }, 350);
-        return;
-    }
-
-    agregarPagoConfirmado(tipo, desc, monto, cargo, anticipo, '');
-});
-
-// Confirmar referencia de tarjeta
-$('#btnConfirmarRefTarjeta').on('click', function() {
-    var ref = $.trim($('#inputRefTarjeta').val());
-    if (!ref) {
-        $('#refTarjetaError').removeClass('d-none');
-        return;
-    }
-    $('#refTarjetaError').addClass('d-none');
-    var p = $('#modalRefTarjeta').data('pago');
-    $('#modalRefTarjeta').modal('hide');
-    agregarPagoConfirmado(p.tipo, p.desc, p.monto, p.cargo, p.anticipo, ref);
-});
-
-// Cancelar referencia: volver al modal de pago
-$('#btnCancelarRefTarjeta').on('click', function() {
-    $('#modalRefTarjeta').modal('hide');
-    setTimeout(function() { $('#modalPago').modal('show'); }, 350);
-});
-
-function renderPagos() {
-    if (pagos.length === 0) {
-        if (sinPagarSeleccionado) {
-            $('#listaPagos').html('<li class="list-group-item text-center"><span class="badge badge-secondary">Sin Pagar — A Crédito</span> <button type="button" class="btn btn-xs btn-outline-danger ml-2" id="btnQuitarSinPagar">&times;</button></li>');
-        } else {
-            $('#listaPagos').html('<li class="list-group-item text-muted text-center" id="liSinPagos">Sin pagos nuevos aún.</li>');
-        }
-        return;
-    }
-    var html = '';
-    pagos.forEach(function(p, i) {
-        var refLabel = p.referencia ? ' <small class="text-muted">Ref: ' + p.referencia + '</small>' : '';
-        html += '<li class="list-group-item d-flex justify-content-between align-items-center">'
-            + '<span>' + p.desc + (p.anticipo ? ' <span class="badge badge-warning">Anticipo</span>' : '') + refLabel + '</span>'
-            + '<span>$' + parseFloat(p.monto).toFixed(2)
-            + ' <button type="button" class="btn btn-xs btn-outline-danger ml-2 btn-del-pago" data-idx="' + i + '">&times;</button></span>'
-            + '</li>';
-    });
-    $('#listaPagos').html(html);
-}
-
-$(document).on('click', '.btn-del-pago', function() {
-    var idx = parseInt($(this).data('idx'), 10);
-    pagos.splice(idx, 1);
-    renderPagos();
-    recalcular();
-});
-
-$(document).on('click', '#btnQuitarSinPagar', function() {
-    sinPagarSeleccionado = false;
-    renderPagos();
-    recalcular();
-});
-
 // ── Verificar email antes de cerrar si requiere factura ──────────────
 function ejecutarCierreNota() {
-    // Si no hay pagos nuevos pero ya estaba cubierto con anticipo, se permite cerrar
-    var total    = parseFloat($('#hidTotal').val()) || 0;
-    var montoNuevo = pagos.reduce(function(acc, p) { return acc + parseFloat(p.monto); }, 0);
-    // Obligatorio: debe haber elegido algún método de pago (real o "Sin Pagar")
-    if (pagos.length === 0 && !sinPagarSeleccionado && yaPagado <= 0) {
-        alert('Debes seleccionar al menos un método de pago.');
+    // No se cobra aquí: solo se indica con qué tipo de pago pagará el cliente,
+    // para que Caja (o Admin desde su Verificar Caja) lo vea al recibir el folio.
+    if (!$('#selectTipoPagoVendedor').val()) {
+        alert('Selecciona el tipo de pago con el que pagará el cliente.');
         return;
-    }
-
-    // Bloquear si hay saldo pendiente y NO eligió "Sin Pagar"
-    // Excepción: si todos los pagos nuevos son anticipos, se permite pago parcial
-    if (!sinPagarSeleccionado) {
-        var todosAnticipo = pagos.length > 0 && pagos.every(function(p) { return p.anticipo === 1; });
-        if (!todosAnticipo) {
-            var restanteFinal = total - yaPagado - montoNuevo;
-            if (restanteFinal > 0.005) {
-                alert('Falta por pagar: $' + restanteFinal.toFixed(2) + '\nAgrega el monto restante antes de cerrar la nota.');
-                return;
-            }
-        }
     }
 
     var csrf = {};
@@ -778,9 +385,8 @@ function ejecutarCierreNota() {
         subtotal:    $('#hidSubtotal').val(),
         iva:         $('#hidIva').val(),
         total:       $('#hidTotal').val(),
-        estatus:     $('#selectEstatus').val(),
+        tipoPago:    $('#selectTipoPagoVendedor').val(),
         factura:     $('#chkFactura').is(':checked') ? 1 : 0,
-        pagos:       JSON.stringify(pagos),   // solo los pagos NUEVOS
         // Datos fiscales del receptor (solo se envían si se requiere factura)
         rfcReceptor:           $('#rfcReceptor').val(),
         razonSocialReceptor:   $('#razonSocialReceptor').val(),

@@ -131,3 +131,10 @@ _modules/*
 
 /results/
 /phpunit*.xml
+
+#-------------------------
+# Stress test output
+#-------------------------
+/stress-test/*.json
+/stress-test/*.html
+/stress-test/summary*

@@ -147,13 +147,67 @@ class CajaController extends BaseController
             return $this->response->setJSON(['ok' => false, 'mensaje' => 'Nota no encontrada.']);
         }
 
+        $db = \Config\Database::connect();
+
+        // Un folio hijo (referencia > 0) ES un abono/anticipo por definición —
+        // igual que ya marcaba por default el checkbox "Es Anticipo" en el
+        // formulario completo de Registrar Pago para folios hijos.
+        $referenciaPadre = (int) ($nota['referencia'] ?? 0);
+        $esAnticipo      = $referenciaPadre > 0 ? 1 : 0;
+
+        // "Verificar Pago"/"Recibir Pago" cubre dos casos:
+        //  1) Ya existe un pago registrado en montosnotas (p. ej. una transferencia
+        //     pendiente de confirmar) — aquí solo se confirma, sin tocar el monto.
+        //  2) La nota no tiene ningún pago aún (recién finalizada por el vendedor,
+        //     status=2): se registra el pago ahora mismo usando el tipo de pago que
+        //     el vendedor eligió al finalizar (notas_1.tipoPago) y el total de la
+        //     nota — caja solo confirma que recibió el dinero.
+        $tienePago = $db->query(
+            "SELECT 1 FROM montosnotas WHERE idNotas = ? LIMIT 1",
+            [$nota['Id_Notas_1']]
+        )->getRowArray();
+
+        if (! $tienePago) {
+            $idTipoPago = (int) ($nota['tipoPago'] ?? 0);
+            if ($idTipoPago < 1) {
+                return $this->response->setJSON([
+                    'ok'      => false,
+                    'mensaje' => "El folio #{$folio} no tiene tipo de pago asignado por el vendedor. Usa \"Registrar Pago\" para capturarlo manualmente.",
+                ]);
+            }
+
+            $db->query(
+                "INSERT INTO montosnotas (idNotas, idTipoPago, monto, cargos, anticipo, fecha)
+                 VALUES (?, ?, ?, 0, ?, ?)",
+                [$nota['Id_Notas_1'], $idTipoPago, $nota['total'] ?? 0, $esAnticipo, date('Y-m-d H:i:s')]
+            );
+            AuditService::log(AuditService::PAGO_REGISTRADO, 'montosnotas', $folio,
+                "Pago recibido en caja: folio #{$folio}, tipoPago {$idTipoPago}, monto $" . number_format($nota['total'] ?? 0, 2) . ", anticipo {$esAnticipo}");
+        }
+
         // Actualizar status a 5 (completada/pagada)
-        \Config\Database::connect()->query(
+        $db->query(
             "UPDATE notas_1 SET status = 5, verificado = 1 WHERE folio = ?",
             [$folio]
         );
         AuditService::log(AuditService::VENTA_VERIFICADA, 'notas_1', $folio,
             "Pago verificado: folio #{$folio}");
+
+        // Si este folio es un abono (hijo) de una nota "Sin Pagar", revisar si con
+        // este pago ya se cubrió el total del padre — de ser así, liquidar padre e
+        // hijos (status 6) para que la venta aparezca como pagada/facturable.
+        if ($referenciaPadre > 0) {
+            $padre = $this->notaModel->getPorFolio($referenciaPadre);
+            if ($padre && (int)($padre['status'] ?? 0) !== 3) {
+                $totalPagado = $this->notaModel->getTotalPagadoAnticipo($referenciaPadre);
+                $totalNota   = (float) ($padre['total'] ?? 0);
+                if ($totalPagado >= $totalNota - 0.99) {
+                    $this->notaModel->liquidarAnticipo($referenciaPadre);
+                    AuditService::log(AuditService::VENTA_LIQUIDADA, 'notas_1', $referenciaPadre,
+                        "Folio #{$referenciaPadre} liquidado automáticamente al completar sus abonos.");
+                }
+            }
+        }
 
         return $this->response->setJSON(['ok' => true, 'mensaje' => "Pago del folio #{$folio} verificado correctamente."]);
     }
@@ -200,6 +254,23 @@ class CajaController extends BaseController
         // Si no alcanza → dejar el status actual (Abierta/Parcial), no tocar
         AuditService::log(AuditService::PAGO_REGISTRADO, 'montosnotas', $folio,
             "Pago registrado: folio #{$folio}, monto $" . number_format($monto, 2) . ", anticipo {$anticipo}");
+
+        // Si este folio es un abono (hijo) de una nota "Sin Pagar", revisar si con
+        // este pago ya se cubrió el total del padre — de ser así, liquidar padre e
+        // hijos (status 6) para que la venta aparezca como pagada/facturable.
+        $referenciaPadre = (int) ($nota['referencia'] ?? 0);
+        if ($referenciaPadre > 0) {
+            $padre = $this->notaModel->getPorFolio($referenciaPadre);
+            if ($padre && (int)($padre['status'] ?? 0) !== 3) {
+                $totalPagadoPadre = $this->notaModel->getTotalPagadoAnticipo($referenciaPadre);
+                $totalNotaPadre   = (float) ($padre['total'] ?? 0);
+                if ($totalPagadoPadre >= $totalNotaPadre - 0.99) {
+                    $this->notaModel->liquidarAnticipo($referenciaPadre);
+                    AuditService::log(AuditService::VENTA_LIQUIDADA, 'notas_1', $referenciaPadre,
+                        "Folio #{$referenciaPadre} liquidado automáticamente al completar sus abonos.");
+                }
+            }
+        }
 
         return redirect()->to('/caja/consulta')->with('success', "Pago del folio #{$folio} registrado correctamente.");
     }
@@ -644,15 +715,17 @@ class CajaController extends BaseController
                 "SELECT n.Id_Notas_1, n.fecha_inicial,
                         c.nombre  AS NombreCliente,
                         u.usuario AS vendedor,
-                        n.folio, n.verificado, n.factura, n.descuento,
+                        n.folio, n.referencia, n.verificado, n.factura, n.descuento,
                         n.status AS statusId,
                         n.sumaImportes, n.subTotal, n.tipoPago,
+                        tpVendedor.descripcion AS tipoPagoNombre,
                         n.cargoTarjeta, n.subTotal2, n.iva, n.total,
                         n.tipoImpresion, n.cargoPorImpresion,
                         n.montoTCTD, n.totalPiezas, n.precioMayoreo
                  FROM notas_1 n
                  LEFT JOIN clientes c ON n.idCliente = c.id
                  LEFT JOIN usuarios u ON u.Id        = n.idVendedor
+                 LEFT JOIN tipopago tpVendedor ON tpVendedor.id = n.tipoPago
                  WHERE n.folio = ?
                  ORDER BY n.Id_Notas_1 DESC
                  LIMIT 1",
@@ -729,8 +802,22 @@ class CajaController extends BaseController
         $html .= '</tr><tr>';
         $html .= '<td><strong>Estatus:&nbsp;</strong></td><td>' . esc($headerStatus) . '</td>';
         $html .= '<td>&nbsp;</td><td><strong>Folio:&nbsp;</strong></td>';
-        $html .= '<td>' . $nota['folio'] . '</td>';
+        $html .= '<td>' . $nota['folio'];
+        $referenciaPadre = (int)($nota['referencia'] ?? 0);
+        if ($referenciaPadre > 0) {
+            $html .= ' &nbsp; <strong>Referencia:&nbsp;</strong>' . $referenciaPadre;
+        }
+        $html .= '</td>';
         $html .= '</tr></table></div>';
+
+        // Tipo de pago elegido por el vendedor al finalizar (solo lectura) —
+        // se muestra mientras la nota siga sin ningún pago registrado.
+        if ($statusId === 2 && empty($pagos)) {
+            $tipoPagoTexto = $nota['tipoPagoNombre'] ?? null;
+            $html .= '<div class="alert alert-info py-2 mb-3"><strong>Tipo de pago (elegido por el vendedor):</strong> '
+                    . ($tipoPagoTexto ? esc($tipoPagoTexto) : '<span class="text-danger">No asignado</span>')
+                    . '</div>';
+        }
 
         // Calculadora
         $html .= '<div class="col-sm-4 col-lg-4"><div class="font-w600 push-5">Calculadora</div>';
@@ -830,13 +917,16 @@ class CajaController extends BaseController
         if ($statusId !== 3 && $statusId !== 5 && !$esLiquidado) {
             $html .= '<button type="button" class="btn btn-danger mr-2" onclick="cajaModalCancelar()">Cancelar Nota</button>';
             if ($statusId === 2) {
-                $html .= '<button type="button" class="btn btn-success" onclick="cajaModalVerificar()">Verificar Pago</button>';
+                $btnLabelPago = empty($pagos) ? 'Recibir Pago y Cerrar Nota' : 'Verificar Pago';
+                $html .= '<button type="button" class="btn btn-success" onclick="cajaModalVerificar()">' . $btnLabelPago . '</button>';
             }
         }
         $html .= '</td></tr>';
 
-        // Botón Facturar en modal (solo nota pagada/liquidada, no cancelada, no ya facturada)
-        if ($statusId !== 3 && ($statusId === 5 || $esLiquidado) && empty($uuidFact2)) {
+        // Botón Facturar en modal (solo folio PADRE, pagado/liquidado, no cancelado, no ya facturado)
+        // Los folios hijos (abonos) no tienen productos propios — la factura siempre
+        // se solicita sobre el padre, una sola vez.
+        if ($referenciaPadre === 0 && $statusId !== 3 && ($statusId === 5 || $esLiquidado) && empty($uuidFact2)) {
             $btnLabel2 = $statusFact2 === 1 ? 'Facturar' : 'Solicitar Factura';
             $html .= '<tr><td colspan="4" class="text-right pt-2">'
                    . '<button type="button" class="btn btn-primary" '
@@ -1160,7 +1250,8 @@ class CajaController extends BaseController
                         WHERE COALESCE(nc.referencia, 0) > 0
                           AND nc.status != 3
                         GROUP BY nc.referencia
-                    ) pm_child ON pm_child.folio_padre = n.folio";
+                    ) pm_child ON pm_child.folio_padre = n.folio
+                    LEFT JOIN tipopago tpVendedor ON tpVendedor.id = n.tipoPago";
 
         $whereClauses = [];
         $params       = [];
@@ -1174,8 +1265,8 @@ class CajaController extends BaseController
         if ($search !== '') {
             $s = '%' . $search . '%';
             $whereClauses[] = "(n.folio LIKE ? OR c.nombre LIKE ? OR u.usuario LIKE ?)";
-            $params[] = $s; 
-            $params[] = $s; 
+            $params[] = $s;
+            $params[] = $s;
             $params[] = $s;
         }
         $where = $whereClauses ? "WHERE " . implode(" AND ", $whereClauses) : "";
@@ -1186,7 +1277,8 @@ class CajaController extends BaseController
             "SELECT n.folio, n.fecha_inicial,
                     COALESCE(c.nombre, '—') AS cliente,
                     COALESCE(u.usuario, '—') AS vendedor,
-                    COALESCE(pm_direct.tipos_pago, pm_child.tipos_pago, NULLIF(TRIM(n.tipoPago), ''), 'A Crédito') AS tipopago,
+                    COALESCE(pm_direct.tipos_pago, pm_child.tipos_pago, tpVendedor.descripcion,
+                             IF(n.status = 2, 'Pendiente de cobro', 'A Crédito')) AS tipopago,
                     n.total, n.status AS idstatus,
                     COALESCE(s.nombre, '')                   AS status_nombre,
                     n.verificado, n.referencia,
