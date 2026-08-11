@@ -25,6 +25,7 @@ class CfdiPdfService
         $totalV     = (float)$comp->getAttribute('Total');
         $moneda     = $comp->getAttribute('Moneda');
         $formaPago  = $comp->getAttribute('FormaPago');
+        $formaPagoLabel = $this->nombreFormaPago($formaPago);
         $metodoPago = $comp->getAttribute('MetodoPago');
         $noCert     = $comp->getAttribute('NoCertificado');
         $exportacion = $comp->getAttribute('Exportacion');
@@ -222,7 +223,7 @@ table { width: 100%; border-collapse: collapse; }
       <tr><td class="lbl">Fecha emisión</td>        <td>' . htmlspecialchars($fecha) . '</td></tr>
       <tr><td class="lbl">Fecha certificación</td>  <td>' . htmlspecialchars($fechaTimbrado) . '</td></tr>
       <tr><td class="lbl">Lugar Expedición</td>     <td>' . htmlspecialchars($lugar) . '</td></tr>
-      <tr><td class="lbl">Forma Pago</td>           <td>' . htmlspecialchars($formaPago) . ' / ' . htmlspecialchars($metodoPago) . '</td></tr>
+      <tr><td class="lbl">Forma Pago</td>           <td>' . htmlspecialchars($formaPagoLabel) . ' / ' . htmlspecialchars($metodoPago) . '</td></tr>
       <tr><td class="lbl">Moneda</td>               <td>' . htmlspecialchars($moneda) . '</td></tr>
     </table>
   </td>
@@ -323,5 +324,40 @@ table { width: 100%; border-collapse: collapse; }
         ]);
         $mpdf->WriteHTML($html);
         return $mpdf->Output('', \Mpdf\Output\Destination::STRING_RETURN);
+    }
+
+    /**
+     * Traduce la clave del catálogo SAT c_FormaPago a "clave – nombre".
+     */
+    private function nombreFormaPago(string $clave): string
+    {
+        $catalogo = [
+            '01' => 'Efectivo',
+            '02' => 'Cheque nominativo',
+            '03' => 'Transferencia electrónica de fondos',
+            '04' => 'Tarjeta de crédito',
+            '05' => 'Monedero electrónico',
+            '06' => 'Dinero electrónico',
+            '08' => 'Vales de despensa',
+            '12' => 'Dación en pago',
+            '13' => 'Pago por subrogación',
+            '14' => 'Pago por consignación',
+            '15' => 'Condonación',
+            '17' => 'Compensación',
+            '23' => 'Novación',
+            '24' => 'Confusión',
+            '25' => 'Remisión de deuda',
+            '26' => 'Prescripción o caducidad',
+            '27' => 'A satisfacción del acreedor',
+            '28' => 'Tarjeta de débito',
+            '29' => 'Tarjeta de servicios',
+            '30' => 'Aplicación de anticipos',
+            '31' => 'Intermediario pagos',
+            '99' => 'Por definir',
+        ];
+
+        $nombre = $catalogo[$clave] ?? null;
+
+        return $nombre ?? $clave;
     }
 }
