@@ -193,6 +193,12 @@ function cajaModalCancelar() {
     }).fail(function() { alert('Error al cancelar la nota.'); });
 }
 
+/* Ver Ticket — llamado desde el HTML generado por folioDetalleAjax */
+function cajaVerTicket(folio) {
+    window.open(baseUrl + 'caja/folio/' + folio + '/ticket', '_blank',
+        'toolbar=yes,scrollbars=yes,resizable=yes,top=100,left=200,width=500,height=600');
+}
+
 /* Verificar pago — llamado desde el HTML generado por folioDetalleAjax */
 function cajaModalVerificar() {
     var folio = ($('#folio_input_caja_modal').val() || '').trim();

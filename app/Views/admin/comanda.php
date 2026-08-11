@@ -30,7 +30,7 @@
         @page { margin: 0; }
         @media print {
             .no-print { display: none !important; }
-            html, body { padding: 0; margin: 0; height: auto; }
+            html, body { padding: 6px; margin: 0; height: auto; }
         }
     </style>
 </head>

@@ -564,6 +564,7 @@ class CajaController extends BaseController
              INNER JOIN notas_1 n   ON n.Id_Notas_1 = mn.idNotas
              INNER JOIN tipopago tp ON tp.id = mn.idTipoPago
              WHERE n.folio = ?
+               AND TRIM(LOWER(tp.descripcion)) IN ('transferencia','deposito','depósito','cheque','cargo con tarjeta','tarjeta debito','tarjeta débito','tarjeta credito','tarjeta crédito')
              GROUP BY mn.idTipoPago, tp.descripcion
              ORDER BY tp.descripcion ASC",
             [$folio]
@@ -967,6 +968,12 @@ class CajaController extends BaseController
             }
         }
         $html .= '</td></tr>';
+
+        // Ver Ticket: disponible siempre, incluyendo notas canceladas
+        $html .= '<tr><td colspan="4" class="text-right pt-2">'
+               . '<button type="button" class="btn btn-outline-dark" onclick="cajaVerTicket(' . $folio . ')">'
+               . '<i class="simple-icon-printer mr-1"></i> Ver Ticket</button>'
+               . '</td></tr>';
 
         // Botón Facturar en modal (solo folio PADRE, pagado/liquidado, no cancelado, no ya facturado)
         // Los folios hijos (abonos) no tienen productos propios — la factura siempre

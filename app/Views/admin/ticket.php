@@ -84,6 +84,13 @@
             </td>
         </tr>
         <?php endif; ?>
+        <?php if (($nota['status'] ?? '') === 'Cancelada'): ?>
+        <tr>
+            <td colspan="4" class="center">
+                <span style="color:#FF0000;">NOTA CANCELADA</span>
+            </td>
+        </tr>
+        <?php endif; ?>
 
         <!-- Cliente -->
         <tr>

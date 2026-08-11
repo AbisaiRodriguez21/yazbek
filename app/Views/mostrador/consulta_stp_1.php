@@ -173,7 +173,7 @@ function accionesNota(n) {
         if (idstatus === 2 && esSinPagar(n.tipoPagoPropio)) {
             btns += '<a href="' + BASE + n.folio + '/abono" class="btn btn-xs btn-outline-primary mr-1">Ver / Abonar</a>';
         }
-        if (idstatus === 2 || idstatus === 5) {
+        if (idstatus === 2 || idstatus === 5 || idstatus === 3) {
             btns += '<a href="#" class="btn btn-xs btn-outline-secondary mr-1"'
                   + ' onclick="mostradorVerFolio(' + n.folio + '); return false;">Ver</a>';
         }
@@ -191,11 +191,9 @@ function accionesNota(n) {
         }
     }
 
-    // Ver Ticket disponible para todos los folios (padre e hijo) excepto cancelados
-    if (idstatus !== 3) {
-        btns += '<a href="#" class="btn btn-xs btn-outline-dark mr-1"'
-              + ' onclick="mostradorVerTicket(' + n.folio + '); return false;">Ver Ticket</a>';
-    }
+    // Ver Ticket disponible para todos los folios (padre e hijo), incluyendo cancelados
+    btns += '<a href="#" class="btn btn-xs btn-outline-dark mr-1"'
+          + ' onclick="mostradorVerTicket(' + n.folio + '); return false;">Ver Ticket</a>';
 
     // Comanda (solo productos, sin precios) — solo folios padre (los hijos
     // son abonos, sin productos propios)

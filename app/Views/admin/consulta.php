@@ -303,11 +303,9 @@ function accionesNota(n) {
                + '<i class="simple-icon-eye"></i>Ver detalle</a>';
     }
 
-    // Ver Ticket — disponible para todos los folios (padre e hijo) excepto cancelados
-    if (idstatus !== 3) {
-        items += '<a class="dropdown-item" href="#" onclick="adminVerTicket(' + n.folio + '); return false;">'
-               + '<i class="simple-icon-printer"></i>Ver Ticket</a>';
-    }
+    // Ver Ticket — disponible para todos los folios (padre e hijo), incluyendo cancelados
+    items += '<a class="dropdown-item" href="#" onclick="adminVerTicket(' + n.folio + '); return false;">'
+           + '<i class="simple-icon-printer"></i>Ver Ticket</a>';
 
     // Comanda (solo productos, sin precios) — solo folios padre (los hijos
     // son abonos, sin productos propios) y no cancelados

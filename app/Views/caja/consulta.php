@@ -153,7 +153,7 @@ var URL_CANCELAR = '<?= base_url('caja/cancelar/') ?>';
                 var esPadre  = parseInt(row.referencia || 0, 10) === 0;
                 var btns = '';
                 /* Botones como <button> para evitar que el SPA los intercepte */
-                if (idstatus !== 5 && idstatus !== 3) {
+                if (idstatus !== 5) {
                     btns += '<button class="btn btn-xs btn-outline-primary mr-1"'
                           + ' onclick="cajaVerFolioModal(' + row.folio + ')">Ver</button>';
                 }
@@ -174,11 +174,9 @@ var URL_CANCELAR = '<?= base_url('caja/cancelar/') ?>';
                     btns += '<button class="btn btn-xs btn-outline-primary mr-1"'
                           + ' onclick="cajaVerFolioModal(' + row.folio + ')">Ver</button>';
                 }
-                // Ver Ticket: disponible para todos los status excepto cancelado
-                if (idstatus !== 3) {
-                    btns += '<button class="btn btn-xs btn-outline-dark mr-1"'
-                          + ' onclick="cajaVerTicket(' + row.folio + ')">Ver Ticket</button>';
-                }
+                // Ver Ticket: disponible para todos los status, incluyendo cancelado
+                btns += '<button class="btn btn-xs btn-outline-dark mr-1"'
+                      + ' onclick="cajaVerTicket(' + row.folio + ')">Ver Ticket</button>';
                 // Comanda (solo productos, sin precios) — solo folios padre
                 if (esPadre && idstatus !== 3) {
                     btns += '<button class="btn btn-xs btn-outline-dark mr-1"'
