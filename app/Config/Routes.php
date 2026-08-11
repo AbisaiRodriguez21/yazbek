@@ -93,6 +93,7 @@ $routes->group('admin', ['filter' => 'role:1'], function ($routes) {
     $routes->post('caja/corte', 'AdminController::cajaCorte');
     $routes->get('caja/corte/exportar', 'AdminController::exportarCorteXls');
     $routes->post('caja/monto/referencia', 'AdminController::guardarReferenciaMontosnotas');
+    $routes->post('caja/monto/referencias-pendientes', 'AdminController::referenciasPendientes');
 
     // Importar productos CSV
     $routes->get('importar', 'AdminController::importar');
@@ -156,6 +157,9 @@ $routes->group('admin', ['filter' => 'role:1'], function ($routes) {
 
     // Ver Ticket de impresión
     $routes->get('folio/(:num)/ticket', 'AdminController::verTicket/$1');
+
+    // Comanda de impresión (solo productos, sin precios/pagos)
+    $routes->get('folio/(:num)/comanda', 'AdminController::verComanda/$1');
 
     // Revivir nota cancelada (solo admin)
     $routes->post('folio/(:num)/revivir', 'AdminController::revivirNota/$1');
@@ -278,6 +282,9 @@ $routes->group('mostrador', ['filter' => 'role:3,4'], function ($routes) {
 
     // Ver Ticket de impresión (reutiliza el mismo método de admin)
     $routes->get('folio/(:num)/ticket', 'AdminController::verTicket/$1');
+
+    // Comanda de impresión (reutiliza el mismo método de admin)
+    $routes->get('folio/(:num)/comanda', 'AdminController::verComanda/$1');
 });
 
 // =============================================================
@@ -328,6 +335,9 @@ $routes->group('caja', ['filter' => 'role:2'], function ($routes) {
     // Ver Ticket de impresión (reutiliza el mismo método de admin)
     $routes->get('folio/(:num)/ticket', 'AdminController::verTicket/$1');
 
+    // Comanda de impresión (reutiliza el mismo método de admin)
+    $routes->get('folio/(:num)/comanda', 'AdminController::verComanda/$1');
+
     // Venta stp 2 desde caja (cobro)
     $routes->get('venta/(:num)', 'CajaController::ventaStp2/$1');
     $routes->post('venta/(:num)', 'CajaController::ventaStp2Post/$1');
@@ -342,6 +352,7 @@ $routes->group('caja', ['filter' => 'role:2'], function ($routes) {
 
     // Guardar referencia de pago desde caja (AJAX)
     $routes->post('monto/referencia', 'CajaController::guardarReferenciaMontosnotas');
+    $routes->post('monto/referencias-pendientes', 'CajaController::referenciasPendientes');
 
     // Reporte Diario caja
     $routes->get('reportediario', 'CajaController::reporteDiarioPage');

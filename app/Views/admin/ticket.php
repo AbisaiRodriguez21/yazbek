@@ -70,6 +70,20 @@
                 <?php endif; ?>
             </td>
         </tr>
+        <?php if (!empty($nota['referencia']) && (int)$nota['referencia'] !== 0): ?>
+        <tr>
+            <td colspan="4" class="center">
+                <span class="red strong">*** ESTE TICKET ES UN ANTICIPO (abono) del folio #<?= $nota['referencia'] ?> ***</span>
+            </td>
+        </tr>
+        <?php endif; ?>
+        <?php if (!empty($nota['fecha_edicion'])): ?>
+        <tr>
+            <td colspan="4" class="center">
+                <span style="color:#FF0000;">FOLIO EDITADO el <?= date('d/m/Y h:i A', strtotime($nota['fecha_edicion'])) ?></span>
+            </td>
+        </tr>
+        <?php endif; ?>
 
         <!-- Cliente -->
         <tr>

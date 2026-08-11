@@ -4,7 +4,13 @@
 <link rel="stylesheet" href="<?= base_url('assets/vendor/select2.min.css') ?>">
 <link rel="stylesheet" href="<?= base_url('assets/vendor/select2-bootstrap.min.css') ?>">
 <style>
-.carrito-table td, .carrito-table th { vertical-align: middle; }
+.carrito-table td, .carrito-table th { vertical-align: middle; white-space: normal; word-break: break-word; }
+.carrito-table th.col-sku, .carrito-table td.col-sku { width: 12%; }
+.carrito-table th.col-desc, .carrito-table td.col-desc { width: 43%; }
+.carrito-table th.col-precio, .carrito-table td.col-precio { width: 13%; }
+.carrito-table th.col-cant, .carrito-table td.col-cant { width: 9%; }
+.carrito-table th.col-importe, .carrito-table td.col-importe { width: 13%; }
+.carrito-table th.col-accion, .carrito-table td.col-accion { width: 10%; }
 .btn-quitar { padding: 2px 8px; }
 /* #panelResumen sin sticky — el layout scrollea completo */
 .precio-tachado { text-decoration: line-through; color: #888; }
@@ -37,7 +43,7 @@
 
 <div class="row">
     <!-- Panel izquierdo: buscador -->
-    <div class="col-md-4">
+    <div class="col-md-3">
         <!-- Agregar producto -->
         <div class="card">
             <div class="card-header font-weight-bold" style="padding-top: 1rem; padding-bottom: 1rem;">Agregar Producto</div>
@@ -77,7 +83,7 @@
     </div>
 
     <!-- Panel derecho: resumen + carrito -->
-    <div class="col-md-8">
+    <div class="col-md-9">
         <div class="card mb-3" id="panelResumen">
             <div class="card-header font-weight-bold" style="padding-top: 1rem; padding-bottom: 1rem;">Resumen</div>
             <div class="card-body">
@@ -106,27 +112,34 @@
         <div class="card">
             <div class="card-header font-weight-bold" style="padding-top: 1rem; padding-bottom: 1rem;">Productos en la Nota</div>
             <div class="card-body p-0 pt-2">
-                <div class="table-responsive" style="max-height: 420px; overflow-y: auto;">
+                <div style="max-height: 420px; overflow-y: auto;">
                     <table class="table table-striped mb-0 carrito-table" id="tablaCarrito">
                         <thead>
                             <tr>
-                                <th>SKU</th>
-                                <th>Descripción</th>
-                                <th class="text-right">Precio</th>
-                                <th class="text-right">Cant.</th>
-                                <th class="text-right">Importe</th>
-                                <th></th>
+                                <th class="col-sku">SKU</th>
+                                <th class="col-desc">Descripción</th>
+                                <th class="text-right col-precio">Precio</th>
+                                <th class="text-right col-cant">Cant.</th>
+                                <th class="text-right col-importe">Importe</th>
+                                <th class="col-accion"></th>
                             </tr>
                         </thead>
                         <tbody id="tbodyCarrito">
                             <?php foreach ($detalle as $d): ?>
                             <tr id="row-<?= (int)$d['Id_Notas_2'] ?>">
-                                <td><?= esc($d['sku']) ?></td>
-                                <td><?= esc(($d['descripcion'] ?? $d['estilo']) . (!empty($d['color']) ? ' — ' . $d['color'] : '')) ?></td>
-                                <td class="text-right">$<?= number_format($d['precio'], 2) ?></td>
-                                <td class="text-right"><?= (int)$d['cantidad'] ?></td>
-                                <td class="text-right">$<?= number_format($d['importe'], 2) ?></td>
-                                <td class="text-center">
+                                <td class="col-sku"><?= esc($d['sku']) ?></td>
+                                <td class="col-desc"><?php
+                                    $partesDesc = array_filter([
+                                        $d['descripcion'] ?? $d['estilo'],
+                                        $d['talla']  ?? '',
+                                        $d['color']  ?? '',
+                                    ], fn($p) => trim((string)$p) !== '');
+                                    echo esc(implode(' — ', $partesDesc));
+                                ?></td>
+                                <td class="text-right col-precio">$<?= number_format($d['precio'], 2) ?></td>
+                                <td class="text-right col-cant"><?= (int)$d['cantidad'] ?></td>
+                                <td class="text-right col-importe">$<?= number_format($d['importe'], 2) ?></td>
+                                <td class="text-center col-accion">
                                     <button class="btn btn-sm btn-outline-danger btn-quitar"
                                             data-id="<?= (int)$d['Id_Notas_2'] ?>"
                                             data-folio="<?= (int)$nota['folio'] ?>">
@@ -364,13 +377,16 @@ function renderCarrito(resp) {
     var filas = '';
     if (resp.detalle && resp.detalle.length > 0) {
         resp.detalle.forEach(function(d) {
+            var partesDesc = [d.descripcion || d.estilo, d.talla, d.color].filter(function(p) {
+                return p !== null && p !== undefined && String(p).trim() !== '';
+            });
             filas += '<tr id="row-' + d.Id_Notas_2 + '">'
-                + '<td>' + escHtml(d.sku) + '</td>'
-                + '<td>' + escHtml((d.descripcion || d.estilo) + (d.color ? ' — ' + d.color : '')) + '</td>'
-                + '<td class="text-right">' + fmt(d.precio) + '</td>'
-                + '<td class="text-right">' + d.cantidad + '</td>'
-                + '<td class="text-right">' + fmt(d.importe) + '</td>'
-                + '<td class="text-center">'
+                + '<td class="col-sku">' + escHtml(d.sku) + '</td>'
+                + '<td class="col-desc">' + escHtml(partesDesc.join(' — ')) + '</td>'
+                + '<td class="text-right col-precio">' + fmt(d.precio) + '</td>'
+                + '<td class="text-right col-cant">' + d.cantidad + '</td>'
+                + '<td class="text-right col-importe">' + fmt(d.importe) + '</td>'
+                + '<td class="text-center col-accion">'
                 + '<button class="btn btn-sm btn-outline-danger btn-quitar" data-id="' + d.Id_Notas_2 + '" data-folio="' + resp.folio + '">&times;</button>'
                 + '</td></tr>';
         });

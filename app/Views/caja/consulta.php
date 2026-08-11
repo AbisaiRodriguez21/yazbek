@@ -142,6 +142,9 @@ var URL_CANCELAR = '<?= base_url('caja/cancelar/') ?>';
                 } else if (factura === 1) {
                     label += ' <span class="badge" style="background:#fd7e14;color:#fff;font-size:10px;">Fact. pendiente</span>';
                 }
+                if (row.fecha_edicion) {
+                    label += ' <span class="badge" style="background:#6f42c1;color:#fff;font-size:10px;" title="Editado el ' + row.fecha_edicion + '">Editado</span>';
+                }
                 return label;
             }},
             { data: null, orderable: false, searchable: false,
@@ -176,21 +179,26 @@ var URL_CANCELAR = '<?= base_url('caja/cancelar/') ?>';
                     btns += '<button class="btn btn-xs btn-outline-dark mr-1"'
                           + ' onclick="cajaVerTicket(' + row.folio + ')">Ver Ticket</button>';
                 }
-                // Agregar Referencia (Transferencia / Depósito / Cargo con tarjeta)
+                // Comanda (solo productos, sin precios) — solo folios padre
+                if (esPadre && idstatus !== 3) {
+                    btns += '<button class="btn btn-xs btn-outline-dark mr-1"'
+                          + ' onclick="cajaVerComanda(' + row.folio + ')">Comanda</button>';
+                }
+                // Agregar Referencia (Transferencia / Depósito / Cheque / Cargo con
+                // tarjeta / Tarjeta Débito / Tarjeta Crédito)
                 var _tp = (row.tipopago || '').toLowerCase();
                 var _esRef = _tp.indexOf('transferencia') >= 0
                           || _tp.indexOf('deposito')       >= 0
                           || _tp.indexOf('depósito')       >= 0
-                          || _tp.indexOf('cargo con tarjeta') >= 0;
+                          || _tp.indexOf('cheque')         >= 0
+                          || _tp.indexOf('cargo con tarjeta') >= 0
+                          || _tp.indexOf('tarjeta debito')  >= 0
+                          || _tp.indexOf('tarjeta débito')  >= 0
+                          || _tp.indexOf('tarjeta credito') >= 0
+                          || _tp.indexOf('tarjeta crédito') >= 0;
                 if (_esRef && idstatus !== 3) {
                     btns += '<button class="btn btn-xs btn-outline-secondary mr-1"'
-                          + ' onclick="cajaAbrirModalReferencia('
-                          + (row.mn_id_ref || 0) + ','
-                          + '\'' + (row.tipopago_ref_nombre || row.tipopago || '').replace(/'/g,"\\'") + '\','
-                          + '\'' + (row.mn_referencia_banco || '').replace(/'/g,"\\'") + '\','
-                          + row.folio + ','
-                          + (row.mn_tipo_ref || 0)
-                          + ')">Referencia</button>';
+                          + ' onclick="cajaAbrirModalReferencia(' + row.folio + ')">Referencia</button>';
                 }
                 // ── Botones de Facturación (Caja Nivel 2) ──
                 if (esPadre && (idstatus === 5 || idstatus === 6) && idstatus !== 3) {
@@ -274,6 +282,12 @@ function cajaVerTicket(folio) {
         'toolbar=yes,scrollbars=yes,resizable=yes,top=100,left=200,width=500,height=600');
 }
 
+/* Comanda de impresión (solo productos) */
+function cajaVerComanda(folio) {
+    window.open('<?= base_url('caja/folio/') ?>' + folio + '/comanda', '_blank',
+        'toolbar=yes,scrollbars=yes,resizable=yes,top=100,left=200,width=360,height=520');
+}
+
 function cajaCancelarFolio(folio) {
     if (confirm('¿Cancelar el folio ' + folio + '?')) {
         window.location.href = URL_CANCELAR + folio;
@@ -318,36 +332,87 @@ function cajaVerificarPago(folio) {
 }
 
 // ── Referencia bancaria desde Consulta Folios (Caja) ──────────────────
-var _cajaRefMnId     = null;
-var _cajaRefFolio    = null;
-var _cajaRefMnTipoId = null;
+// Un folio puede tener MÁS DE UNA forma de pago que requiera referencia
+// (p.ej. Transferencia + Cargo con tarjeta) — se listan todas y cada una
+// se guarda por separado.
+var _cajaRefFolio = null;
 
-function cajaAbrirModalReferencia(mnId, tipopago, refActual, folio, mnTipoId) {
-    _cajaRefMnId     = mnId;
-    _cajaRefFolio    = folio;
-    _cajaRefMnTipoId = mnTipoId || 0;
+function _cajaRefEsc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function(c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+}
+
+function cajaAbrirModalReferencia(folio) {
+    _cajaRefFolio = folio;
     document.getElementById('cajaModalRefBancoFolio').textContent = '#' + folio;
-    document.getElementById('cajaModalRefBancoTipo').textContent  = tipopago || '';
-    document.getElementById('cajaInputRefBanco').value            = refActual || '';
+    document.getElementById('cajaRefBancoLista').innerHTML =
+        '<p class="text-muted text-center py-2 mb-0">Cargando...</p>';
     document.getElementById('cajaRefBancoError').classList.add('d-none');
-    document.getElementById('cajaRefBancoOk').classList.add('d-none');
     $('#cajaModalRefBanco').modal('show');
-    setTimeout(function() { document.getElementById('cajaInputRefBanco').focus(); }, 400);
+
+    var fd = new FormData();
+    fd.append('<?= csrf_token() ?>', '<?= csrf_hash() ?>');
+    fd.append('folio', folio);
+
+    fetch('<?= base_url('caja/monto/referencias-pendientes') ?>', {
+        method: 'POST', body: fd, credentials: 'same-origin'
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        var items = (data.ok && data.items) ? data.items : [];
+        if (items.length === 0) {
+            document.getElementById('cajaRefBancoLista').innerHTML =
+                '<p class="text-muted text-center py-2 mb-0">Este folio no tiene formas de pago que requieran referencia.</p>';
+            return;
+        }
+        var html = '';
+        items.forEach(function(it, i) {
+            html += '<div class="form-group mb-3' + (i < items.length - 1 ? ' pb-3 border-bottom' : '') + '">'
+                  + '<label class="mb-1"><strong>' + _cajaRefEsc(it.tipo) + '</strong>'
+                  + ' <span class="text-muted">($' + parseFloat(it.monto || 0).toFixed(2) + ')</span></label>'
+                  + '<div class="input-group">'
+                  + '<input type="text" class="form-control caja-ref-input" '
+                  + 'data-id-notas="' + it.idNotas + '" data-tipo-id="' + it.idTipoPago + '" '
+                  + 'value="' + _cajaRefEsc(it.referencia) + '" placeholder="Ej. 1234567890" maxlength="100">'
+                  + '<div class="input-group-append">'
+                  + '<button type="button" class="btn btn-primary caja-ref-guardar" '
+                  + 'data-id-notas="' + it.idNotas + '" data-tipo-id="' + it.idTipoPago + '">Guardar</button>'
+                  + '</div></div>'
+                  + '<small class="caja-ref-status text-success d-none" data-tipo-id="' + it.idTipoPago + '">✔ Guardado</small>'
+                  + '</div>';
+        });
+        document.getElementById('cajaRefBancoLista').innerHTML = html;
+    })
+    .catch(function() {
+        document.getElementById('cajaRefBancoLista').innerHTML = '';
+        document.getElementById('cajaRefBancoError').textContent = 'Error al cargar las formas de pago del folio.';
+        document.getElementById('cajaRefBancoError').classList.remove('d-none');
+    });
 }
 
 document.addEventListener('DOMContentLoaded', function() {
-    document.getElementById('btnCajaGuardarRefBanco').addEventListener('click', function() {
-        var btn = this;
-        var ref = document.getElementById('cajaInputRefBanco').value.trim();
+    document.getElementById('cajaRefBancoLista').addEventListener('click', function(e) {
+        var btn = e.target.closest('.caja-ref-guardar');
+        if (!btn) return;
+
+        var idNotas = btn.getAttribute('data-id-notas');
+        var tipoId  = btn.getAttribute('data-tipo-id');
+        var input   = document.querySelector('.caja-ref-input[data-tipo-id="' + tipoId + '"]');
+        var status  = document.querySelector('.caja-ref-status[data-tipo-id="' + tipoId + '"]');
+        var ref     = input.value.trim();
 
         btn.disabled = true;
+        var originalText = btn.textContent;
         btn.textContent = 'Guardando...';
+        status.classList.add('d-none');
+        document.getElementById('cajaRefBancoError').classList.add('d-none');
 
         var fd = new FormData();
         fd.append('<?= csrf_token() ?>', '<?= csrf_hash() ?>');
-        fd.append('mn_id',      _cajaRefMnId     || 0);
-        fd.append('mn_tipo_id', _cajaRefMnTipoId || 0);
-        fd.append('folio',      _cajaRefFolio    || 0);
+        fd.append('mn_id',      idNotas);
+        fd.append('mn_tipo_id', tipoId);
+        fd.append('folio',      _cajaRefFolio || 0);
         fd.append('referencia', ref);
 
         fetch('<?= base_url('caja/monto/referencia') ?>', {
@@ -356,13 +421,10 @@ document.addEventListener('DOMContentLoaded', function() {
         .then(function(r) { return r.json(); })
         .then(function(data) {
             btn.disabled = false;
-            btn.textContent = 'Guardar';
+            btn.textContent = originalText;
             if (data.ok) {
-                document.getElementById('cajaRefBancoOk').classList.remove('d-none');
-                setTimeout(function() {
-                    $('#cajaModalRefBanco').modal('hide');
-                    $('#tablaCajaConsulta').DataTable().ajax.reload(null, false);
-                }, 1200);
+                status.classList.remove('d-none');
+                $('#tablaCajaConsulta').DataTable().ajax.reload(null, false);
             } else {
                 document.getElementById('cajaRefBancoError').textContent = data.msg || 'Error al guardar.';
                 document.getElementById('cajaRefBancoError').classList.remove('d-none');
@@ -370,14 +432,19 @@ document.addEventListener('DOMContentLoaded', function() {
         })
         .catch(function() {
             btn.disabled = false;
-            btn.textContent = 'Guardar';
+            btn.textContent = originalText;
             document.getElementById('cajaRefBancoError').textContent = 'Error de conexión.';
             document.getElementById('cajaRefBancoError').classList.remove('d-none');
         });
     });
 
-    document.getElementById('cajaInputRefBanco').addEventListener('keypress', function(e) {
-        if (e.which === 13) document.getElementById('btnCajaGuardarRefBanco').click();
+    document.getElementById('cajaRefBancoLista').addEventListener('keypress', function(e) {
+        if (e.which === 13 && e.target.classList.contains('caja-ref-input')) {
+            e.preventDefault();
+            var tipoId = e.target.getAttribute('data-tipo-id');
+            var btn = document.querySelector('.caja-ref-guardar[data-tipo-id="' + tipoId + '"]');
+            if (btn) btn.click();
+        }
     });
 });
 
@@ -483,7 +550,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
 <!-- Modal: Referencia bancaria (Caja) -->
 <div class="modal fade" id="cajaModalRefBanco" tabindex="-1" role="dialog">
-    <div class="modal-dialog modal-sm" role="document">
+    <div class="modal-dialog" role="document">
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title">
@@ -493,18 +560,11 @@ document.addEventListener('DOMContentLoaded', function() {
                 <button type="button" class="close" data-dismiss="modal"><span>&times;</span></button>
             </div>
             <div class="modal-body">
-                <p class="text-muted small mb-3">Método: <strong id="cajaModalRefBancoTipo"></strong></p>
-                <div class="form-group mb-2">
-                    <label>Número de referencia</label>
-                    <input type="text" id="cajaInputRefBanco" class="form-control"
-                           placeholder="Ej. 1234567890" maxlength="100">
-                </div>
+                <div id="cajaRefBancoLista"></div>
                 <div id="cajaRefBancoError" class="alert alert-danger py-1 d-none"></div>
-                <div id="cajaRefBancoOk"    class="alert alert-success py-1 d-none">✔ Guardado correctamente</div>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancelar</button>
-                <button type="button" class="btn btn-primary" id="btnCajaGuardarRefBanco">Guardar</button>
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Cerrar</button>
             </div>
         </div>
     </div>

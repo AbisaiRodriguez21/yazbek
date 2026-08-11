@@ -357,6 +357,13 @@ class MostradorController extends BaseController
         // pendiente de que caja la busque por folio y la cobre/cierre.
         $idEstatus = 2;
 
+        // Si la nota YA estaba "En proceso" (2) antes de este POST, significa
+        // que el Admin editó productos y está reconfirmando (Paso 3 de nuevo)
+        // — no es la primera finalización. Se deja constancia en fecha_edicion
+        // y se limpian declaraciones de pago anteriores (aún no recibidas por
+        // caja, así que es seguro reemplazarlas por la nueva selección).
+        $esReconfirmacion = isset($notaRow) && (int)($notaRow['status'] ?? 0) === 2;
+
         // ── Actualizar notas_1 ──
         $db->query(
             "UPDATE notas_1
@@ -364,7 +371,8 @@ class MostradorController extends BaseController
                  iva=?, total=?, descuento=?, status=?,
                  factura=?, tipoImpresion=?, cargoPorImpresion=?, totalPiezas=?,
                  rfc_receptor=?, razon_social_receptor=?, cp_receptor=?,
-                 uso_cfdi=?, regimen_fiscal_receptor=?, forma_pago_cfdi=?
+                 uso_cfdi=?, regimen_fiscal_receptor=?, forma_pago_cfdi=?,
+                 fecha_edicion=IF(? = 1, NOW(), fecha_edicion)
              WHERE folio=?",
             [
                 $sumaImportes, $subTotal, $cargoTarjeta, $subTotal2,
@@ -372,16 +380,46 @@ class MostradorController extends BaseController
                 $factura, $impresion, $cargoImpresion, $totalPiezas,
                 $rfcReceptor ?: null, $razonSocialReceptor ?: null, $cpReceptor ?: null,
                 $usoCFDI, $regimenFiscalReceptor, $formaPagoCFDI,
+                $esReconfirmacion ? 1 : 0,
                 $folioN1,
             ]
         );
 
-        // Se indica el tipo de pago con el que pagará el cliente (sin registrar
-        // dinero) para que caja (o Admin desde su Verificar Caja) lo vea de
-        // inmediato al recibir el folio.
-        $tipoPagoVendedor = (int) $this->request->getPost('tipoPago');
-        if ($tipoPagoVendedor > 0) {
-            $db->query("UPDATE notas_1 SET tipoPago = ? WHERE folio = ?", [$tipoPagoVendedor, $folioN1]);
+        if ($esReconfirmacion) {
+            $db->query("DELETE FROM montosnotas WHERE idNotas = ?", [$idNotas1]);
+            AuditService::log(AuditService::VENTA_CREADA, 'notas_1', $folioN1,
+                "Nota #{$folioN1} editada y reconfirmada por Admin (productos y/o forma de pago actualizados).");
+        }
+
+        // Se indican los tipos de pago con los que pagará el cliente (sin
+        // registrar dinero recibido) para que caja (o Admin desde su Verificar
+        // Caja) los vea de inmediato al recibir el folio. Sigue siendo UNA sola
+        // nota: con un solo método se guarda en tipoPago (como ya funcionaba).
+        // Con varios métodos se usa la tabla montosnotas ya existente —cada
+        // método declarado es una fila— sin agregar columnas nuevas; caja
+        // solo confirma/verifica esas filas al cerrar la nota.
+        $metodosPago = json_decode($this->request->getPost('metodosPago') ?? '[]', true) ?: [];
+        $metodosPago = array_values(array_filter($metodosPago, function ($m) {
+            return (int) ($m['tipo'] ?? 0) > 0 && (float) ($m['monto'] ?? 0) > 0;
+        }));
+
+        if (count($metodosPago) === 1) {
+            $db->query("UPDATE notas_1 SET tipoPago = ? WHERE folio = ?",
+                [(int) $metodosPago[0]['tipo'], $folioN1]);
+        } elseif (count($metodosPago) > 1) {
+            // Al reconfirmar con varios métodos, limpiar un tipoPago único que
+            // hubiera quedado de una finalización anterior (edición).
+            $db->query("UPDATE notas_1 SET tipoPago = NULL WHERE folio = ?", [$folioN1]);
+            $fecha = date('Y-m-d H:i:s');
+            foreach ($metodosPago as $m) {
+                $db->query(
+                    "INSERT INTO montosnotas (idNotas, idTipoPago, monto, cargos, anticipo, fecha)
+                     VALUES (?, ?, ?, 0, 0, ?)",
+                    [$idNotas1, (int) $m['tipo'], (float) $m['monto'], $fecha]
+                );
+            }
+            AuditService::log(AuditService::VENTA_CREADA, 'notas_1', $folioN1,
+                "Nota #{$folioN1} finalizada con " . count($metodosPago) . " formas de pago.");
         }
 
         // ── Actualizar datos fiscales del cliente si los llenó en la factura ──
@@ -443,8 +481,8 @@ class MostradorController extends BaseController
     // El vendedor solo indica cantidad + tipo de pago; esto crea un folio
     // hijo (igual que antes, vía siguienteFolio) pero SIN registrar el pago
     // en montosnotas — queda pendiente de que Caja lo reciba y confirme
-    // (mismo botón "Recibir Pago y Cerrar Nota" que ya usa Caja para
-    // cualquier folio en status=2). Solo entonces se suma al total pagado.
+    // (mismo botón "Verificar Pago" que ya usa Caja para cualquier folio en
+    // status=2). Solo entonces se suma al total pagado.
     // ──────────────────────────────────────────────────────────────
     public function abono(int $folio): string|\CodeIgniter\HTTP\RedirectResponse
     {
@@ -506,6 +544,27 @@ class MostradorController extends BaseController
                               ->with('error', 'Ingresa una cantidad y un tipo de pago válidos.');
         }
 
+        $nuevoFolio = $this->crearFolioHijoPendiente(
+            $folio, (int)$nota['idCliente'], (int)$nota['idVendedor'], $monto, $idTipoPago
+        );
+
+        AuditService::log(AuditService::VENTA_CREADA, 'notas_1', $nuevoFolio,
+            "Abono registrado por vendedor sobre folio #{$folio}: nuevo folio #{$nuevoFolio}, " .
+            "monto $" . number_format($monto, 2) . ", pendiente de que caja lo reciba y confirme.");
+
+        return redirect()->to($this->consultaUrl())
+                          ->with('success', "Abono registrado como folio #{$nuevoFolio}. Caja lo recibirá y confirmará el pago.");
+    }
+
+    // Crea un folio hijo pendiente (referencia = folio padre, sin productos,
+    // status=2, sin registrar dinero en montosnotas) — usado tanto por un
+    // abono individual como por cada método cuando la nota se paga con más
+    // de uno. Caja lo recibe y confirma con su flujo normal ("Recibir Pago y
+    // Cerrar Nota"), que además liquida al padre cuando todos sus hijos
+    // completan el total.
+    private function crearFolioHijoPendiente(int $folioPadre, int $idCliente, int $idVendedor, float $monto, int $idTipoPago): int
+    {
+        $db         = \Config\Database::connect();
         $nuevoFolio = $this->notaModel->siguienteFolio();
         $fecha      = date('Y-m-d H:i:s');
 
@@ -515,19 +574,10 @@ class MostradorController extends BaseController
               sumaImportes, subTotal, subTotal2, iva, total, totalPiezas,
               status, descuento, cargoTarjeta, factura, tipoImpresion, tipoPago)
              VALUES (?, ?, ?, ?, ?, ?, 0, ?, 0, 0, ?, 0, 2, 0, 0, 0, 1, ?)",
-            [
-                $nuevoFolio, $fecha, $fecha,
-                $nota['idCliente'], $nota['idVendedor'], $folio,
-                $monto, $monto, $idTipoPago,
-            ]
+            [$nuevoFolio, $fecha, $fecha, $idCliente, $idVendedor, $folioPadre, $monto, $monto, $idTipoPago]
         );
 
-        AuditService::log(AuditService::VENTA_CREADA, 'notas_1', $nuevoFolio,
-            "Abono registrado por vendedor sobre folio #{$folio}: nuevo folio #{$nuevoFolio}, " .
-            "monto $" . number_format($monto, 2) . ", pendiente de que caja lo reciba y confirme.");
-
-        return redirect()->to($this->consultaUrl())
-                          ->with('success', "Abono registrado como folio #{$nuevoFolio}. Caja lo recibirá y confirmará el pago.");
+        return $nuevoFolio;
     }
 
     // URL de "Consulta de Folios" según el rol de quien hizo la petición — Admin
@@ -595,12 +645,21 @@ class MostradorController extends BaseController
 
         // Obtener nota y producto
         $nota = $db->query(
-            "SELECT Id_Notas_1 FROM notas_1 WHERE folio = ? LIMIT 1", [$folio]
+            "SELECT Id_Notas_1, status FROM notas_1 WHERE folio = ? LIMIT 1", [$folio]
         )->getRowArray();
 
         if (!$nota) {
             return $this->response->setContentType('application/json')
                         ->setBody(json_encode(['success' => false, 'message' => 'Nota no encontrada.']));
+        }
+
+        // Bloquear solo notas ya verificadas/cobradas (5=Pagada, 6=Liquidado).
+        // Nota: las notas nuevas se crean con status=3 (mismo valor que
+        // "Cancelada") mientras se arman en Paso 1/2 — por eso NO se usa una
+        // lista de permitidos, sino bloquear específicamente lo ya pagado.
+        if (in_array((int) $nota['status'], [5, 6], true)) {
+            return $this->response->setContentType('application/json')
+                        ->setBody(json_encode(['success' => false, 'message' => 'Esta nota ya fue verificada/cerrada y no se puede editar.']));
         }
 
         $producto = $db->query(
@@ -697,6 +756,16 @@ class MostradorController extends BaseController
         $estilo = (string) $this->request->getPost('estilo');
 
         $db = \Config\Database::connect();
+
+        // Bloquear solo notas ya verificadas/cobradas (5=Pagada, 6=Liquidado).
+        // Nota: las notas nuevas se crean con status=3 (mismo valor que
+        // "Cancelada") mientras se arman en Paso 1/2 — por eso NO se usa una
+        // lista de permitidos, sino bloquear específicamente lo ya pagado.
+        $notaStatus = $db->query("SELECT status FROM notas_1 WHERE folio = ? LIMIT 1", [$folio])->getRowArray();
+        if ($notaStatus && in_array((int) $notaStatus['status'], [5, 6], true)) {
+            return $this->response->setContentType('application/json')
+                        ->setBody(json_encode(['success' => false, 'message' => 'Esta nota ya fue verificada/cerrada y no se puede editar.']));
+        }
 
         // Obtener la línea para saber sku y cantidad a devolver
         $linea = $db->query(
@@ -1422,8 +1491,13 @@ class MostradorController extends BaseController
             "SELECT n.folio, n.fecha_inicial,
                     COALESCE(c.nombre, '—') AS cliente,
                     COALESCE(u.usuario, '—') AS vendedor,
-                    COALESCE(pm_direct.tipos_pago, pm_child.tipos_pago, tpVendedor.descripcion,
-                             IF(n.status = 2, 'Pendiente de cobro', 'A Crédito')) AS tipopago,
+                    CASE
+                        WHEN TRIM(LOWER(tpVendedor.descripcion)) IN ('sin pagar','a credito','a crédito','credito','crédito')
+                            THEN 'A Crédito'
+                        ELSE COALESCE(pm_direct.tipos_pago, pm_child.tipos_pago, tpVendedor.descripcion,
+                                      IF(n.status = 2, 'Pendiente de cobro', 'A Crédito'))
+                    END AS tipopago,
+                    tpVendedor.descripcion AS tipoPagoPropio,
                     n.total, n.status AS idstatus,
                     COALESCE(s.nombre, '') AS status_nombre,
                     n.verificado,
@@ -1781,6 +1855,7 @@ class MostradorController extends BaseController
             "SELECT n2.*,
                     COALESCE(NULLIF(n2.color,''), p.Color, '')                            AS color,
                     COALESCE(NULLIF(n2.descripcion,''), p.Descripcion_Larga, n2.estilo)   AS descripcion,
+                    p.Talla                                                               AS talla,
                     COALESCE(NULLIF(n2.pUnitario, 0),  p.pMenudeo, 0)                     AS pUnitarioFinal,
                     COALESCE(NULLIF(n2.pUnitarioM, 0), p.pMayoreo, n2.pUnitario, 0)       AS pUnitarioMFinal
              FROM notas_2 n2

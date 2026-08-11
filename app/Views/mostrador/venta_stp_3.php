@@ -170,16 +170,26 @@
                     <input type="hidden" id="hidTotal" name="total" value="">
 
                     <div class="form-group">
-                        <label>Tipo de Pago (con el que pagará el cliente) <span class="text-danger">*</span></label>
-                        <select name="tipoPago" id="selectTipoPagoVendedor" class="form-control" required>
-                            <option value="">— Selecciona —</option>
-                            <?php foreach ($tipoPagos as $tp): ?>
-                            <option value="<?= (int)$tp['id'] ?>"><?= esc($tp['descripcion']) ?></option>
-                            <?php endforeach; ?>
-                        </select>
+                        <label>Forma(s) de Pago (con las que pagará el cliente) <span class="text-danger">*</span></label>
+                        <div class="card card-body bg-light mb-2" id="panelFormasPago">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <strong>Métodos agregados</strong>
+                                <button type="button" class="btn btn-sm btn-primary" id="btnAgregarMetodoPago">
+                                    <i class="iconsminds-add"></i> Agregar método
+                                </button>
+                            </div>
+                            <ul id="listaMetodosPago" class="list-group mb-2">
+                                <li class="list-group-item text-muted text-center" id="liSinMetodos">Sin métodos agregados aún.</li>
+                            </ul>
+                            <div class="text-right">
+                                <strong>Asignado: <span id="spAsignadoMetodos" class="text-success">$0.00</span></strong><br>
+                                <strong id="lblRestanteMetodos">Restante por asignar: </strong><span id="spRestanteMetodos" class="text-danger font-weight-bold">$0.00</span>
+                            </div>
+                        </div>
                         <small class="form-text text-muted">
-                            <i class="simple-icon-info"></i> Al finalizar, la nota se envía a Caja
-                            con este tipo de pago para que reciba el dinero y la cierre.
+                            <i class="simple-icon-info"></i> Al finalizar, la nota se envía a Caja con estas formas
+                            de pago para que reciba el dinero y la cierre. Si eliges más de una, Caja verá y
+                            recibirá cada una por separado.
                         </small>
                     </div>
 
@@ -287,6 +297,44 @@
     </div>
 </div>
 
+<!-- ═══ MODAL: Agregar método de pago ════════════════════════════════════ -->
+<div class="modal fade" id="modalMetodoPago" tabindex="-1" role="dialog">
+    <div class="modal-dialog" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Agregar Forma de Pago</h5>
+                <button type="button" class="close" data-dismiss="modal"><span>&times;</span></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-info py-2 mb-3 d-flex justify-content-between align-items-center">
+                    <span class="font-weight-bold">Restante por asignar:</span>
+                    <span class="font-weight-bold" id="modalMetodoRestanteLabel" style="font-size:1.15rem;">$0.00</span>
+                </div>
+                <div class="form-group">
+                    <label>Tipo de Pago</label>
+                    <select id="modalMetodoTipo" class="form-control">
+                        <option value="">— Selecciona —</option>
+                        <?php foreach ($tipoPagos as $tp): ?>
+                        <option value="<?= (int)$tp['id'] ?>"><?= esc($tp['descripcion']) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Monto</label>
+                    <div class="input-group">
+                        <div class="input-group-prepend"><span class="input-group-text">$</span></div>
+                        <input type="number" id="modalMetodoMonto" class="form-control" min="0.01" step="0.01" value="0">
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Cerrar</button>
+                <button type="button" id="btnConfirmarMetodoPago" class="btn btn-primary">Agregar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- ═══ MODAL: Email faltante ════════════════════════════════════════════ -->
 <div class="modal fade" id="modalEmailFaltante" tabindex="-1" role="dialog">
     <div class="modal-dialog modal-sm" role="document">
@@ -359,17 +407,96 @@ function recalcular() {
     $('#hidSubtotal').val(subtotal.toFixed(2));
     $('#hidIva').val(iva.toFixed(2));
     $('#hidTotal').val(total.toFixed(2));
+    renderMetodosPago();
 }
 
 $('#inputDescuentoPct').on('input', recalcular);
 $('#inputCargoImpresion').on('input', recalcular);
 
+// ── Formas de Pago (varios métodos posibles) ──────────────────────────
+var metodosPago = [];
+
+function totalNota() {
+    return parseFloat($('#hidTotal').val()) || 0;
+}
+function asignadoMetodos() {
+    return metodosPago.reduce(function(acc, m) { return acc + m.monto; }, 0);
+}
+function restanteMetodos() {
+    return Math.max(0, totalNota() - asignadoMetodos());
+}
+
+function renderMetodosPago() {
+    if (metodosPago.length === 0) {
+        $('#listaMetodosPago').html('<li class="list-group-item text-muted text-center" id="liSinMetodos">Sin métodos agregados aún.</li>');
+    } else {
+        var html = '';
+        metodosPago.forEach(function(m, i) {
+            html += '<li class="list-group-item d-flex justify-content-between align-items-center">'
+                + '<span>' + m.desc + '</span>'
+                + '<span>$' + m.monto.toFixed(2)
+                + ' <button type="button" class="btn btn-xs btn-outline-danger ml-2 btn-quitar-metodo" data-idx="' + i + '">&times;</button></span>'
+                + '</li>';
+        });
+        $('#listaMetodosPago').html(html);
+    }
+    $('#spAsignadoMetodos').text('$' + asignadoMetodos().toFixed(2));
+    var restante = restanteMetodos();
+    if (restante <= 0.005) {
+        $('#lblRestanteMetodos').text('Restante por asignar: ');
+        $('#spRestanteMetodos').text('$0.00').removeClass('text-danger').addClass('text-success');
+    } else {
+        $('#lblRestanteMetodos').text('Restante por asignar: ');
+        $('#spRestanteMetodos').text('$' + restante.toFixed(2)).removeClass('text-success').addClass('text-danger');
+    }
+}
+
+$('#btnAgregarMetodoPago').on('click', function() {
+    $('#modalMetodoTipo').val('');
+    var restante = restanteMetodos();
+    $('#modalMetodoMonto').val(restante > 0 ? restante.toFixed(2) : 0);
+    $('#modalMetodoRestanteLabel').text('$' + restante.toFixed(2));
+    $('#modalMetodoPago').modal('show');
+});
+
+$('#btnConfirmarMetodoPago').on('click', function() {
+    var tipo  = $('#modalMetodoTipo').val();
+    var desc  = $('#modalMetodoTipo option:selected').text();
+    var monto = parseFloat($('#modalMetodoMonto').val()) || 0;
+
+    if (!tipo) { alert('Selecciona un tipo de pago.'); return; }
+    if (monto <= 0) { alert('Ingresa un monto válido.'); return; }
+
+    var restante = restanteMetodos();
+    if (monto > restante + 0.005) {
+        if (!confirm('⚠ El monto de $' + monto.toFixed(2) + ' excede lo que resta por asignar ($' + restante.toFixed(2) + ').\n¿Agregarlo de todas formas?')) {
+            return;
+        }
+    }
+
+    metodosPago.push({ tipo: tipo, desc: desc, monto: monto });
+    renderMetodosPago();
+    $('#modalMetodoPago').modal('hide');
+});
+
+$(document).on('click', '.btn-quitar-metodo', function() {
+    var idx = parseInt($(this).data('idx'), 10);
+    metodosPago.splice(idx, 1);
+    renderMetodosPago();
+});
+
 // ── Verificar email antes de cerrar si requiere factura ──────────────
 function ejecutarCierreNota() {
-    // No se cobra aquí: solo se indica con qué tipo de pago pagará el cliente,
-    // para que Caja (o Admin desde su Verificar Caja) lo vea al recibir el folio.
-    if (!$('#selectTipoPagoVendedor').val()) {
-        alert('Selecciona el tipo de pago con el que pagará el cliente.');
+    // No se cobra aquí: solo se indican las formas de pago con las que
+    // pagará el cliente, para que Caja (o Admin desde su Verificar Caja) las
+    // vea al recibir el folio.
+    if (metodosPago.length === 0) {
+        alert('Agrega al menos una forma de pago.');
+        return;
+    }
+    var restante = restanteMetodos();
+    if (restante > 0.005) {
+        alert('Falta por asignar: $' + restante.toFixed(2) + '\nAgrega el monto restante antes de finalizar.');
         return;
     }
 
@@ -385,7 +512,7 @@ function ejecutarCierreNota() {
         subtotal:    $('#hidSubtotal').val(),
         iva:         $('#hidIva').val(),
         total:       $('#hidTotal').val(),
-        tipoPago:    $('#selectTipoPagoVendedor').val(),
+        metodosPago: JSON.stringify(metodosPago),
         factura:     $('#chkFactura').is(':checked') ? 1 : 0,
         // Datos fiscales del receptor (solo se envían si se requiere factura)
         rfcReceptor:           $('#rfcReceptor').val(),
@@ -411,8 +538,17 @@ function ejecutarCierreNota() {
             try { resp = JSON.parse(xhr.responseText); } catch(e) {}
 
             if (resp && resp.success) {
-                // Redirigir segun el prefijo de la URL actual
-                var esAdmin = window.location.pathname.indexOf('/admin/') !== -1;
+                // Nota finalizada: abrir el ticket en una ventana pequeña
+                // (igual que el botón "Ver Ticket") listo para imprimir, y
+                // mandar la ventana principal a Consultar Folios.
+                var esAdmin     = window.location.pathname.indexOf('/admin/') !== -1;
+                var folioActual = $('#hidFolio').val();
+                var ticketUrl   = (esAdmin
+                    ? '<?= base_url('admin/folio/') ?>'
+                    : '<?= base_url('mostrador/folio/') ?>')
+                    + folioActual + '/ticket';
+                window.open(ticketUrl, '_blank',
+                    'toolbar=yes,scrollbars=yes,resizable=yes,top=100,left=200,width=500,height=600');
                 window.location.href = esAdmin
                     ? '<?= base_url('admin/consulta') ?>'
                     : '<?= base_url('mostrador/consulta') ?>';

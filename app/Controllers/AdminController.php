@@ -1471,7 +1471,8 @@ class AdminController extends BaseController
                     n.cargoTarjeta, n.subTotal2, n.iva, n.total,
                     n.tipoImpresion, n.cargoPorImpresion, n.montoTCTD,
                     n.montoEfectivo, n.montoEfectivoIva, n.totalPiezas,
-                    n.precioMayoreo, COALESCE(n.uuid_fiscal, '') AS uuid_fiscal
+                    n.precioMayoreo, COALESCE(n.uuid_fiscal, '') AS uuid_fiscal,
+                    n.fecha_edicion
              FROM notas_1 n
              LEFT JOIN clientes c ON c.id = n.idCliente
              LEFT JOIN usuarios u ON u.Id = n.idVendedor
@@ -1496,8 +1497,11 @@ class AdminController extends BaseController
         $idNota     = (int)$nota['Id_Notas_1'];
         $referencia = (int)($nota['referencia'] ?? 0);
 
-        // Si es nota hija (referencia != 0) los pagos vienen del padre
-        $idNotaPagos = ($referencia !== 0) ? $referencia : $idNota;
+        // Los pagos de CUALQUIER folio (padre o hijo) siempre se registran
+        // bajo su propio Id_Notas_1 — un folio hijo es en sí mismo un abono,
+        // con su propio pago. "referencia" es el número de FOLIO del padre,
+        // no un Id_Notas_1, así que nunca debe usarse aquí como idNotas.
+        $idNotaPagos = $idNota;
 
         // Pagos directos del folio (del padre o del hijo si es hijo)
         $pagos = $db->query(
@@ -1616,6 +1620,64 @@ class AdminController extends BaseController
             'anticipos'   => $anticipos,
             'letras'      => $letras,
             'config'      => $this->getTicketConfig(),
+        ]);
+    }
+
+    // ──────────────────────────────────────────────────────────────
+    // GET /folio/:num/comanda — Comanda de impresión: misma info general
+    // que el ticket (folio, fecha, cliente, vendedor) pero SOLO productos
+    // (SKU, descripción, talla, color, cantidad) — sin precios ni pagos.
+    // Pensada para que el área de producción/almacén surta la nota sin
+    // ver montos. Igual que el ticket, un folio hijo (anticipo) no tiene
+    // productos propios y usa los del folio padre.
+    // ──────────────────────────────────────────────────────────────
+    public function verComanda(int $folio): string
+    {
+        $db = \Config\Database::connect();
+
+        $nota = $db->query(
+            "SELECT n.Id_Notas_1, n.fecha_inicial,
+                    c.nombre AS NombreCliente,
+                    u.usuario AS vendedor,
+                    n.folio, n.referencia, n.totalPiezas
+             FROM notas_1 n
+             LEFT JOIN clientes c ON c.id = n.idCliente
+             LEFT JOIN usuarios u ON u.Id = n.idVendedor
+             WHERE n.folio = ?
+             LIMIT 1",
+            [$folio]
+        )->getRowArray();
+
+        if (! $nota) {
+            return '<h3>Folio no encontrado</h3>';
+        }
+
+        $referencia = (int)($nota['referencia'] ?? 0);
+        // Los folios hijo (anticipo) no tienen productos propios; usar los del padre
+        $folioProductos = ($referencia !== 0) ? $referencia : $folio;
+
+        $productos = $db->query(
+            "SELECT n2.cantidad,
+                    n2.estilo AS sku,
+                    COALESCE(NULLIF(n2.color, ''), p.Color, '')             AS color,
+                    COALESCE(NULLIF(n2.talla, ''), p.Talla, '')             AS talla,
+                    COALESCE(NULLIF(n2.descripcion, ''), p.Descripcion_Larga, n2.estilo) AS descripcion
+             FROM notas_2 n2
+             LEFT JOIN productosyazbek p ON p.sku = n2.estilo
+             WHERE n2.folio = ?
+             ORDER BY n2.Id_Notas_2 ASC",
+            [$folioProductos]
+        )->getResultArray();
+
+        $totalPiezas = (int)($nota['totalPiezas'] ?? 0);
+        if ($totalPiezas === 0) {
+            $totalPiezas = array_sum(array_column($productos, 'cantidad'));
+        }
+
+        return view('admin/comanda', [
+            'nota'        => $nota,
+            'productos'   => $productos,
+            'totalPiezas' => $totalPiezas,
         ]);
     }
 
@@ -1848,7 +1910,8 @@ class AdminController extends BaseController
                         n.cargoTarjeta, n.subTotal2, n.iva, n.total,
                         n.tipoImpresion, n.cargoPorImpresion,
                         n.montoTCTD, n.totalPiezas, n.precioMayoreo,
-                        COALESCE(n.uuid_fiscal, '') AS uuid_fiscal
+                        COALESCE(n.uuid_fiscal, '') AS uuid_fiscal,
+                        n.fecha_edicion
                  FROM notas_1 n
                  LEFT JOIN clientes c ON n.idCliente = c.id
                  LEFT JOIN usuarios u ON u.Id        = n.idVendedor
@@ -1943,10 +2006,22 @@ class AdminController extends BaseController
         $html .= '<td>' . $nota['folio'];
         $referenciaPadre = (int)($nota['referencia'] ?? 0);
         if ($referenciaPadre > 0) {
-            $html .= ' &nbsp; <strong>Referencia:&nbsp;</strong>' . $referenciaPadre;
+            $html .= ' &nbsp; <strong>Referencia:&nbsp;</strong>' . $referenciaPadre
+                   . ' &nbsp; <span style="background:#fd7e14;color:#fff;font-size:.75em;padding:2px 8px;border-radius:4px;">ANTICIPO</span>';
         }
         $html .= '</td>';
         $html .= '</tr></table></div>';
+        if ($referenciaPadre > 0) {
+            $html .= '<div class="alert alert-warning py-2 mb-3">'
+                   . '<strong>Este folio es un ANTICIPO (abono)</strong> del folio padre #' . $referenciaPadre . '.'
+                   . '</div>';
+        }
+        if (! empty($nota['fecha_edicion'])) {
+            $html .= '<div class="alert py-2 mb-3" style="background:#f1ecfa;border-color:#6f42c1;color:#4b2e83;">'
+                   . '<strong>⚠ Este folio fue editado</strong> (productos y/o forma de pago) el '
+                   . date('d/m/Y h:i A', strtotime($nota['fecha_edicion'])) . '.'
+                   . '</div>';
+        }
 
         // Tipo de pago elegido al finalizar (solo lectura) — se muestra
         // mientras la nota siga sin ningún pago registrado.
@@ -2054,7 +2129,7 @@ class AdminController extends BaseController
             $html .= '<td></td>';
             $html .= '<td colspan="2" class="text-right no-border"><button type="button" class="btn btn-danger" onclick="fn_modal_calcelar_nota()">Cancelar Nota</button></td>';
             if (! $esLiquidado) {
-                $btnLabelLiquidar = ($statusId === 2 && empty($pagos)) ? 'Recibir Pago y Cerrar Nota' : 'Liquidar';
+                $btnLabelLiquidar = ($statusId === 2 && empty($pagos)) ? 'Verificar Pago' : 'Liquidar';
                 $html .= '<td colspan="2" class="text-right no-border"><button type="button" class="btn btn-success" onclick="fn_liquidar_modal()">' . $btnLabelLiquidar . '</button></td>';
             }
         }
@@ -2412,7 +2487,7 @@ class AdminController extends BaseController
              ORDER BY DATE_FORMAT(n.fecha_inicial, '%d/%m/%Y'), n.folio"
         )->getResultArray();
 
-        $metodosSinRef = ['transferencia', 'deposito', 'cargo con tarjeta'];
+        $metodosSinRef = ['transferencia', 'deposito', 'cheque', 'cargo con tarjeta', 'tarjeta debito', 'tarjeta credito'];
 
         // Agrupar pagos por folio
         $agrupadas = [];
@@ -2494,7 +2569,7 @@ class AdminController extends BaseController
                  INNER JOIN notas_1 n   ON n.Id_Notas_1 = mn.idNotas
                  INNER JOIN tipopago tp ON tp.id = mn.idTipoPago
                  WHERE n.folio = ?
-                   AND TRIM(LOWER(tp.descripcion)) IN ('transferencia','deposito','depósito','cargo con tarjeta')
+                   AND TRIM(LOWER(tp.descripcion)) IN ('transferencia','deposito','depósito','cheque','cargo con tarjeta','tarjeta debito','tarjeta débito','tarjeta credito','tarjeta crédito')
                  LIMIT 1",
                 [$folio]
             )->getRowArray();
@@ -2511,7 +2586,7 @@ class AdminController extends BaseController
             $nota = $db->query(
                 "SELECT n.Id_Notas_1, n.total, n.fecha_inicial,
                         (SELECT tp2.id FROM tipopago tp2
-                         WHERE TRIM(LOWER(tp2.descripcion)) IN ('transferencia','deposito','depósito','cargo con tarjeta')
+                         WHERE TRIM(LOWER(tp2.descripcion)) IN ('transferencia','deposito','depósito','cheque','cargo con tarjeta','tarjeta debito','tarjeta débito','tarjeta credito','tarjeta crédito')
                            AND TRIM(LOWER(tp2.descripcion)) = TRIM(LOWER(n.tipoPago))
                          LIMIT 1) AS id_tipo_pago
                  FROM notas_1 n WHERE n.folio = ? LIMIT 1",
@@ -2529,6 +2604,34 @@ class AdminController extends BaseController
         }
 
         return $this->response->setJSON(['ok' => false, 'msg' => 'No se encontró el registro de pago']);
+    }
+
+    // ──────────────────────────────────────────────────────────────
+    // POST /admin/caja/monto/referencias-pendientes — Lista TODAS las
+    // formas de pago de un folio (no solo las que técnicamente requieren
+    // referencia), con su monto y su referencia actual, para que se vea el
+    // desglose completo y se pueda capturar/editar la referencia de
+    // cualquiera de ellas.
+    // ──────────────────────────────────────────────────────────────
+    public function referenciasPendientes(): \CodeIgniter\HTTP\ResponseInterface
+    {
+        $folio = (int) $this->request->getPost('folio');
+        $db    = \Config\Database::connect();
+
+        $items = $db->query(
+            "SELECT mn.idNotas, mn.idTipoPago, tp.descripcion AS tipo,
+                    COALESCE(MAX(mn.referencia), '') AS referencia,
+                    SUM(mn.monto) AS monto
+             FROM montosnotas mn
+             INNER JOIN notas_1 n   ON n.Id_Notas_1 = mn.idNotas
+             INNER JOIN tipopago tp ON tp.id = mn.idTipoPago
+             WHERE n.folio = ?
+             GROUP BY mn.idTipoPago, tp.descripcion
+             ORDER BY tp.descripcion ASC",
+            [$folio]
+        )->getResultArray();
+
+        return $this->response->setJSON(['ok' => true, 'items' => $items]);
     }
 
     // ──────────────────────────────────────────────────────────────
@@ -2912,8 +3015,13 @@ class AdminController extends BaseController
                 "SELECT n.folio, n.fecha_inicial,
                         COALESCE(c.nombre, '—')   AS cliente,
                         COALESCE(u.usuario, '—')  AS vendedor,
-                        COALESCE(pm_direct.tipos_pago, pm_child.tipos_pago, tpVendedor.descripcion,
-                                 IF(n.status = 2, 'Pendiente de cobro', 'A Crédito')) AS tipopago,
+                        CASE
+                            WHEN TRIM(LOWER(tpVendedor.descripcion)) IN ('sin pagar','a credito','a crédito','credito','crédito')
+                                THEN 'A Crédito'
+                            ELSE COALESCE(pm_direct.tipos_pago, pm_child.tipos_pago, tpVendedor.descripcion,
+                                          IF(n.status = 2, 'Pendiente de cobro', 'A Crédito'))
+                        END AS tipopago,
+                        tpVendedor.descripcion AS tipoPagoPropio,
                         n.total, n.status AS idstatus,
                         COALESCE(s.nombre, '')    AS status_nombre,
                         n.verificado,
@@ -2926,26 +3034,7 @@ class AdminController extends BaseController
                         COALESCE(n.uso_cfdi, 'S01')           AS uso_cfdi,
                         COALESCE(n.regimen_fiscal_receptor, '616') AS regimen_fiscal_receptor,
                         COALESCE(n.forma_pago_cfdi, '01')     AS forma_pago_cfdi,
-                        (SELECT mn2.idNotas FROM montosnotas mn2
-                          INNER JOIN tipopago tp2 ON tp2.id = mn2.idTipoPago
-                          WHERE mn2.idNotas = n.Id_Notas_1
-                            AND TRIM(LOWER(tp2.descripcion)) IN ('transferencia','deposito','depósito','cargo con tarjeta')
-                          LIMIT 1) AS mn_id_ref,
-                        (SELECT mn2.idTipoPago FROM montosnotas mn2
-                          INNER JOIN tipopago tp2 ON tp2.id = mn2.idTipoPago
-                          WHERE mn2.idNotas = n.Id_Notas_1
-                            AND TRIM(LOWER(tp2.descripcion)) IN ('transferencia','deposito','depósito','cargo con tarjeta')
-                          LIMIT 1) AS mn_tipo_ref,
-                        (SELECT COALESCE(mn2.referencia,'') FROM montosnotas mn2
-                          INNER JOIN tipopago tp2 ON tp2.id = mn2.idTipoPago
-                          WHERE mn2.idNotas = n.Id_Notas_1
-                            AND TRIM(LOWER(tp2.descripcion)) IN ('transferencia','deposito','depósito','cargo con tarjeta')
-                          LIMIT 1) AS mn_referencia_banco,
-                        (SELECT tp2.descripcion FROM montosnotas mn2
-                          INNER JOIN tipopago tp2 ON tp2.id = mn2.idTipoPago
-                          WHERE mn2.idNotas = n.Id_Notas_1
-                            AND TRIM(LOWER(tp2.descripcion)) IN ('transferencia','deposito','depósito','cargo con tarjeta')
-                          LIMIT 1) AS tipopago_ref_nombre
+                        n.fecha_edicion
                  {$baseSql} {$where}
                  ORDER BY {$orderCol} {$orderDir}
                  LIMIT ? OFFSET ?",

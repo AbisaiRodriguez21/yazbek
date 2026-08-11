@@ -170,10 +170,10 @@ function accionesNota(n) {
         // vendedor puede registrar abonos (folio hijo pendiente de que Caja
         // lo reciba y confirme). No aplica a otros tipos de pago — esos los
         // cobra Caja completos, de una sola vez.
-        if (idstatus === 2 && esSinPagar(n.tipopago)) {
+        if (idstatus === 2 && esSinPagar(n.tipoPagoPropio)) {
             btns += '<a href="' + BASE + n.folio + '/abono" class="btn btn-xs btn-outline-primary mr-1">Ver / Abonar</a>';
         }
-        if (idstatus === 5) {
+        if (idstatus === 2 || idstatus === 5) {
             btns += '<a href="#" class="btn btn-xs btn-outline-secondary mr-1"'
                   + ' onclick="mostradorVerFolio(' + n.folio + '); return false;">Ver</a>';
         }
@@ -197,6 +197,13 @@ function accionesNota(n) {
               + ' onclick="mostradorVerTicket(' + n.folio + '); return false;">Ver Ticket</a>';
     }
 
+    // Comanda (solo productos, sin precios) — solo folios padre (los hijos
+    // son abonos, sin productos propios)
+    if (!esHijo && idstatus !== 3) {
+        btns += '<a href="#" class="btn btn-xs btn-outline-dark mr-1"'
+              + ' onclick="mostradorVerComanda(' + n.folio + '); return false;">Comanda</a>';
+    }
+
     if (!btns) btns = '<span class="text-muted">—</span>';
     return btns;
 }
@@ -205,6 +212,12 @@ function accionesNota(n) {
 function mostradorVerTicket(folio) {
     window.open('<?= base_url('mostrador/folio/') ?>' + folio + '/ticket', '_blank',
         'toolbar=yes,scrollbars=yes,resizable=yes,top=100,left=200,width=500,height=600');
+}
+
+// Abrir comanda (solo productos) en ventana nueva
+function mostradorVerComanda(folio) {
+    window.open('<?= base_url('mostrador/folio/') ?>' + folio + '/comanda', '_blank',
+        'toolbar=yes,scrollbars=yes,resizable=yes,top=100,left=200,width=360,height=520');
 }
 
 // Abrir modal con detalle del folio
