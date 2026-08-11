@@ -140,7 +140,7 @@
                                     3 => '<span class="badge badge-danger">Cancelada</span>',
                                     4 => '<span class="badge badge-warning">Anticipo</span>',
                                     5 => '<span class="badge badge-success">Pagada</span>',
-                                    6 => '<span class="badge" style="background-color:#0d6e6e;color:#fff;">Liquidado</span>',
+                                    6 => '<span class="badge" style="background-color:#0d6e6e;color:#fff;">Pagado</span>',
                                 ];
                                 $badgeHtml = $statusBadges[$status] ?? '<span class="badge badge-secondary">—</span>';
                             ?>

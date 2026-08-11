@@ -1658,12 +1658,12 @@ class MostradorController extends BaseController
         $total = $nota['total'] ?? 0;
 
         // Mapa de status legibles (independiente del valor en la tabla status de BD)
-        $statusMap    = [1=>'Abierta', 2=>'En proceso', 3=>'Cancelada', 4=>'Anticipo', 5=>'Pagada', 6=>'Liquidado'];
+        $statusMap    = [1=>'Abierta', 2=>'En proceso', 3=>'Cancelada', 4=>'Anticipo', 5=>'Pagada', 6=>'Pagado'];
         $verificado   = $nota['verificado'] ?? '';
         $statusId     = (int)($nota['statusId'] ?? 0);
         $statusNombre = $statusMap[$statusId] ?? 'Desconocido';
         $esLiquidado  = ($verificado === 'Pagado' || $statusId === 6);
-        $headerStatus = $esLiquidado ? 'Liquidado' : $statusNombre;
+        $headerStatus = $esLiquidado ? 'Pagado' : $statusNombre;
 
         // Cabecera
         $html  = '<div style="overflow-x:auto"><table style="width:100%"><tr>';
@@ -1747,7 +1747,7 @@ class MostradorController extends BaseController
         $sumPagado    = array_sum(array_column($pagosActivos, 'monto'));
         $hayAnticipo  = !empty(array_filter($pagosActivos, fn($p) => ($p['anticipo'] ?? 0) == 1));
         if ($esLiquidado) {
-            $displayStatus = 'Liquidado';
+            $displayStatus = 'Pagado';
         } elseif ($hayAnticipo && $sumPagado < ($nota['total'] ?? 0)) {
             $displayStatus = 'Abierta';
         } else {

@@ -76,12 +76,10 @@
              queden larguísimas al imprimir. -->
         <?php foreach ($productos as $prod): ?>
         <tr class="sep">
-            <td colspan="3" style="font-size:16px; font-weight:600;"><?= esc($prod['sku'] ?? '') ?></td>
-            <td class="right" style="font-size:16px; font-weight:700;"><?= $prod['cantidad'] ?></td>
-        </tr>
-        <tr>
-            <td colspan="4">
-                <span style="font-size:16px; font-weight:400;"><?= esc($prod['descripcion'] ?? '') ?></span>
+            <td style="font-size:16px; font-weight:700; vertical-align:middle; width:15%;"><?= $prod['cantidad'] ?></td>
+            <td colspan="3">
+                <span style="font-size:16px; font-weight:400;"><?= esc($prod['descripcion'] ?? '') ?></span><br>
+                <span style="font-size:16px; font-weight:600;"><?= esc($prod['sku'] ?? '') ?></span>
                 <?php if (!empty($prod['talla']) || !empty($prod['color'])): ?>
                     <br><span style="font-size:16px; color:#000;">
                         <?= esc($prod['talla'] ?? '') ?><?= (!empty($prod['talla']) && !empty($prod['color'])) ? ' — ' : '' ?><?= esc($prod['color'] ?? '') ?>

@@ -89,7 +89,8 @@
                     <input type="hidden" name="Id_Notas_1" id="hidIdNotas1" value="<?= (int)$nota['Id_Notas_1'] ?>">
                     <input type="hidden" name="totalPiezas" value="<?= (int)$totalPiezas ?>">
 
-                    <!-- Campo de descuento visible -->
+                    <?php if (($base ?? 'mostrador') === 'admin'): ?>
+                    <!-- Descuento y Tipo de bordado/impresión: solo Admin -->
                     <div class="form-group">
                         <label for="inputDescuentoPct">Descuento (%)</label>
                         <div class="input-group">
@@ -137,6 +138,7 @@
                             </div>
                         </div>
                     </div>
+                    <?php endif; ?>
 
                     <!-- Totales calculados -->
                     <table class="table table-sm mb-3">

@@ -187,7 +187,7 @@ var STATUS_LABELS = {
     3: '<span class="badge badge-danger">Cancelada</span>',
     4: '<span class="badge badge-warning">Anticipo</span>',
     5: '<span class="badge badge-success">Pagada</span>',
-    6: '<span class="badge" style="background-color:#0d6e6e;color:#fff;">Liquidado</span>'
+    6: '<span class="badge" style="background-color:#0d6e6e;color:#fff;">Pagado</span>'
 };
 
 $(document).ready(function() {
@@ -502,7 +502,7 @@ function fn_liquidar_modal() {
 }
 
 function adminLiquidarAnticipo(folio) {
-    if (!confirm('¿Liquidar el folio #' + folio + ' y todos sus pagos? Esta acción marcará la nota como Liquidado.')) return;
+    if (!confirm('¿Liquidar el folio #' + folio + ' y todos sus pagos? Esta acción marcará la nota como Pagado.')) return;
     var fd = new FormData();
     fd.append('<?= csrf_token() ?>', '<?= csrf_hash() ?>');
     fetch('<?= base_url('admin/folio/') ?>' + folio + '/liquidar', {

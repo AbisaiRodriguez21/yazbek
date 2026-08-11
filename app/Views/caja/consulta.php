@@ -96,7 +96,8 @@ var STATUS_LABELS = {
     2: '<span class="badge badge-info">En proceso</span>',
     3: '<span class="badge badge-danger">Cancelada</span>',
     4: '<span class="badge badge-warning">Anticipo</span>',
-    5: '<span class="badge badge-success">Pagada</span>'
+    5: '<span class="badge badge-success">Pagada</span>',
+    6: '<span class="badge" style="background-color:#0d6e6e;color:#fff;">Pagado</span>'
 };
 
 var URL_VER      = '<?= base_url('caja/venta/') ?>';

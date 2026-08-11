@@ -147,7 +147,7 @@ class AdminController extends BaseController
         $mesAnteriorInicio = date('Y-m-01 00:00:00', strtotime('-1 month'));
         $mesAnteriorFin    = $mesActualInicio;
 
-        $statusLabels = [1=>'Abierta', 2=>'En proceso', 3=>'Cancelada', 4=>'Anticipo', 5=>'Pagada', 6=>'Liquidado'];
+        $statusLabels = [1=>'Abierta', 2=>'En proceso', 3=>'Cancelada', 4=>'Anticipo', 5=>'Pagada', 6=>'Pagado'];
 
         $rawActual   = $db->query(
             "SELECT status, COUNT(*) AS notas, COALESCE(SUM(total),0) AS total
@@ -327,7 +327,7 @@ class AdminController extends BaseController
         $topMesAnterior = $topMes($mesAnteriorInicio, $mesAnteriorFin);
 
         // ── Comparativa mensual por estatus ───────────────────────
-        $statusLabels = [1=>'Abierta', 2=>'En proceso', 3=>'Cancelada', 4=>'Anticipo', 5=>'Pagada', 6=>'Liquidado'];
+        $statusLabels = [1=>'Abierta', 2=>'En proceso', 3=>'Cancelada', 4=>'Anticipo', 5=>'Pagada', 6=>'Pagado'];
         $rawActual   = $db->query(
             "SELECT status, COUNT(*) AS notas, COALESCE(SUM(total),0) AS total
              FROM notas_1 WHERE fecha_inicial >= ? AND fecha_inicial < ? GROUP BY status",
@@ -1486,11 +1486,11 @@ class AdminController extends BaseController
         }
 
         // Mapa de status (independiente del valor en la tabla status de BD)
-        $statusMap = [1=>'Abierta', 2=>'En proceso', 3=>'Cancelada', 4=>'Anticipo', 5=>'Pagada', 6=>'Liquidado'];
+        $statusMap = [1=>'Abierta', 2=>'En proceso', 3=>'Cancelada', 4=>'Anticipo', 5=>'Pagada', 6=>'Pagado'];
         $statusId  = (int)($nota['statusId'] ?? 0);
         // Liquidado: status=6 en BD O verificado='Pagado'
         $esLiquidadoTicket = ($nota['verificado'] === 'Pagado' || $statusId === 6);
-        $statusDisplay     = $esLiquidadoTicket ? 'Liquidado' : ($statusMap[$statusId] ?? 'Desconocido');
+        $statusDisplay     = $esLiquidadoTicket ? 'Pagado' : ($statusMap[$statusId] ?? 'Desconocido');
         // Para comparaciones en la vista que usan el string
         $nota['status'] = $statusDisplay;
 
@@ -1986,13 +1986,13 @@ class AdminController extends BaseController
         // Mapa de status legibles (independiente de lo que diga la tabla status en BD)
         $statusMap = [
             1 => 'Abierta', 2 => 'En proceso', 3 => 'Cancelada',
-            4 => 'Anticipo', 5 => 'Pagada', 6 => 'Liquidado',
+            4 => 'Anticipo', 5 => 'Pagada', 6 => 'Pagado',
         ];
         $verificado   = $nota['verificado'] ?? '';
         $statusId     = (int)($nota['statusId'] ?? 0);
         $statusNombre = $statusMap[$statusId] ?? 'Desconocido';
         $esLiquidado  = ($verificado === 'Pagado' || $statusId === 6);
-        $headerStatus = $esLiquidado ? 'Liquidado' : $statusNombre;
+        $headerStatus = $esLiquidado ? 'Pagado' : $statusNombre;
 
         // HTML idéntico al original (llamadasAjax.php tipo=3)
         $html  = '<div style="overflow-x:auto"><table style="width:100%"><tr>';
@@ -2103,7 +2103,7 @@ class AdminController extends BaseController
         $sumPagado    = array_sum(array_column($pagosActivos, 'monto'));
         $hayAnticipo  = !empty(array_filter($pagosActivos, fn($p) => ($p['anticipo'] ?? 0) == 1));
         if ($esLiquidado) {
-            $displayStatus = 'Liquidado';
+            $displayStatus = 'Pagado';
         } elseif ($hayAnticipo && $sumPagado < ($nota['total'] ?? 0)) {
             $displayStatus = 'Abierta';
         } else {
@@ -2560,12 +2560,29 @@ class AdminController extends BaseController
 
         $db = \Config\Database::connect();
 
-        // Caso 1: tenemos idNotas + idTipoPago → UPDATE directo
+        // Caso 1: tenemos idNotas + idTipoPago → UPDATE si ya existe la fila en
+        // montosnotas; si no existe aún (nota de un solo método, todavía sin
+        // verificar por caja, sin fila propia), se crea usando el total de la
+        // nota — mismo monto que registraría "Verificar Pago" más adelante.
         if ($idNotas > 0 && $idTipoPago > 0) {
             $db->query(
                 "UPDATE montosnotas SET referencia = ? WHERE idNotas = ? AND idTipoPago = ?",
                 [$referencia, $idNotas, $idTipoPago]
             );
+            if ($db->affectedRows() === 0) {
+                $nota = $db->query(
+                    "SELECT total, referencia AS ref_padre FROM notas_1 WHERE Id_Notas_1 = ? LIMIT 1",
+                    [$idNotas]
+                )->getRowArray();
+                if ($nota) {
+                    $esAnticipo = (int) ($nota['ref_padre'] ?? 0) > 0 ? 1 : 0;
+                    $db->query(
+                        "INSERT INTO montosnotas (idNotas, idTipoPago, monto, cargos, anticipo, referencia, fecha)
+                         VALUES (?, ?, ?, 0, ?, ?, ?)",
+                        [$idNotas, $idTipoPago, $nota['total'] ?? 0, $esAnticipo, $referencia, date('Y-m-d H:i:s')]
+                    );
+                }
+            }
             return $this->response->setJSON(['ok' => true]);
         }
 
@@ -2589,22 +2606,24 @@ class AdminController extends BaseController
                 return $this->response->setJSON(['ok' => true]);
             }
 
-            // Caso 3: no existe montosnotas, crear el registro
+            // Caso 3: no existe montosnotas, crear el registro usando el
+            // tipoPago propio de la nota (comparación por ID, no por texto)
             $nota = $db->query(
-                "SELECT n.Id_Notas_1, n.total, n.fecha_inicial,
+                "SELECT n.Id_Notas_1, n.total, COALESCE(n.referencia,0) AS ref_padre,
                         (SELECT tp2.id FROM tipopago tp2
-                         WHERE TRIM(LOWER(tp2.descripcion)) IN ('transferencia','deposito','depósito','cheque','cargo con tarjeta','tarjeta debito','tarjeta débito','tarjeta credito','tarjeta crédito')
-                           AND TRIM(LOWER(tp2.descripcion)) = TRIM(LOWER(n.tipoPago))
+                         WHERE tp2.id = n.tipoPago
+                           AND TRIM(LOWER(tp2.descripcion)) IN ('transferencia','deposito','depósito','cheque','cargo con tarjeta','tarjeta debito','tarjeta débito','tarjeta credito','tarjeta crédito')
                          LIMIT 1) AS id_tipo_pago
                  FROM notas_1 n WHERE n.folio = ? LIMIT 1",
                 [$folio]
             )->getRowArray();
 
             if ($nota && $nota['id_tipo_pago']) {
+                $esAnticipo = (int) ($nota['ref_padre'] ?? 0) > 0 ? 1 : 0;
                 $db->query(
-                    "INSERT INTO montosnotas (idNotas, idTipoPago, monto, referencia, fecha)
-                     VALUES (?, ?, ?, ?, ?)",
-                    [$nota['Id_Notas_1'], $nota['id_tipo_pago'], $nota['total'], $referencia, $nota['fecha_inicial']]
+                    "INSERT INTO montosnotas (idNotas, idTipoPago, monto, cargos, anticipo, referencia, fecha)
+                     VALUES (?, ?, ?, 0, ?, ?, ?)",
+                    [$nota['Id_Notas_1'], $nota['id_tipo_pago'], $nota['total'] ?? 0, $esAnticipo, $referencia, date('Y-m-d H:i:s')]
                 );
                 return $this->response->setJSON(['ok' => true]);
             }
@@ -2638,6 +2657,32 @@ class AdminController extends BaseController
              ORDER BY tp.descripcion ASC",
             [$folio]
         )->getResultArray();
+
+        // Si la nota tiene un solo método (notas_1.tipoPago) y AÚN no la
+        // verifica caja, todavía no existe su fila en montosnotas — se
+        // incluye igual como "pendiente" para poder capturar la referencia
+        // desde ahora (se crea la fila hasta que se guarda la referencia).
+        if (empty($items)) {
+            $nota = $db->query(
+                "SELECT n.Id_Notas_1, n.total, n.tipoPago, tp.descripcion AS tipo
+                 FROM notas_1 n
+                 LEFT JOIN tipopago tp ON tp.id = n.tipoPago
+                 WHERE n.folio = ? AND n.status IN (1,2)
+                 LIMIT 1",
+                [$folio]
+            )->getRowArray();
+
+            if ($nota && $nota['tipoPago'] && $nota['tipo']
+                && in_array(trim(mb_strtolower($nota['tipo'])), ['transferencia','deposito','depósito','cheque','cargo con tarjeta','tarjeta debito','tarjeta débito','tarjeta credito','tarjeta crédito'], true)) {
+                $items[] = [
+                    'idNotas'    => $nota['Id_Notas_1'],
+                    'idTipoPago' => $nota['tipoPago'],
+                    'tipo'       => $nota['tipo'],
+                    'referencia' => '',
+                    'monto'      => $nota['total'],
+                ];
+            }
+        }
 
         return $this->response->setJSON(['ok' => true, 'items' => $items]);
     }

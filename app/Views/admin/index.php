@@ -30,7 +30,7 @@
 // Helpers PHP
 $fmt = fn($v) => '$' . number_format($v, 0, '.', ',');
 $bmap = [1=>'secondary',2=>'info',3=>'danger',4=>'warning',5=>'success',6=>'dark'];
-$lmap = [1=>'Abierta',2=>'En proceso',3=>'Cancelada',4=>'Anticipo',5=>'Pagada',6=>'Liquidado'];
+$lmap = [1=>'Abierta',2=>'En proceso',3=>'Cancelada',4=>'Anticipo',5=>'Pagada',6=>'Pagado'];
 ?>
 
 <!-- ── Encabezado ── -->
@@ -101,7 +101,7 @@ $mesActualNum = (int)date('n');
     corresponden <strong>únicamente</strong> a notas con estatus
     <span class="badge badge-warning">Anticipo</span>,
     <span class="badge badge-success">Pagada</span> o
-    <span class="badge badge-dark">Liquidado</span>.
+    <span class="badge badge-dark">Pagado</span>.
     Las notas abiertas, en proceso o canceladas no se contabilizan.
 </div>
 
