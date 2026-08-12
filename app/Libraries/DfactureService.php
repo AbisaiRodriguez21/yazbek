@@ -574,10 +574,99 @@ class DfactureService
         $this->cpEmisor      = $cp;
     }
 
+    /**
+     * Devuelve los datos del emisor ya resueltos desde ticket_config
+     * (RFC, nombre, régimen SAT, CP). Reutiliza cargarEmisorDesdeDB()
+     * para no duplicar el mapeo de texto→código de régimen fiscal.
+     */
+    public function obtenerEmisor(): array
+    {
+        $this->cargarEmisorDesdeDB();
+        return [
+            'rfc'     => $this->rfcEmisor,
+            'nombre'  => $this->nombreEmisor,
+            'regimen' => $this->regimenFiscal,
+            'cp'      => $this->cpEmisor,
+        ];
+    }
+
     /** Devuelve el XML sin timbrar (útil para depuración) */
     public function previsualizarXML(int $folio, array $nota, array $detalle, array $cliente, array $extras = []): string
     {
         return $this->construirCFDI($folio, $nota, $detalle, $cliente, $extras);
+    }
+
+    /**
+     * Calcula conceptos, subtotal, IVA y total para mostrarlos en una vista
+     * previa ANTES de timbrar. Es una copia de solo lectura del mismo
+     * escalado por descuento que usa construirCFDI(); se mantiene separada
+     * a propósito para que un cambio en la vista previa (solo UI) nunca
+     * pueda afectar el cálculo que se firma y se envía a timbrar.
+     */
+    public function previsualizarDatos(array $nota, array $detalle): array
+    {
+        $sumaSubtotal    = 0.0;
+        $sumaIva         = 0.0;
+        $descuentoGlobal = (float)($nota['descuento'] ?? 0);
+        $subTotalNeto    = (float)($nota['subTotal']  ?? 0);
+
+        $importesBrutos = [];
+        foreach ($detalle as $linea) {
+            $cantidad = (int)($linea['cantidad'] ?? 1);
+            $precioU  = (float)($linea['precio'] ?? $linea['pUnitario'] ?? 0);
+            $importesBrutos[] = round((float)($linea['importe'] ?? ($cantidad * $precioU)), 2);
+        }
+        $totalBruto = array_sum($importesBrutos);
+
+        $hayDescuento = $descuentoGlobal > 0 && $totalBruto > 0;
+        if ($hayDescuento && $subTotalNeto <= 0) {
+            $subTotalNeto = max(0.0, $totalBruto - $descuentoGlobal);
+        }
+        $scaleFactor = ($hayDescuento && $totalBruto > 0) ? ($subTotalNeto / $totalBruto) : 1.0;
+
+        $importesEscalados = [];
+        $acumEscalado = 0.0;
+        foreach ($importesBrutos as $idx => $imp) {
+            if ($idx < count($importesBrutos) - 1) {
+                $sc = round($imp * $scaleFactor, 2);
+            } else {
+                $sc = $hayDescuento
+                    ? round($subTotalNeto - $acumEscalado, 2)
+                    : round($imp, 2);
+            }
+            $importesEscalados[] = $sc;
+            $acumEscalado += $sc;
+        }
+
+        $conceptos = [];
+        foreach ($detalle as $idx => $linea) {
+            $cantidad        = (int)($linea['cantidad'] ?? 1);
+            $precioU         = (float)($linea['precio'] ?? $linea['pUnitario'] ?? 0);
+            $importeEscalado = $importesEscalados[$idx];
+            $precioEscalado  = ($cantidad > 0)
+                ? ($importeEscalado / $cantidad)
+                : ($precioU * $scaleFactor);
+            $ivaLinea        = round($importeEscalado * 0.16, 2);
+
+            $sumaSubtotal += $importeEscalado;
+            $sumaIva      += $ivaLinea;
+
+            $conceptos[] = [
+                'descripcion'   => $linea['descripcion'] ?? $linea['estilo'] ?? $linea['sku'] ?? 'Producto',
+                'sku'           => $linea['sku'] ?? $linea['estilo'] ?? '',
+                'cantidad'      => $cantidad,
+                'valorUnitario' => round($precioEscalado, 2),
+                'importe'       => $importeEscalado,
+                'iva'           => $ivaLinea,
+            ];
+        }
+
+        return [
+            'conceptos' => $conceptos,
+            'subtotal'  => round($sumaSubtotal, 2),
+            'iva'       => round($sumaIva, 2),
+            'total'     => round($sumaSubtotal + $sumaIva, 2),
+        ];
     }
 
     // ─────────────────────────────────────────────────────────────────────

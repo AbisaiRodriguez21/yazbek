@@ -1165,7 +1165,12 @@ class CajaController extends BaseController
         $cp    = $nota['cp_receptor']            ?: ($cliente['CP']          ?? '');
         $uso   = $nota['uso_cfdi']               ?: 'S01';
         $reg   = $nota['regimen_fiscal_receptor'] ?: '616';
-        $forma = $nota['forma_pago_cfdi']        ?: '01';
+
+        // Forma de pago: la que domine por monto entre lo realmente cobrado
+        // (montosnotas). Si aún no hay pagos registrados, se usa lo guardado
+        // en la nota (o Efectivo por default).
+        $forma = $this->calcularFormaPagoDominante($folio)
+              ?: ($nota['forma_pago_cfdi'] ?: '01');
 
         return $this->response->setJSON([
             'rfcReceptor'           => strtoupper(trim($rfc)),
@@ -1181,6 +1186,28 @@ class CajaController extends BaseController
     }
 
     // ──────────────────────────────────────────────────────────────
+    // POST /caja/folio/:folio/previsualizar-factura
+    // Calcula conceptos/subtotal/IVA/total SIN timbrar ni guardar nada.
+    // Se usa para mostrar la vista previa antes de confirmar el timbrado.
+    // ──────────────────────────────────────────────────────────────
+    public function previsualizarFactura(int $folio): \CodeIgniter\HTTP\Response
+    {
+        try {
+            $datosModal = $this->leerDatosModalFactura();
+            $svc        = new \App\Libraries\FacturacionService();
+            $result     = $svc->previsualizar($folio, $datosModal);
+
+            return $this->response->setJSON($result);
+        } catch (\Throwable $e) {
+            log_message('error', "CajaController::previsualizarFactura folio={$folio}: " . $e->getMessage());
+            return $this->response->setJSON([
+                'success' => false,
+                'message' => 'Error interno: ' . $e->getMessage(),
+            ]);
+        }
+    }
+
+    // ──────────────────────────────────────────────────────────────
     // POST /caja/folio/:folio/facturar
     // Genera la factura CFDI para un folio ya cerrado.
     // Solo Caja (acceso=2) y Admin (acceso=1) pueden llamar este endpoint.
@@ -1188,21 +1215,7 @@ class CajaController extends BaseController
     public function facturarFolio(int $folio): \CodeIgniter\HTTP\Response
     {
         try {
-            $req = $this->request;
-
-            $rfcModal = trim($req->getPost('rfcReceptor') ?? '');
-            $datosModal = null;
-            if ($rfcModal !== '') {
-                $datosModal = [
-                    'rfcReceptor'           => $rfcModal,
-                    'razonSocialReceptor'   => trim($req->getPost('razonSocialReceptor') ?? ''),
-                    'cpReceptor'            => trim($req->getPost('cpReceptor')          ?? ''),
-                    'usoCFDI'               => trim($req->getPost('usoCFDI')             ?? 'S01'),
-                    'regimenFiscalReceptor' => trim($req->getPost('regimenFiscalReceptor') ?? '616'),
-                    'formaPago'             => trim($req->getPost('formaPagoCFDI')       ?? '01'),
-                    'metodoPago'            => trim($req->getPost('metodoPagoCFDI')      ?? 'PUE'),
-                ];
-            }
+            $datosModal = $this->leerDatosModalFactura();
 
             $svc    = new \App\Libraries\FacturacionService();
             $result = $svc->procesar($folio, $datosModal);
@@ -1226,6 +1239,31 @@ class CajaController extends BaseController
                 'mensaje' => 'Error interno: ' . $e->getMessage(),
             ]);
         }
+    }
+
+    // ──────────────────────────────────────────────────────────────
+    // Lee del POST los datos fiscales capturados en el modal de
+    // facturación (RFC, Razón Social, CP, etc). Devuelve null si el
+    // modal no envió nada (Escenario 1: datos ya guardados en notas_1).
+    // Compartido por previsualizarFactura() y facturarFolio().
+    // ──────────────────────────────────────────────────────────────
+    private function leerDatosModalFactura(): ?array
+    {
+        $req      = $this->request;
+        $rfcModal = trim($req->getPost('rfcReceptor') ?? '');
+        if ($rfcModal === '') {
+            return null;
+        }
+
+        return [
+            'rfcReceptor'           => $rfcModal,
+            'razonSocialReceptor'   => trim($req->getPost('razonSocialReceptor') ?? ''),
+            'cpReceptor'            => trim($req->getPost('cpReceptor')          ?? ''),
+            'usoCFDI'               => trim($req->getPost('usoCFDI')             ?? 'S01'),
+            'regimenFiscalReceptor' => trim($req->getPost('regimenFiscalReceptor') ?? '616'),
+            'formaPago'             => trim($req->getPost('formaPagoCFDI')       ?? '01'),
+            'metodoPago'            => trim($req->getPost('metodoPagoCFDI')      ?? 'PUE'),
+        ];
     }
 
     // ──────────────────────────────────────────────────────────────
@@ -1270,11 +1308,12 @@ class CajaController extends BaseController
             'celular'       => trim($this->request->getPost('celular') ?? ''),
             'mail'          => trim($this->request->getPost('mail') ?? ''),
             'RFC'           => strtoupper(trim($this->request->getPost('RFC') ?? '')),
+            'regimenFiscal' => trim($this->request->getPost('regimenFiscal') ?? '') ?: null,
             'direccion'     => strtoupper(trim($this->request->getPost('direccion') ?? '')),
+            'numero'        => strtoupper(trim($this->request->getPost('numero') ?? '')),
             'CP'            => trim($this->request->getPost('CP') ?? ''),
             'estado'        => strtoupper(trim($this->request->getPost('estado') ?? '')),
             'ciudad'        => strtoupper(trim($this->request->getPost('ciudad') ?? '')),
-            'NombreEmpresa' => strtoupper(trim($this->request->getPost('NombreEmpresa') ?? '')),
             'razonSocial'   => strtoupper(trim($this->request->getPost('razonSocial') ?? '')),
             'comoNosConoce' => $this->request->getPost('comoNosConoce'),
             'fechaIngreso'  => date('Y-m-d'),
@@ -1295,11 +1334,12 @@ class CajaController extends BaseController
             'celular'       => trim($this->request->getPost('celular') ?? ''),
             'mail'          => trim($this->request->getPost('mail') ?? ''),
             'RFC'           => strtoupper(trim($this->request->getPost('RFC') ?? '')),
+            'regimenFiscal' => trim($this->request->getPost('regimenFiscal') ?? '') ?: null,
             'direccion'     => strtoupper(trim($this->request->getPost('direccion') ?? '')),
+            'numero'        => strtoupper(trim($this->request->getPost('numero') ?? '')),
             'CP'            => trim($this->request->getPost('CP') ?? ''),
             'estado'        => strtoupper(trim($this->request->getPost('estado') ?? '')),
             'ciudad'        => strtoupper(trim($this->request->getPost('ciudad') ?? '')),
-            'NombreEmpresa' => strtoupper(trim($this->request->getPost('NombreEmpresa') ?? '')),
             'razonSocial'   => strtoupper(trim($this->request->getPost('razonSocial') ?? '')),
             'comoNosConoce' => $this->request->getPost('comoNosConoce'),
         ]);

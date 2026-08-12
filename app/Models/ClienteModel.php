@@ -18,10 +18,12 @@ class ClienteModel extends Model
     protected $allowedFields = [
         'nombre',
         'direccion',
+        'numero',
         'CP',
         'estado',
         'ciudad',
         'RFC',
+        'regimenFiscal',
         'fechaIngreso',
         'telefono',
         'celular',
@@ -101,7 +103,7 @@ class ClienteModel extends Model
         $total = (int) $db->table($this->table)->where('eliminado', 0)->countAllResults();
 
         $builder = $db->table($this->table)
-                      ->select('id, nombre, RFC, celular, telefono, mail, NombreEmpresa, razonSocial, direccion, CP, estado, ciudad')
+                      ->select('id, nombre, RFC, regimenFiscal, celular, telefono, mail, NombreEmpresa, razonSocial, direccion, numero, CP, estado, ciudad')
                       ->where('eliminado', 0);
 
         if ($search !== '') {

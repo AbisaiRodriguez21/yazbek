@@ -2,6 +2,35 @@
 
 <?= $this->section('content') ?>
 
+<style>
+/* Vista previa de factura — imita el diseño del PDF final (CfdiPdfService) */
+.cfdi-preview { font-size: 8.5pt; color: #111; }
+.cfdi-preview table { width: 100%; border-collapse: collapse; }
+.cfdi-preview .r { text-align: right; }
+.cfdi-preview .c { text-align: center; }
+.cfdi-header { display: flex; border: 1px solid #888; margin-bottom: 6px; }
+.cfdi-header-left { width: 65%; padding: 8px 10px; border-right: 1px solid #888; }
+.cfdi-header-right { width: 35%; }
+.cfdi-emp-name { font-size: 13pt; font-weight: bold; color: #1a3a5c; margin-bottom: 3px; }
+.cfdi-emp-data { font-size: 8pt; line-height: 1.6; }
+.cfdi-tipo-box { background: #1a3a5c; color: #fff; font-weight: bold; font-size: 8.5pt; text-align: center; padding: 5px 6px; }
+.cfdi-tipo-tabla td { font-size: 8pt; padding: 3px 6px; border-bottom: 1px solid #ddd; }
+.cfdi-tipo-tabla .lbl { color: #1a3a5c; font-weight: bold; width: 50%; }
+.cfdi-sec-title { background: #222; color: #fff; font-weight: bold; padding: 4px 6px; font-size: 8.5pt; margin: 4px 0 2px; }
+.cfdi-cliente-box { border: 1px solid #aaa; padding: 6px 8px; font-size: 8pt; margin-bottom: 6px; }
+.cfdi-conc th { background: #222; color: #fff; padding: 4px; font-size: 7.5pt; text-align: center; border: 1px solid #555; }
+.cfdi-conc td { border: 1px solid #ddd; padding: 3px 4px; font-size: 8pt; }
+.cfdi-imp-row td { background: #f0f0f0; font-size: 7pt; color: #555; padding: 2px 6px; border-left: 1px solid #ddd; border-right: 1px solid #ddd; }
+.cfdi-tot { width: 280px; margin-left: auto; margin-top: 6px; }
+.cfdi-tot td { padding: 3px 6px; font-size: 8.5pt; }
+.cfdi-tot-final td { background: #1a3a5c; color: #fff; font-weight: bold; font-size: 9.5pt; }
+.cfdi-pending-note { font-size: 7.5pt; color: #888; margin-top: 8px; font-style: italic; }
+.cfdi-logo { max-height: 45px; max-width: 150px; margin-bottom: 6px; }
+.cfdi-regimen-bar { border: 1px solid #888; padding: 4px 8px; font-size: 8pt; margin-bottom: 6px; }
+.cfdi-pend { color: #aaa; font-style: italic; }
+.cfdi-sbox { background: #f7f7f7; border: 1px dashed #ccc; padding: 6px 8px; font-size: 7.5pt; color: #999; margin-top: 6px; text-align: center; }
+</style>
+
 <div class="page-title-container">
     <div class="page-title">
         <h1>Consultar Folios</h1>
@@ -495,7 +524,16 @@ function cajaAbrirModalFactura(folio) {
 function cajaFacturar(folio) { cajaAbrirModalFactura(folio); }
 function cajaSolicitarFactura(folio) { cajaAbrirModalFactura(folio); }
 
+// Datos fiscales validados en el paso 1, guardados para enviarlos al
+// confirmar en el paso de vista previa.
+var _cajaSfDatosFiscales = null;
+
+function cajaSfMoneda(n) {
+    return '$' + (Number(n) || 0).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
 document.addEventListener('DOMContentLoaded', function() {
+    // Paso 1 → Paso 2: valida datos fiscales y pide la vista previa
     document.getElementById('btnCajaSfFacturar').addEventListener('click', function() {
         var btn = this;
         var rfc = document.getElementById('cajaSfRfc').value.trim().toUpperCase();
@@ -509,17 +547,61 @@ document.addEventListener('DOMContentLoaded', function() {
 
         err.classList.add('d-none');
         btn.disabled    = true;
+        btn.innerHTML = '<i class="simple-icon-refresh mr-1"></i> Cargando...';
+
+        _cajaSfDatosFiscales = {
+            rfcReceptor:           rfc,
+            razonSocialReceptor:   rs,
+            cpReceptor:            cp,
+            usoCFDI:               document.getElementById('cajaSfUsoCFDI').value,
+            regimenFiscalReceptor: document.getElementById('cajaSfRegimenFiscal').value,
+            formaPagoCFDI:         document.getElementById('cajaSfFormaPago').value,
+            metodoPagoCFDI:        'PUE'
+        };
+
+        var fd = new FormData();
+        fd.append('<?= csrf_token() ?>', '<?= csrf_hash() ?>');
+        Object.keys(_cajaSfDatosFiscales).forEach(function(k) { fd.append(k, _cajaSfDatosFiscales[k]); });
+
+        fetch('<?= base_url('caja/folio/') ?>' + _cajaSfFolioActivo + '/previsualizar-factura', {
+            method: 'POST', body: fd, credentials: 'same-origin'
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            btn.disabled  = false;
+            btn.innerHTML = '<i class="simple-icon-doc mr-1"></i> Facturar';
+            if (!data.success) {
+                err.textContent = data.message || 'Error al calcular la vista previa.';
+                err.classList.remove('d-none');
+                return;
+            }
+            cajaMostrarPreviewFactura(data);
+        })
+        .catch(function() {
+            btn.disabled  = false;
+            btn.innerHTML = '<i class="simple-icon-doc mr-1"></i> Facturar';
+            err.textContent = 'Error de conexión.';
+            err.classList.remove('d-none');
+        });
+    });
+
+    // Paso 2 → Paso 1: regresar a editar datos fiscales
+    document.getElementById('btnCajaSfPvRegresar').addEventListener('click', function() {
+        $('#modalCajaFacturaPreview').modal('hide');
+        $('#modalCajaSolicitarFactura').modal('show');
+    });
+
+    // Paso 2: confirmar y timbrar de verdad
+    document.getElementById('btnCajaSfPvConfirmar').addEventListener('click', function() {
+        var btn = this;
+        var err = document.getElementById('cajaSfPvError');
+        err.classList.add('d-none');
+        btn.disabled    = true;
         btn.textContent = 'Procesando...';
 
         var fd = new FormData();
         fd.append('<?= csrf_token() ?>', '<?= csrf_hash() ?>');
-        fd.append('rfcReceptor',           rfc);
-        fd.append('razonSocialReceptor',   rs);
-        fd.append('cpReceptor',            cp);
-        fd.append('usoCFDI',               document.getElementById('cajaSfUsoCFDI').value);
-        fd.append('regimenFiscalReceptor', document.getElementById('cajaSfRegimenFiscal').value);
-        fd.append('formaPagoCFDI',         document.getElementById('cajaSfFormaPago').value);
-        fd.append('metodoPagoCFDI',        'PUE');
+        Object.keys(_cajaSfDatosFiscales).forEach(function(k) { fd.append(k, _cajaSfDatosFiscales[k]); });
 
         fetch('<?= base_url('caja/folio/') ?>' + _cajaSfFolioActivo + '/facturar', {
             method: 'POST', body: fd, credentials: 'same-origin'
@@ -527,9 +609,9 @@ document.addEventListener('DOMContentLoaded', function() {
         .then(function(r) { return r.json(); })
         .then(function(data) {
             btn.disabled    = false;
-            btn.innerHTML = '<i class="simple-icon-doc mr-1"></i> Facturar';
+            btn.innerHTML = '<i class="simple-icon-check mr-1"></i> Confirmar y Facturar';
             if (data.success) {
-                $('#modalCajaSolicitarFactura').modal('hide');
+                $('#modalCajaFacturaPreview').modal('hide');
                 alert('✔ ' + (data.mensaje || 'Factura generada correctamente.'));
                 $('#tablaCajaConsulta').DataTable().ajax.reload(null, false);
             } else {
@@ -539,12 +621,76 @@ document.addEventListener('DOMContentLoaded', function() {
         })
         .catch(function() {
             btn.disabled    = false;
-            btn.innerHTML = '<i class="simple-icon-doc mr-1"></i> Facturar';
+            btn.innerHTML = '<i class="simple-icon-check mr-1"></i> Confirmar y Facturar';
             err.textContent = 'Error de conexión.';
             err.classList.remove('d-none');
         });
     });
 });
+
+function cajaSfEsc(s) {
+    var d = document.createElement('div');
+    d.textContent = s || '';
+    return d.innerHTML;
+}
+
+function cajaSfFechaLocal() {
+    var d = new Date();
+    function pad(n) { return String(n).padStart(2, '0'); }
+    return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) +
+        'T' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
+}
+
+function cajaMostrarPreviewFactura(data) {
+    document.getElementById('cajaSfPvFolioNum').textContent  = '#' + data.folio;
+    document.getElementById('cajaSfPvFolioNum2').textContent = data.folio;
+    document.getElementById('cajaSfPvFecha').textContent     = cajaSfFechaLocal() + ' (aprox.)';
+    document.getElementById('cajaSfPvLugarExp').textContent  = data.emisor.cp;
+
+    document.getElementById('cajaSfPvEmpNombre').textContent    = data.emisor.razonSocial;
+    document.getElementById('cajaSfPvEmpRfc').textContent       = data.emisor.rfc;
+    document.getElementById('cajaSfPvEmpDireccion').textContent = data.emisor.direccion;
+    document.getElementById('cajaSfPvEmpCiudad').textContent    = data.emisor.ciudad;
+    document.getElementById('cajaSfPvRegimenEmisor').textContent = data.emisor.regimen + ' / ' + data.emisor.regimenTexto;
+
+    document.getElementById('cajaSfPvRfc').textContent              = data.datosFiscales.rfcReceptor;
+    document.getElementById('cajaSfPvRazonSocial').textContent      = data.datosFiscales.razonSocialReceptor;
+    document.getElementById('cajaSfPvCP').textContent               = data.datosFiscales.cpReceptor;
+    document.getElementById('cajaSfPvRegimenReceptor').textContent  = data.datosFiscales.regimenFiscalReceptor;
+    document.getElementById('cajaSfPvUsoCFDI').textContent          = data.datosFiscales.usoCFDI;
+    document.getElementById('cajaSfPvFormaPago').textContent        = data.datosFiscales.formaPagoTexto + ' / ' + data.datosFiscales.metodoPago;
+
+    var tbody = document.getElementById('cajaSfPvConceptos');
+    tbody.innerHTML = '';
+    data.conceptos.forEach(function(c) {
+        var total = (Number(c.importe) || 0) + (Number(c.iva) || 0);
+        var tr = document.createElement('tr');
+        tr.innerHTML =
+            '<td class="c">' + c.cantidad + '</td>' +
+            '<td>' + cajaSfEsc(c.sku ? (c.sku + ' ' + c.descripcion) : c.descripcion) + '</td>' +
+            '<td class="r">' + cajaSfMoneda(c.valorUnitario) + '</td>' +
+            '<td class="r">' + cajaSfMoneda(0) + '</td>' +
+            '<td class="r">' + cajaSfMoneda(c.importe) + '</td>' +
+            '<td class="r">' + cajaSfMoneda(c.iva) + '</td>' +
+            '<td class="r"></td>' +
+            '<td class="r"></td>' +
+            '<td class="r">' + cajaSfMoneda(total) + '</td>';
+        tbody.appendChild(tr);
+
+        var trImp = document.createElement('tr');
+        trImp.className = 'cfdi-imp-row';
+        trImp.innerHTML = '<td colspan="9">Impuesto: ' + cajaSfMoneda(c.importe) + ' x [002{IVA} Tasa 0.160000] = ' + cajaSfMoneda(c.iva) + '</td>';
+        tbody.appendChild(trImp);
+    });
+
+    document.getElementById('cajaSfPvSubtotal').textContent = cajaSfMoneda(data.subtotal);
+    document.getElementById('cajaSfPvIva').textContent      = cajaSfMoneda(data.iva);
+    document.getElementById('cajaSfPvTotal').textContent    = cajaSfMoneda(data.total);
+    document.getElementById('cajaSfPvError').classList.add('d-none');
+
+    $('#modalCajaSolicitarFactura').modal('hide');
+    $('#modalCajaFacturaPreview').modal('show');
+}
 </script>
 
 <!-- Modal: Referencia bancaria (Caja) -->
@@ -648,6 +794,102 @@ document.addEventListener('DOMContentLoaded', function() {
                 <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancelar</button>
                 <button type="button" class="btn btn-primary" id="btnCajaSfFacturar">
                     <i class="simple-icon-doc mr-1"></i> Facturar
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Vista Previa de Factura Caja (paso 2) -->
+<div class="modal fade" id="modalCajaFacturaPreview" tabindex="-1" role="dialog">
+    <div class="modal-dialog modal-lg" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="simple-icon-eye mr-2"></i>Vista Previa de Factura — Folio <span id="cajaSfPvFolioNum"></span></h5>
+                <button type="button" class="close" data-dismiss="modal"><span>&times;</span></button>
+            </div>
+            <div class="modal-body">
+                <div class="cfdi-preview">
+                    <div class="cfdi-header">
+                        <div class="cfdi-header-left">
+                            <img class="cfdi-logo" src="<?= base_url('assets/logos/logo_yazbek_01.png') ?>" alt="Logo" onerror="this.style.display='none'">
+                            <div class="cfdi-emp-name" id="cajaSfPvEmpNombre"></div>
+                            <div class="cfdi-emp-data">
+                                <b>RFC:</b> <span id="cajaSfPvEmpRfc"></span><br>
+                                <span id="cajaSfPvEmpDireccion"></span><br>
+                                <span id="cajaSfPvEmpCiudad"></span>
+                            </div>
+                        </div>
+                        <div class="cfdi-header-right">
+                            <div class="cfdi-tipo-box">TIPO DE COMPROBANTE (I) FACTURA — VISTA PREVIA</div>
+                            <table class="cfdi-tipo-tabla">
+                                <tr><td class="lbl">Folio</td><td id="cajaSfPvFolioNum2"></td></tr>
+                                <tr><td class="lbl">Folio Fiscal</td><td class="cfdi-pend">se asigna al timbrar</td></tr>
+                                <tr><td class="lbl">No. Serie CSD Emisor</td><td class="cfdi-pend">se asigna al timbrar</td></tr>
+                                <tr><td class="lbl">No. Serie CSD SAT</td><td class="cfdi-pend">se asigna al timbrar</td></tr>
+                                <tr><td class="lbl">Fecha emisión</td><td id="cajaSfPvFecha"></td></tr>
+                                <tr><td class="lbl">Fecha certificación</td><td class="cfdi-pend">se asigna al timbrar</td></tr>
+                                <tr><td class="lbl">Lugar Expedición</td><td id="cajaSfPvLugarExp"></td></tr>
+                                <tr><td class="lbl">Forma Pago</td><td id="cajaSfPvFormaPago"></td></tr>
+                                <tr><td class="lbl">Moneda</td><td>MXN</td></tr>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div class="cfdi-sec-title">DATOS DEL CLIENTE</div>
+                    <div class="cfdi-cliente-box">
+                        <b id="cajaSfPvRazonSocial"></b><br>
+                        <b>RFC:</b> <span id="cajaSfPvRfc"></span>
+                        &nbsp;&nbsp; <b>CP Fiscal:</b> <span id="cajaSfPvCP"></span><br>
+                        <b>Régimen fiscal del receptor:</b> <span id="cajaSfPvRegimenReceptor"></span><br>
+                        <b>Uso CFDI:</b> <span id="cajaSfPvUsoCFDI"></span>
+                    </div>
+
+                    <div class="cfdi-regimen-bar">
+                        <b>Régimen Fiscal del Emisor:</b> <span id="cajaSfPvRegimenEmisor"></span>
+                    </div>
+
+                    <table class="cfdi-conc">
+                        <thead>
+                            <tr>
+                                <th style="width:8%">CANTIDAD</th>
+                                <th style="width:30%">DESCRIPCIÓN</th>
+                                <th style="width:11%" class="r">P. UNITARIO</th>
+                                <th style="width:10%" class="r">DESCUENTO</th>
+                                <th style="width:11%" class="r">IMPORTE</th>
+                                <th style="width:10%" class="r">IVA</th>
+                                <th style="width:9%" class="r">IEPS</th>
+                                <th style="width:9%" class="r">IMP.EST.</th>
+                                <th style="width:11%" class="r">TOTAL</th>
+                            </tr>
+                        </thead>
+                        <tbody id="cajaSfPvConceptos"></tbody>
+                    </table>
+
+                    <table style="width:100%; margin-top:6px;">
+                        <tr>
+                            <td style="width:55%; vertical-align:top; font-size:7pt;" class="cfdi-pend">
+                                RFC PAC: se asigna al timbrar<br>Exportación: 01
+                            </td>
+                            <td style="width:45%; vertical-align:top;">
+                                <table class="cfdi-tot" style="margin:0 0 0 auto;">
+                                    <tr><td>Subtotal</td><td class="r" id="cajaSfPvSubtotal"></td></tr>
+                                    <tr><td>Total IVA</td><td class="r" id="cajaSfPvIva"></td></tr>
+                                    <tr class="cfdi-tot-final"><td>TOTAL</td><td class="r" id="cajaSfPvTotal"></td></tr>
+                                </table>
+                            </td>
+                        </tr>
+                    </table>
+
+                    <div class="cfdi-sbox">Sellos digitales, folio fiscal (UUID) y código QR se generan al confirmar el timbrado.</div>
+                    <div class="cfdi-pending-note">Este es un cálculo preliminar hecho con los datos capturados; no tiene validez fiscal hasta confirmar y timbrar.</div>
+                </div>
+                <div id="cajaSfPvError" class="alert alert-danger d-none mt-2"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" id="btnCajaSfPvRegresar">Regresar</button>
+                <button type="button" class="btn btn-success" id="btnCajaSfPvConfirmar">
+                    <i class="simple-icon-check mr-1"></i> Confirmar y Facturar
                 </button>
             </div>
         </div>

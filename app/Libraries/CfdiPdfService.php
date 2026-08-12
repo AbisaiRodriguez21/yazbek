@@ -25,7 +25,7 @@ class CfdiPdfService
         $totalV     = (float)$comp->getAttribute('Total');
         $moneda     = $comp->getAttribute('Moneda');
         $formaPago  = $comp->getAttribute('FormaPago');
-        $formaPagoLabel = $this->nombreFormaPago($formaPago);
+        $formaPagoLabel = self::nombreFormaPago($formaPago);
         $metodoPago = $comp->getAttribute('MetodoPago');
         $noCert     = $comp->getAttribute('NoCertificado');
         $exportacion = $comp->getAttribute('Exportacion');
@@ -328,8 +328,10 @@ table { width: 100%; border-collapse: collapse; }
 
     /**
      * Traduce la clave del catálogo SAT c_FormaPago a "clave – nombre".
+     * Público y estático para poder reutilizar el catálogo desde la
+     * vista previa de factura (FacturacionService::previsualizar).
      */
-    private function nombreFormaPago(string $clave): string
+    public static function nombreFormaPago(string $clave): string
     {
         $catalogo = [
             '01' => 'Efectivo',

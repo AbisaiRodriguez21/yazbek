@@ -151,13 +151,20 @@
         $tiImp  = (int)($nota['tipoImpresion'] ?? 0);
         $cargo  = (float)($nota['cargoPorImpresion'] ?? 0);
         $tiDesc = $tiImp === 2 ? 'Impresión' : ($tiImp === 3 ? 'Bordado' : ($tiImp >= 4 ? 'Finiquito' : ''));
-        if ($tiImp > 1 || $cargo > 0):
+        if ($tiImp > 1 || $cargo > 0 || !empty($nota['detalleImpresion'])):
         ?>
         <!-- Otros (solo si se eligió tipo distinto a Ninguno o hay cargo) -->
+        <?php if ($tiDesc !== ''): ?>
         <tr class="sep">
             <td colspan="2" class="right">Tipo bordado/impresión:&nbsp;</td>
             <td colspan="2" class="right"><?= esc($tiDesc) ?></td>
         </tr>
+        <?php endif; ?>
+        <?php if (!empty($nota['detalleImpresion'])): ?>
+        <tr class="sep">
+            <td colspan="4">Detalle: <?= esc($nota['detalleImpresion']) ?></td>
+        </tr>
+        <?php endif; ?>
         <?php if ($cargo > 0): ?>
         <tr class="sep">
             <td colspan="2" class="right">Cargo extra:&nbsp;</td>

@@ -91,12 +91,6 @@ $rutaBase = $rutaBase ?? 'mostrador';
                             <p>Datos de contacto</p>
 
                             <div class="form-group">
-                                <label>Nombre de empresa</label>
-                                <input name="NombreEmpresa" type="text" class="form-control"
-                                       id="NombreEmpresa" placeholder="Nombre de la empresa"
-                                       style="text-transform:uppercase">
-                            </div>
-                            <div class="form-group">
                                 <label>Nombre Completo <span class="text-danger">*</span></label>
                                 <input name="nombre" type="text" required class="form-control"
                                        id="nombre" placeholder="Nombre completo"
@@ -145,9 +139,27 @@ $rutaBase = $rutaBase ?? 'mostrador';
                                        style="text-transform:uppercase">
                             </div>
                             <div class="form-group">
+                                <label>Régimen Fiscal</label>
+                                <select name="regimenFiscal" class="form-control" id="regimenFiscal">
+                                    <option value="">— Sin especificar —</option>
+                                    <option value="616">616 – Sin obligaciones fiscales</option>
+                                    <option value="601">601 – General de Ley Personas Morales</option>
+                                    <option value="612">612 – Personas Físicas con Actividades Empresariales</option>
+                                    <option value="621">621 – Incorporación Fiscal</option>
+                                    <option value="626">626 – Régimen Simplificado de Confianza (RESICO)</option>
+                                    <option value="605">605 – Sueldos y Salarios</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
                                 <label>Dirección</label>
                                 <input name="direccion" type="text" class="form-control"
                                        id="direccion" placeholder="Dirección"
+                                       style="text-transform:uppercase">
+                            </div>
+                            <div class="form-group">
+                                <label>Número</label>
+                                <input name="numero" type="text" class="form-control"
+                                       id="numero" placeholder="Número ext./int."
                                        style="text-transform:uppercase">
                             </div>
                             <div class="form-group">
@@ -161,7 +173,7 @@ $rutaBase = $rutaBase ?? 'mostrador';
                                        id="estado" style="text-transform:uppercase">
                             </div>
                             <div class="form-group">
-                                <label>Ciudad</label>
+                                <label>Municipio</label>
                                 <input name="ciudad" class="form-control"
                                        id="ciudad" style="text-transform:uppercase">
                             </div>
@@ -282,14 +294,15 @@ var rutaDatatable = '<?= base_url($rutaBase . '/clientes/datatable') ?>';
 function newUpdateClient(idCliente, operacion, row) {
     if (operacion === 1 && row) {
         $('.header-clientes').text('Actualizar Cliente');
-        $('#NombreEmpresa').val((row.NombreEmpresa || '').trim());
         $('#nombre').val((row.nombre || '').trim());
         $('#celular').val((row.celular || '').trim());
         $('#telefono').val((row.telefono || '').trim());
         $('#mail').val((row.mail || '').trim());
         $('#razonSocial').val((row.razonSocial || '').trim());
         $('#rfc').val((row.RFC || '').trim());
+        $('#regimenFiscal').val((row.regimenFiscal || '').trim());
         $('#direccion').val((row.direccion || '').trim());
+        $('#numero').val((row.numero || '').trim());
         $('#cp').val((row.CP || '').trim());
         $('#estado').val((row.estado || '').trim());
         $('#ciudad').val((row.ciudad || '').trim());
@@ -299,8 +312,8 @@ function newUpdateClient(idCliente, operacion, row) {
         $('#nuevoCliente').attr('action', rutaBase + '/clientes/actualizar/' + idCliente);
     } else {
         $('.header-clientes').text('Nuevo Cliente');
-        $('#NombreEmpresa, #nombre, #celular, #telefono, #mail').val('');
-        $('#razonSocial, #rfc, #direccion, #cp, #estado, #ciudad').val('');
+        $('#nombre, #celular, #telefono, #mail').val('');
+        $('#razonSocial, #rfc, #regimenFiscal, #direccion, #numero, #cp, #estado, #ciudad').val('');
         $('#guardarCliente').text('Guardar Cliente');
         $('#MM_insert').val('nuevoCliente');
         $('#clienteid').val('');

@@ -1179,11 +1179,12 @@ class AdminController extends BaseController
             'celular'       => trim($this->request->getPost('celular') ?? ''),
             'mail'          => trim($this->request->getPost('mail') ?? ''),
             'RFC'           => strtoupper(trim($this->request->getPost('RFC') ?? '')),
+            'regimenFiscal' => trim($this->request->getPost('regimenFiscal') ?? '') ?: null,
             'direccion'     => strtoupper(trim($this->request->getPost('direccion') ?? '')),
+            'numero'        => strtoupper(trim($this->request->getPost('numero') ?? '')),
             'CP'            => trim($this->request->getPost('CP') ?? ''),
             'estado'        => strtoupper(trim($this->request->getPost('estado') ?? '')),
             'ciudad'        => strtoupper(trim($this->request->getPost('ciudad') ?? '')),
-            'NombreEmpresa' => strtoupper(trim($this->request->getPost('NombreEmpresa') ?? '')),
             'razonSocial'   => strtoupper(trim($this->request->getPost('razonSocial') ?? '')),
             'comoNosConoce' => $this->request->getPost('comoNosConoce'),
             'fechaIngreso'  => date('Y-m-d'),
@@ -1206,11 +1207,12 @@ class AdminController extends BaseController
             'celular'       => trim($this->request->getPost('celular') ?? ''),
             'mail'          => trim($this->request->getPost('mail') ?? ''),
             'RFC'           => strtoupper(trim($this->request->getPost('RFC') ?? '')),
+            'regimenFiscal' => trim($this->request->getPost('regimenFiscal') ?? '') ?: null,
             'direccion'     => strtoupper(trim($this->request->getPost('direccion') ?? '')),
+            'numero'        => strtoupper(trim($this->request->getPost('numero') ?? '')),
             'CP'            => trim($this->request->getPost('CP') ?? ''),
             'estado'        => strtoupper(trim($this->request->getPost('estado') ?? '')),
             'ciudad'        => strtoupper(trim($this->request->getPost('ciudad') ?? '')),
-            'NombreEmpresa' => strtoupper(trim($this->request->getPost('NombreEmpresa') ?? '')),
             'razonSocial'   => strtoupper(trim($this->request->getPost('razonSocial') ?? '')),
             'comoNosConoce' => $this->request->getPost('comoNosConoce'),
         ]);
@@ -1300,6 +1302,10 @@ class AdminController extends BaseController
             return $this->response->setJSON(['ok' => false, 'error' => 'Folio no encontrado.']);
         }
 
+        if (($nota['verificado'] ?? '') === 'Pagado') {
+            return $this->response->setJSON(['ok' => false, 'error' => "El folio #{$folio} ya está pagado y verificado."]);
+        }
+
         // Si el folio (o el padre que se está liquidando) todavía no tiene
         // ningún pago registrado, se registra ahora con el tipo de pago
         // elegido al finalizar — evita liquidar sin haber recibido el dinero.
@@ -1349,7 +1355,12 @@ class AdminController extends BaseController
         $cp     = $nota['cp_receptor']           ?: ($cliente['CP']          ?? '');
         $uso    = $nota['uso_cfdi']              ?: 'S01';
         $reg    = $nota['regimen_fiscal_receptor'] ?: '616';
-        $forma  = $nota['forma_pago_cfdi']       ?: '01';
+
+        // Forma de pago: la que domine por monto entre lo realmente cobrado
+        // (montosnotas). Si aún no hay pagos registrados, se usa lo guardado
+        // en la nota (o Efectivo por default).
+        $forma = $this->calcularFormaPagoDominante($folio)
+              ?: ($nota['forma_pago_cfdi'] ?: '01');
 
         return $this->response->setJSON([
             'rfcReceptor'           => strtoupper(trim($rfc)),
@@ -1403,6 +1414,28 @@ class AdminController extends BaseController
     }
 
     // ──────────────────────────────────────────────────────────────
+    // POST /admin/folio/:folio/previsualizar-factura
+    // Calcula conceptos/subtotal/IVA/total SIN timbrar ni guardar nada.
+    // Se usa para mostrar la vista previa antes de confirmar el timbrado.
+    // ──────────────────────────────────────────────────────────────
+    public function previsualizarFactura(int $folio): \CodeIgniter\HTTP\Response
+    {
+        try {
+            $datosModal = $this->leerDatosModalFactura();
+            $svc        = new \App\Libraries\FacturacionService();
+            $result     = $svc->previsualizar($folio, $datosModal);
+
+            return $this->response->setJSON($result);
+        } catch (\Throwable $e) {
+            log_message('error', "AdminController::previsualizarFactura folio={$folio}: " . $e->getMessage());
+            return $this->response->setJSON([
+                'success' => false,
+                'message' => 'Error interno: ' . $e->getMessage(),
+            ]);
+        }
+    }
+
+    // ──────────────────────────────────────────────────────────────
     // POST /admin/folio/:folio/facturar
     // Genera la factura CFDI para un folio ya cerrado.
     // Escenario 1: los datos fiscales ya están en notas_1 (factura=1 al cerrar).
@@ -1412,22 +1445,7 @@ class AdminController extends BaseController
     public function facturarFolio(int $folio): \CodeIgniter\HTTP\Response
     {
         try {
-            $req = $this->request;
-
-            // Si vienen datos del modal (Escenario 2), los pasamos al servicio
-            $rfcModal = trim($req->getPost('rfcReceptor') ?? '');
-            $datosModal = null;
-            if ($rfcModal !== '') {
-                $datosModal = [
-                    'rfcReceptor'           => $rfcModal,
-                    'razonSocialReceptor'   => trim($req->getPost('razonSocialReceptor') ?? ''),
-                    'cpReceptor'            => trim($req->getPost('cpReceptor')          ?? ''),
-                    'usoCFDI'               => trim($req->getPost('usoCFDI')             ?? 'S01'),
-                    'regimenFiscalReceptor' => trim($req->getPost('regimenFiscalReceptor') ?? '616'),
-                    'formaPago'             => trim($req->getPost('formaPagoCFDI')       ?? '01'),
-                    'metodoPago'            => trim($req->getPost('metodoPagoCFDI')      ?? 'PUE'),
-                ];
-            }
+            $datosModal = $this->leerDatosModalFactura();
 
             $svc    = new \App\Libraries\FacturacionService();
             $result = $svc->procesar($folio, $datosModal);
@@ -1454,6 +1472,31 @@ class AdminController extends BaseController
     }
 
     // ──────────────────────────────────────────────────────────────
+    // Lee del POST los datos fiscales capturados en el modal de
+    // facturación (RFC, Razón Social, CP, etc). Devuelve null si el
+    // modal no envió nada (Escenario 1: datos ya guardados en notas_1).
+    // Compartido por previsualizarFactura() y facturarFolio().
+    // ──────────────────────────────────────────────────────────────
+    private function leerDatosModalFactura(): ?array
+    {
+        $req      = $this->request;
+        $rfcModal = trim($req->getPost('rfcReceptor') ?? '');
+        if ($rfcModal === '') {
+            return null;
+        }
+
+        return [
+            'rfcReceptor'           => $rfcModal,
+            'razonSocialReceptor'   => trim($req->getPost('razonSocialReceptor') ?? ''),
+            'cpReceptor'            => trim($req->getPost('cpReceptor')          ?? ''),
+            'usoCFDI'               => trim($req->getPost('usoCFDI')             ?? 'S01'),
+            'regimenFiscalReceptor' => trim($req->getPost('regimenFiscalReceptor') ?? '616'),
+            'formaPago'             => trim($req->getPost('formaPagoCFDI')       ?? '01'),
+            'metodoPago'            => trim($req->getPost('metodoPagoCFDI')      ?? 'PUE'),
+        ];
+    }
+
+    // ──────────────────────────────────────────────────────────────
     // GET /admin/folio/:folio/ticket  —  Ticket de impresión (popup)
     // Equivalente a venta_stp_3.php del sistema original
     // ──────────────────────────────────────────────────────────────
@@ -1469,7 +1512,7 @@ class AdminController extends BaseController
                     n.status AS statusId, n.verificado,
                     n.sumaImportes, n.subTotal, n.tipoPago,
                     n.cargoTarjeta, n.subTotal2, n.iva, n.total,
-                    n.tipoImpresion, n.cargoPorImpresion, n.montoTCTD,
+                    n.tipoImpresion, n.cargoPorImpresion, n.detalleImpresion, n.montoTCTD,
                     n.montoEfectivo, n.montoEfectivoIva, n.totalPiezas,
                     n.precioMayoreo, COALESCE(n.uuid_fiscal, '') AS uuid_fiscal,
                     n.fecha_edicion
@@ -1555,7 +1598,8 @@ class AdminController extends BaseController
                     n2.pUnitario,
                     n2.pUnitarioM,
                     (n2.cantidad * n2.pUnitario)  AS importeMenudeo,
-                    (n2.cantidad * n2.pUnitarioM) AS importeMayoreo
+                    (n2.cantidad * n2.pUnitarioM) AS importeMayoreo,
+                    COALESCE(n2.descuento, 0) AS descuentoLinea
              FROM notas_2 n2
              LEFT JOIN productosyazbek p ON p.sku = n2.estilo
              WHERE n2.folio = ?

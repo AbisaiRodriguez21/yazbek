@@ -127,37 +127,7 @@ class FacturacionService
         }
 
         // ── Cargar detalle de productos ───────────────────────────────────
-        $detalle = $db->query(
-            "SELECT n2.cantidad,
-                    n2.estilo AS sku,
-                    CONCAT(COALESCE(p.estilo,''),'-',COALESCE(p.Descripcion_Larga,''),
-                           '-',COALESCE(p.Talla,''),'-',COALESCE(p.Color,'')) AS descripcion,
-                    n2.pUnitario,
-                    n2.pUnitarioM,
-                    (n2.cantidad * n2.pUnitario)  AS importeMenudeo,
-                    (n2.cantidad * n2.pUnitarioM) AS importeMayoreo
-             FROM notas_2 n2
-             LEFT JOIN productosyazbek p ON p.sku = n2.estilo
-             WHERE n2.folio = ?
-             ORDER BY n2.Id_Notas_2 ASC",
-            [$folio]
-        )->getResultArray();
-
-        // Detectar mayoreo/menudeo
-        $storedSuma = (float)($nota['sumaImportes'] ?? 0);
-        if ($storedSuma > 0) {
-            $sumMenu = array_sum(array_map(fn($d) => $d['cantidad'] * (float)$d['pUnitario'],  $detalle));
-            $sumMay  = array_sum(array_map(fn($d) => $d['cantidad'] * (float)($d['pUnitarioM'] ?: $d['pUnitario']), $detalle));
-            $esMayoreo = abs($sumMay - $storedSuma) < abs($sumMenu - $storedSuma);
-        } else {
-            $esMayoreo = (int)($nota['precioMayoreo'] ?? 0) === 1;
-        }
-        foreach ($detalle as &$linea) {
-            $usarMay = $esMayoreo && !empty($linea['pUnitarioM']) && (float)$linea['pUnitarioM'] > 0;
-            $linea['precio']  = $usarMay ? (float)$linea['pUnitarioM']    : (float)$linea['pUnitario'];
-            $linea['importe'] = $usarMay ? (float)$linea['importeMayoreo'] : (float)$linea['importeMenudeo'];
-        }
-        unset($linea);
+        $detalle = $this->cargarDetalleConPrecios($folio, $nota);
 
         // ── Cargar datos del cliente ──────────────────────────────────────
         $cliente = $db->query(
@@ -262,5 +232,140 @@ class FacturacionService
         }
 
         return ['success' => true, 'uuid' => $uuid];
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Vista previa: calcula conceptos/subtotal/IVA/total SIN timbrar y SIN
+    // guardar nada en BD. Se usa para mostrarle al usuario la factura antes
+    // de que confirme y se llame a Dfacture.
+    // ─────────────────────────────────────────────────────────────────────
+    public function previsualizar(int $folio, ?array $datosExtra = null): array
+    {
+        $db = $this->db;
+
+        $nota = $db->query(
+            "SELECT * FROM notas_1 WHERE folio = ? LIMIT 1",
+            [$folio]
+        )->getRowArray();
+
+        if (! $nota) {
+            return ['success' => false, 'message' => "Folio #{$folio} no encontrado."];
+        }
+
+        if (! empty($nota['uuid_fiscal'])) {
+            return ['success' => false, 'message' => "El folio #{$folio} ya fue facturado (UUID: {$nota['uuid_fiscal']})."];
+        }
+
+        if ($datosExtra !== null) {
+            $rfcReceptor           = strtoupper(trim($datosExtra['rfcReceptor']           ?? ''));
+            $razonSocialReceptor   = strtoupper(trim($datosExtra['razonSocialReceptor']   ?? ''));
+            $cpReceptor            = trim($datosExtra['cpReceptor']                       ?? '');
+            $usoCFDI               = trim($datosExtra['usoCFDI']                          ?? 'S01');
+            $regimenFiscalReceptor = trim($datosExtra['regimenFiscalReceptor']            ?? '616');
+            $formaPagoCFDI         = trim($datosExtra['formaPago']                        ?? '01');
+            $metodoPagoCFDI        = trim($datosExtra['metodoPago']                       ?? 'PUE');
+        } else {
+            $rfcReceptor           = $nota['rfc_receptor']           ?? '';
+            $razonSocialReceptor   = $nota['razon_social_receptor']  ?? '';
+            $cpReceptor            = $nota['cp_receptor']            ?? '';
+            $usoCFDI               = $nota['uso_cfdi']               ?? 'S01';
+            $regimenFiscalReceptor = $nota['regimen_fiscal_receptor'] ?? '616';
+            $formaPagoCFDI         = $nota['forma_pago_cfdi']        ?? '01';
+            $metodoPagoCFDI        = 'PUE';
+        }
+
+        if (empty($rfcReceptor) || empty($razonSocialReceptor) || empty($cpReceptor)) {
+            return [
+                'success' => false,
+                'message' => 'Faltan datos fiscales del receptor (RFC, Razón Social o CP).',
+            ];
+        }
+
+        $detalle = $this->cargarDetalleConPrecios($folio, $nota);
+
+        try {
+            $dfacture = new DfactureService();
+        } catch (\Throwable $e) {
+            return ['success' => false, 'message' => 'Error al inicializar DfactureService: ' . $e->getMessage()];
+        }
+
+        $calculo = $dfacture->previsualizarDatos($nota, $detalle);
+        $emisor  = $dfacture->obtenerEmisor();
+
+        // Datos del emisor (para que la vista previa se vea como el PDF final)
+        $cfgRows = $db->query("SELECT clave, valor FROM ticket_config")->getResultArray();
+        $cfg     = array_column($cfgRows, 'valor', 'clave');
+
+        return [
+            'success'       => true,
+            'folio'         => $folio,
+            'emisor'        => [
+                'razonSocial'   => $cfg['empresa_razon_social'] ?? '',
+                'rfc'           => preg_replace('/^RFC\s*/i', '', trim($cfg['empresa_rfc'] ?? '')),
+                'direccion'     => $cfg['empresa_sucursal'] ?? '',
+                'ciudad'        => $cfg['empresa_ciudad']   ?? '',
+                'regimen'       => $emisor['regimen'],
+                'regimenTexto'  => $cfg['empresa_regimen'] ?? '',
+                'cp'            => $emisor['cp'],
+            ],
+            'datosFiscales' => [
+                'rfcReceptor'           => $rfcReceptor,
+                'razonSocialReceptor'   => $razonSocialReceptor,
+                'cpReceptor'            => $cpReceptor,
+                'usoCFDI'               => $usoCFDI,
+                'regimenFiscalReceptor' => $regimenFiscalReceptor,
+                'formaPago'             => $formaPagoCFDI,
+                'formaPagoTexto'        => CfdiPdfService::nombreFormaPago($formaPagoCFDI),
+                'metodoPago'            => $metodoPagoCFDI,
+            ],
+            'conceptos' => $calculo['conceptos'],
+            'subtotal'  => $calculo['subtotal'],
+            'iva'       => $calculo['iva'],
+            'total'     => $calculo['total'],
+        ];
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Carga el detalle de productos de un folio y resuelve precio/importe
+    // por línea según si la nota fue a precio mayoreo o menudeo.
+    // Usado tanto por procesar() como por previsualizar().
+    // ─────────────────────────────────────────────────────────────────────
+    private function cargarDetalleConPrecios(int $folio, array $nota): array
+    {
+        $db = $this->db;
+
+        $detalle = $db->query(
+            "SELECT n2.cantidad,
+                    n2.estilo AS sku,
+                    CONCAT(COALESCE(p.estilo,''),'-',COALESCE(p.Descripcion_Larga,''),
+                           '-',COALESCE(p.Talla,''),'-',COALESCE(p.Color,'')) AS descripcion,
+                    n2.pUnitario,
+                    n2.pUnitarioM,
+                    (n2.cantidad * n2.pUnitario)  AS importeMenudeo,
+                    (n2.cantidad * n2.pUnitarioM) AS importeMayoreo
+             FROM notas_2 n2
+             LEFT JOIN productosyazbek p ON p.sku = n2.estilo
+             WHERE n2.folio = ?
+             ORDER BY n2.Id_Notas_2 ASC",
+            [$folio]
+        )->getResultArray();
+
+        // Detectar mayoreo/menudeo
+        $storedSuma = (float)($nota['sumaImportes'] ?? 0);
+        if ($storedSuma > 0) {
+            $sumMenu = array_sum(array_map(fn($d) => $d['cantidad'] * (float)$d['pUnitario'],  $detalle));
+            $sumMay  = array_sum(array_map(fn($d) => $d['cantidad'] * (float)($d['pUnitarioM'] ?: $d['pUnitario']), $detalle));
+            $esMayoreo = abs($sumMay - $storedSuma) < abs($sumMenu - $storedSuma);
+        } else {
+            $esMayoreo = (int)($nota['precioMayoreo'] ?? 0) === 1;
+        }
+        foreach ($detalle as &$linea) {
+            $usarMay = $esMayoreo && !empty($linea['pUnitarioM']) && (float)$linea['pUnitarioM'] > 0;
+            $linea['precio']  = $usarMay ? (float)$linea['pUnitarioM']    : (float)$linea['pUnitario'];
+            $linea['importe'] = $usarMay ? (float)$linea['importeMayoreo'] : (float)$linea['importeMenudeo'];
+        }
+        unset($linea);
+
+        return $detalle;
     }
 }

@@ -296,6 +296,7 @@ class MostradorController extends BaseController
             $factura        = (int)   ($data['Factura'] ?? 0);
             $impresion      = (int)   ($data['Impresion'] ?? 1);
             $cargoImpresion = (float) ($data['CargoImpresion'] ?? 0);
+            $detalleImpresion = trim($data['DetalleImpresion'] ?? '');
             $descuento      = (float) ($data['Descuento'] ?? 0);
             $totalPiezas    = (int)   ($data['TotalPiezas'] ?? 0);
             $listaPagosRaw  = $data['Pagos'] ?? [];
@@ -326,6 +327,7 @@ class MostradorController extends BaseController
             $subTotal2    = $subTotal + $iva;
             $impresion      = (int)  ($this->request->getPost('impresion') ?: 1);
             $cargoImpresion = (float)($this->request->getPost('cargoImpresion') ?: 0);
+            $detalleImpresion = trim($this->request->getPost('detalleImpresion') ?? '');
 
             $listaPagosRaw = json_decode($this->request->getPost('pagos') ?? '[]', true) ?: [];
             $listaPagos = [];
@@ -369,7 +371,7 @@ class MostradorController extends BaseController
             "UPDATE notas_1
              SET sumaImportes=?, subTotal=?, cargoTarjeta=?, subTotal2=?,
                  iva=?, total=?, descuento=?, status=?,
-                 factura=?, tipoImpresion=?, cargoPorImpresion=?, totalPiezas=?,
+                 factura=?, tipoImpresion=?, cargoPorImpresion=?, detalleImpresion=?, totalPiezas=?,
                  rfc_receptor=?, razon_social_receptor=?, cp_receptor=?,
                  uso_cfdi=?, regimen_fiscal_receptor=?, forma_pago_cfdi=?,
                  fecha_edicion=IF(? = 1, NOW(), fecha_edicion)
@@ -377,7 +379,7 @@ class MostradorController extends BaseController
             [
                 $sumaImportes, $subTotal, $cargoTarjeta, $subTotal2,
                 $iva, $total, $descuento, $idEstatus,
-                $factura, $impresion, $cargoImpresion, $totalPiezas,
+                $factura, $impresion, $cargoImpresion, $detalleImpresion ?: null, $totalPiezas,
                 $rfcReceptor ?: null, $razonSocialReceptor ?: null, $cpReceptor ?: null,
                 $usoCFDI, $regimenFiscalReceptor, $formaPagoCFDI,
                 $esReconfirmacion ? 1 : 0,
@@ -390,6 +392,10 @@ class MostradorController extends BaseController
             AuditService::log(AuditService::VENTA_CREADA, 'notas_1', $folioN1,
                 "Nota #{$folioN1} editada y reconfirmada por Admin (productos y/o forma de pago actualizados).");
         }
+
+        // Reflejar el descuento (%) por pieza en cada línea de notas_2, en vez
+        // de dejarlo solo como un monto único al final de la nota.
+        $this->distribuirDescuentoPorLinea($folioN1, $descuento, $db);
 
         // Se indican los tipos de pago con los que pagará el cliente (sin
         // registrar dinero recibido) para que caja (o Admin desde su Verificar
@@ -1171,11 +1177,12 @@ class MostradorController extends BaseController
             'celular'       => trim($this->request->getPost('celular') ?? ''),
             'mail'          => trim($this->request->getPost('mail') ?? ''),
             'RFC'           => strtoupper(trim($this->request->getPost('RFC') ?? '')),
+            'regimenFiscal' => trim($this->request->getPost('regimenFiscal') ?? '') ?: null,
             'direccion'     => strtoupper(trim($this->request->getPost('direccion') ?? '')),
+            'numero'        => strtoupper(trim($this->request->getPost('numero') ?? '')),
             'CP'            => trim($this->request->getPost('CP') ?? ''),
             'estado'        => strtoupper(trim($this->request->getPost('estado') ?? '')),
             'ciudad'        => strtoupper(trim($this->request->getPost('ciudad') ?? '')),
-            'NombreEmpresa' => strtoupper(trim($this->request->getPost('NombreEmpresa') ?? '')),
             'razonSocial'   => strtoupper(trim($this->request->getPost('razonSocial') ?? '')),
             'comoNosConoce' => $this->request->getPost('comoNosConoce'),
             'fechaIngreso'  => date('Y-m-d'),
@@ -1196,11 +1203,12 @@ class MostradorController extends BaseController
             'celular'       => trim($this->request->getPost('celular') ?? ''),
             'mail'          => trim($this->request->getPost('mail') ?? ''),
             'RFC'           => strtoupper(trim($this->request->getPost('RFC') ?? '')),
+            'regimenFiscal' => trim($this->request->getPost('regimenFiscal') ?? '') ?: null,
             'direccion'     => strtoupper(trim($this->request->getPost('direccion') ?? '')),
+            'numero'        => strtoupper(trim($this->request->getPost('numero') ?? '')),
             'CP'            => trim($this->request->getPost('CP') ?? ''),
             'estado'        => strtoupper(trim($this->request->getPost('estado') ?? '')),
             'ciudad'        => strtoupper(trim($this->request->getPost('ciudad') ?? '')),
-            'NombreEmpresa' => strtoupper(trim($this->request->getPost('NombreEmpresa') ?? '')),
             'razonSocial'   => strtoupper(trim($this->request->getPost('razonSocial') ?? '')),
             'comoNosConoce' => $this->request->getPost('comoNosConoce'),
         ]);
@@ -1892,6 +1900,41 @@ class MostradorController extends BaseController
             'ahorro'       => $sumaMenudeo - $sumaMayoreo,
             'esMayoreo'    => $esMayoreo,
         ];
+    }
+
+    /**
+     * Distribuye el descuento global (%) de la nota proporcionalmente entre
+     * las líneas de producto de notas_2, para que el descuento se refleje
+     * por pieza (ticket, reportes) y no solo como un monto único al final.
+     *
+     * No toca notas_1.descuento (sigue siendo el monto total) ni afecta el
+     * timbrado: DfactureService prorratea el descuento global de forma
+     * independiente al construir el CFDI.
+     */
+    private function distribuirDescuentoPorLinea(int $folio, float $descuentoGlobal, $db): void
+    {
+        $carrito    = $this->getCarritoData($folio, $db, session()->get("nota_{$folio}_tipo") === 'mayoreo');
+        $detalle    = $carrito['detalle'];
+        $totalBruto = array_sum(array_column($detalle, 'importe'));
+
+        if ($totalBruto <= 0 || $descuentoGlobal <= 0 || empty($detalle)) {
+            $db->query("UPDATE notas_2 SET descuento = 0 WHERE folio = ?", [$folio]);
+            return;
+        }
+
+        $acumulado = 0.0;
+        $ultimo    = count($detalle) - 1;
+        foreach ($detalle as $i => $linea) {
+            if ($i < $ultimo) {
+                $descLinea = round($linea['importe'] / $totalBruto * $descuentoGlobal, 2);
+            } else {
+                // La última línea absorbe el residuo de redondeo
+                $descLinea = round($descuentoGlobal - $acumulado, 2);
+            }
+            $acumulado += $descLinea;
+            $db->query("UPDATE notas_2 SET descuento = ? WHERE Id_Notas_2 = ?",
+                [$descLinea, $linea['Id_Notas_2']]);
+        }
     }
 
     /**

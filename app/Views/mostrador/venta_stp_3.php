@@ -113,29 +113,23 @@
                         <?php endif; ?>
                     </div>
 
-                    <!-- Tipo de impresión / bordado -->
-                    <div class="form-row mb-3">
-                        <div class="form-group col-md-6 mb-0">
-                            <label for="selectImpresion">Tipo de bordado / impresión</label>
-                            <select id="selectImpresion" name="impresion" class="form-control">
-                                <?php foreach ($tiposImpresion as $ti): ?>
-                                <option value="<?= (int)$ti['id'] ?>"
-                                    <?= (int)($nota['tipoImpresion'] ?? 1) === (int)$ti['id'] ? 'selected' : '' ?>>
-                                    <?= esc($ti['descripcion']) ?>
-                                </option>
-                                <?php endforeach; ?>
-                            </select>
-                        </div>
-                        <div class="form-group col-md-6 mb-0" id="divCargoImpresion">
-                            <label for="inputCargoImpresion">Costo extra ($)</label>
-                            <div class="input-group">
-                                <div class="input-group-prepend">
-                                    <span class="input-group-text">$</span>
-                                </div>
-                                <input type="number" id="inputCargoImpresion" name="cargoImpresion"
-                                       class="form-control" min="0" step="0.01" placeholder="0.00"
-                                       value="<?= ($nota['cargoPorImpresion'] ?? 0) > 0 ? number_format((float)$nota['cargoPorImpresion'], 2, '.', '') : '' ?>">
+                    <!-- Bordado / impresión: detalle en texto + costo extra -->
+                    <input type="hidden" id="selectImpresion" name="impresion" value="<?= (int)($nota['tipoImpresion'] ?? 1) ?>">
+                    <div class="form-group">
+                        <label for="inputDetalleImpresion">Detalle del trabajo (bordado / impresión)</label>
+                        <textarea id="inputDetalleImpresion" name="detalleImpresion" class="form-control"
+                                  rows="2" placeholder="Ej. Bordar logo en pecho, 3 colores"><?= esc($nota['detalleImpresion'] ?? '') ?></textarea>
+                        <small class="form-text text-muted">Se imprime en el ticket.</small>
+                    </div>
+                    <div class="form-group" id="divCargoImpresion">
+                        <label for="inputCargoImpresion">Costo extra ($)</label>
+                        <div class="input-group">
+                            <div class="input-group-prepend">
+                                <span class="input-group-text">$</span>
                             </div>
+                            <input type="number" id="inputCargoImpresion" name="cargoImpresion"
+                                   class="form-control" min="0" step="0.01" placeholder="0.00"
+                                   value="<?= ($nota['cargoPorImpresion'] ?? 0) > 0 ? number_format((float)$nota['cargoPorImpresion'], 2, '.', '') : '' ?>">
                         </div>
                     </div>
                     <?php endif; ?>
@@ -511,6 +505,7 @@ function ejecutarCierreNota() {
         descuento:       $('#hidDescuentoDlr').val() || 0,
         impresion:       $('#selectImpresion').val() || 1,
         cargoImpresion:  $('#inputCargoImpresion').val() || 0,
+        detalleImpresion: $('#inputDetalleImpresion').val() || '',
         subtotal:    $('#hidSubtotal').val(),
         iva:         $('#hidIva').val(),
         total:       $('#hidTotal').val(),

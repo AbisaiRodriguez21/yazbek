@@ -64,4 +64,46 @@ abstract class BaseController extends Controller
     {
         return fix_enc_rows($rows);
     }
+
+    // ──────────────────────────────────────────────────────────────
+    // FORMA DE PAGO DOMINANTE (CFDI)
+    // Cuando un folio se pagó con varios métodos combinados, la factura
+    // debe llevar el método que representa el MAYOR monto (no el que se
+    // haya seleccionado a mano, casi siempre "01 Efectivo" por default).
+    // Se calcula sobre los pagos YA REGISTRADOS en montosnotas (folio +
+    // sus folios hijo/anticipos no cancelados), que es el desglose real
+    // de lo cobrado.
+    // ──────────────────────────────────────────────────────────────
+    protected function calcularFormaPagoDominante(int $folio): ?string
+    {
+        // Mapa tipopago.id → clave SAT c_FormaPago
+        $mapaSat = [
+            1  => '01', // Contado (Efectivo)
+            4  => '02', // Cheque
+            5  => '03', // Transferencia
+            6  => '03', // Depósito (el SAT no tiene clave propia; se usa Transferencia)
+            7  => '99', // Sin Pagar — no debería facturarse así, pero por seguridad
+            8  => '04', // Cargo con tarjeta (genérico, se usa muy poco)
+            9  => '28', // Tarjeta Débito
+            10 => '04', // Tarjeta Crédito
+        ];
+
+        $db  = \Config\Database::connect();
+        $row = $db->query(
+            "SELECT mn.idTipoPago, SUM(mn.monto) AS total
+             FROM notas_1 n
+             INNER JOIN montosnotas mn ON mn.idNotas = n.Id_Notas_1
+             WHERE (n.folio = ? OR n.referencia = ?) AND n.status != 3
+             GROUP BY mn.idTipoPago
+             ORDER BY total DESC
+             LIMIT 1",
+            [$folio, $folio]
+        )->getRowArray();
+
+        if (! $row) {
+            return null;
+        }
+
+        return $mapaSat[(int) $row['idTipoPago']] ?? null;
+    }
 }
