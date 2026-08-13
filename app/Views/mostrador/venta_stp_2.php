@@ -4,13 +4,20 @@
 <link rel="stylesheet" href="<?= base_url('assets/vendor/select2.min.css') ?>">
 <link rel="stylesheet" href="<?= base_url('assets/vendor/select2-bootstrap.min.css') ?>">
 <style>
-.carrito-table td, .carrito-table th { vertical-align: middle; white-space: normal; word-break: break-word; }
-.carrito-table th.col-sku, .carrito-table td.col-sku { width: 12%; }
-.carrito-table th.col-desc, .carrito-table td.col-desc { width: 43%; }
-.carrito-table th.col-precio, .carrito-table td.col-precio { width: 13%; }
-.carrito-table th.col-cant, .carrito-table td.col-cant { width: 9%; }
-.carrito-table th.col-importe, .carrito-table td.col-importe { width: 13%; }
-.carrito-table th.col-accion, .carrito-table td.col-accion { width: 10%; }
+/* Tabla de carrito: ancho natural por columna (min-width en px, no %) +
+   scroll horizontal propio como red de seguridad. Así ningún valor se
+   trunca ni se rompe letra por letra al reducir la resolución: si no
+   cabe, la tabla se desplaza en lugar de deformarse. */
+.carrito-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.carrito-table { font-size: 0.85rem; width: 100%; }
+.carrito-table td, .carrito-table th { vertical-align: middle; white-space: nowrap; }
+.carrito-table td.col-desc, .carrito-table th.col-desc { white-space: normal; word-break: break-word; }
+.carrito-table th.col-sku,     .carrito-table td.col-sku     { min-width: 95px; }
+.carrito-table th.col-desc,    .carrito-table td.col-desc    { min-width: 180px; }
+.carrito-table th.col-precio,  .carrito-table td.col-precio  { min-width: 80px; }
+.carrito-table th.col-cant,    .carrito-table td.col-cant    { min-width: 55px; }
+.carrito-table th.col-importe, .carrito-table td.col-importe { min-width: 90px; }
+.carrito-table th.col-accion,  .carrito-table td.col-accion  { min-width: 50px; }
 .btn-quitar { padding: 2px 8px; }
 /* #panelResumen sin sticky — el layout scrollea completo */
 .precio-tachado { text-decoration: line-through; color: #888; }
@@ -42,10 +49,9 @@
 </div>
 
 <div class="row">
-    <!-- Panel izquierdo: buscador -->
-    <div class="col-md-3">
-        <!-- Agregar producto -->
-        <div class="card">
+    <!-- Columna 1: buscador / agregar producto -->
+    <div class="col-lg-3 col-md-6 mb-3 mb-lg-0">
+        <div class="card h-100">
             <div class="card-header font-weight-bold" style="padding-top: 1rem; padding-bottom: 1rem;">Agregar Producto</div>
             <div class="card-body">
                 <div class="form-group" id="selectProductoWrapper" style="position:relative; z-index:10;">
@@ -82,42 +88,40 @@
         </div>
     </div>
 
-    <!-- Panel derecho: resumen + carrito -->
-    <div class="col-md-9">
-        <div class="card mb-3" id="panelResumen">
+    <!-- Columna 2: resumen de la nota -->
+    <div class="col-lg-2 col-md-6 mb-3 mb-lg-0">
+        <div class="card h-100" id="panelResumen">
             <div class="card-header font-weight-bold" style="padding-top: 1rem; padding-bottom: 1rem;">Resumen</div>
             <div class="card-body">
-                <div class="d-flex justify-content-between flex-wrap">
-                    <div>
-                        <p class="mb-1"><strong>Folio:</strong> <?= (int)$nota['folio'] ?></p>
-                        <p class="mb-1"><strong>Cliente:</strong> <?= esc($nota['cliente'] ?? '') ?></p>
-                        <p class="mb-1"><strong>Vendedor:</strong> <?= esc($usuario['nombre']) ?></p>
-                        <p class="mb-1"><strong>Fecha:</strong> <?= date('Y-m-d', strtotime($nota['fecha_inicial'])) ?></p>
-                    </div>
-                    <div class="text-right">
-                        <p class="mb-1">
-                            <strong>Total piezas:</strong>
-                            <span id="spTotalPiezas" class="badge badge-info"><?= (int)$totalPiezas ?></span>
-                            <span id="badgeTipo" class="badge ml-1 <?= $esMayoreo ? 'badge-success' : 'badge-secondary' ?>">
-                                <?= $esMayoreo ? 'Mayoreo' : 'Menudeo' ?>
-                            </span>
-                        </p>
-                        <p class="mb-1">
-                            <strong>Importe:</strong>
-                            <span id="spImporte" class="text-success font-weight-bold">
-                                $<?= number_format($sumaImportes, 2) ?>
-                            </span>
-                        </p>
-                    </div>
-                </div>
+                <p class="mb-2"><strong>Folio:</strong><br><?= (int)$nota['folio'] ?></p>
+                <p class="mb-2"><strong>Cliente:</strong><br><?= esc($nota['cliente'] ?? '') ?></p>
+                <p class="mb-2"><strong>Vendedor:</strong><br><?= esc($usuario['nombre']) ?></p>
+                <p class="mb-3"><strong>Fecha:</strong><br><?= date('Y-m-d', strtotime($nota['fecha_inicial'])) ?></p>
+                <hr>
+                <p class="mb-2">
+                    <strong>Total piezas:</strong><br>
+                    <span id="spTotalPiezas" class="badge badge-info"><?= (int)$totalPiezas ?></span>
+                    <span id="badgeTipo" class="badge ml-1 <?= $esMayoreo ? 'badge-success' : 'badge-secondary' ?>">
+                        <?= $esMayoreo ? 'Mayoreo' : 'Menudeo' ?>
+                    </span>
+                </p>
+                <p class="mb-0">
+                    <strong>Importe:</strong><br>
+                    <span id="spImporte" class="text-success font-weight-bold" style="font-size:1.1rem;">
+                        $<?= number_format($sumaImportes, 2) ?>
+                    </span>
+                </p>
             </div>
         </div>
+    </div>
 
-        <div class="card">
+    <!-- Columna 3: productos en la nota -->
+    <div class="col-lg-7 col-md-12">
+        <div class="card h-100">
             <div class="card-header font-weight-bold" style="padding-top: 1rem; padding-bottom: 1rem;">Productos en la Nota</div>
             <div class="card-body p-0 pt-2">
-                <div style="max-height: 420px; overflow-y: auto;">
-                    <table class="table table-striped mb-0 carrito-table" id="tablaCarrito">
+                <div class="carrito-table-wrap" style="max-height: 60vh; overflow-y: auto;">
+                    <table class="table table-sm table-striped mb-0 carrito-table" id="tablaCarrito">
                         <thead>
                             <tr>
                                 <th class="col-sku">SKU</th>
@@ -131,7 +135,7 @@
                         <tbody id="tbodyCarrito">
                             <?php foreach ($detalle as $d): ?>
                             <tr id="row-<?= (int)$d['Id_Notas_2'] ?>">
-                                <td class="col-sku"><?= esc($d['sku']) ?></td>
+                                <td class="col-sku" title="<?= esc($d['sku']) ?>"><?= esc($d['sku']) ?></td>
                                 <td class="col-desc"><?php
                                     $partesDesc = array_filter([
                                         $d['descripcion'] ?? $d['estilo'],
@@ -385,7 +389,7 @@ function renderCarrito(resp) {
                 return p !== null && p !== undefined && String(p).trim() !== '';
             });
             filas += '<tr id="row-' + d.Id_Notas_2 + '">'
-                + '<td class="col-sku">' + escHtml(d.sku) + '</td>'
+                + '<td class="col-sku" title="' + escHtml(d.sku) + '">' + escHtml(d.sku) + '</td>'
                 + '<td class="col-desc">' + escHtml(partesDesc.join(' — ')) + '</td>'
                 + '<td class="text-right col-precio">' + fmt(d.precio) + '</td>'
                 + '<td class="text-right col-cant">' + d.cantidad + '</td>'
