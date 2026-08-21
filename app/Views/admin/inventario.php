@@ -2,6 +2,31 @@
 
 <?= $this->section('page_css') ?>
 <?php /* DataTables CSS ya viene en el layout — no duplicar */ ?>
+<style>
+#importTabs.nav-tabs {
+    border-bottom-width: 2px;
+}
+#importTabs .nav-link {
+    font-size: 1.2rem;
+    font-weight: 600;
+    padding: 1rem 1.6rem;
+}
+#importTabs .nav-link i {
+    font-size: 1.15rem;
+}
+.tab-pane .text-muted {
+    font-size: 1.05rem;
+}
+.tab-pane .alert-info {
+    font-size: 1.05rem;
+}
+.tab-pane .alert-info code {
+    font-size: 1.05rem;
+}
+.tab-pane .alert-info small {
+    font-size: 1rem;
+}
+</style>
 <?= $this->endSection() ?>
 
 <?= $this->section('content') ?>
@@ -122,7 +147,7 @@
                                     Agrega productos que <strong>no existen</strong> aún en el inventario.
                                     Si el SKU ya existe, la fila se omite sin modificar nada.
                                 </p>
-                                <div class="alert alert-info py-2 mb-2" style="font-size:.85rem">
+                                <div class="alert alert-info py-2 mb-2">
                                     <strong>Formato del CSV — mismo que exporta "Exportar base de datos":</strong><br>
                                     <code>Estilo, SKU, Descripcion Corta, Descripcion Larga, Talla, Color, Precio Menudeo, Precio Mayoreo, Piezas</code><br>
                                     <small>Puedes usar el archivo exportado por el botón <strong>EBD</strong> como plantilla. Si el SKU ya existe en el inventario, la fila se omite.</small>
@@ -156,7 +181,7 @@
                                     Actualiza <strong>solo los precios</strong> de los productos existentes.
                                     Se busca por SKU; si el SKU no existe en la BD se omite.
                                 </p>
-                                <div class="alert alert-info py-2 mb-2" style="font-size:.85rem">
+                                <div class="alert alert-info py-2 mb-2">
                                     <strong>Formato del CSV — columnas requeridas:</strong><br>
                                     <code>SKU, pMayoreo, pMenudeo</code><br>
                                     <small>Ejemplo: <em>B0300P010001, 25.00, 36.00</em></small>
@@ -190,7 +215,7 @@
                                     Actualiza <strong>solo las piezas en stock</strong> de los productos existentes.
                                     El valor reemplaza el stock actual (no suma). Se busca por SKU.
                                 </p>
-                                <div class="alert alert-info py-2 mb-2" style="font-size:.85rem">
+                                <div class="alert alert-info py-2 mb-2">
                                     <strong>Formato del CSV — columnas requeridas:</strong><br>
                                     <code>SKU, piezas</code><br>
                                     <small>Ejemplo: <em>B0300P010001, 20</em></small>
