@@ -499,9 +499,18 @@ $('#btnConfirmarMetodoPago').on('click', function() {
     var monto = parseFloat($('#modalMetodoMonto').val()) || 0;
 
     if (!tipo) { alert('Selecciona un tipo de pago.'); return; }
-    if (monto <= 0) { alert('Ingresa un monto válido.'); return; }
 
     var restante = restanteMetodos();
+
+    // "Sin Pagar" (crédito dentro de la tienda): el saldo queda pendiente de
+    // cobro, así que no es obligatorio teclear un monto — se usa el restante
+    // completo automáticamente si se deja en $0.
+    var esSinPagar = desc.toLowerCase().indexOf('sin pagar') >= 0;
+    if (esSinPagar && monto <= 0) {
+        monto = restante;
+    }
+
+    if (monto <= 0) { alert('Ingresa un monto válido.'); return; }
     if (monto > restante + 0.005) {
         if (!confirm('⚠ El monto de $' + monto.toFixed(2) + ' excede lo que resta por asignar ($' + restante.toFixed(2) + ').\n¿Agregarlo de todas formas?')) {
             return;
