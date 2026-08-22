@@ -111,6 +111,14 @@
 .cfdi-regimen-bar { border: 1px solid #888; padding: 4px 8px; font-size: 8pt; margin-bottom: 6px; }
 .cfdi-pend { color: #aaa; font-style: italic; }
 .cfdi-sbox { background: #f7f7f7; border: 1px dashed #ccc; padding: 6px 8px; font-size: 7.5pt; color: #999; margin-top: 6px; text-align: center; }
+
+/* La vista previa puede ser más alta que la pantalla (p.ej. muchos
+   conceptos): se limita el alto del modal y se hace scroll solo en el
+   cuerpo, para que el encabezado y los botones (Confirmar y Facturar, etc.)
+   siempre queden visibles sin tener que hacer zoom out. */
+#modalMfsFacturaPreview .modal-dialog { max-height: 90vh; }
+#modalMfsFacturaPreview .modal-content { max-height: 90vh; }
+#modalMfsFacturaPreview .modal-body { overflow-y: auto; }
 </style>
 
 <div class="page-title-container">
@@ -343,7 +351,7 @@
 
 <!-- ══ Modal: Vista Previa de Factura (paso 2, solo individual) ══ -->
 <div class="modal fade" id="modalMfsFacturaPreview" tabindex="-1" role="dialog">
-    <div class="modal-dialog modal-lg" role="document">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable" role="document">
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title"><i class="simple-icon-eye mr-2"></i>Vista Previa de Factura — Folio <span id="mfsPvFolioNum"></span></h5>
