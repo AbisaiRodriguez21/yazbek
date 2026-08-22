@@ -389,7 +389,7 @@ class CajaController extends BaseController
                     'referencia' => $row['mn_referencia'] ?? '',
                     'editable'   => $editableRef,
                 ];
-                if (in_array($row['tipopago'], ['T.Credito', 'T.Debito']) && $row['cargos']) {
+                if (in_array($descLower, ['tarjeta credito', 'tarjeta crédito', 'tarjeta debito', 'tarjeta débito', 't.credito', 't.debito']) && $row['cargos']) {
                     $agrupadas[$f]['pagos'][] = [
                         'texto'    => 'Cargo / $' . number_format((float) $row['cargos'], 2),
                         'tipopago' => '',
@@ -1263,6 +1263,7 @@ class CajaController extends BaseController
             'regimenFiscalReceptor' => trim($req->getPost('regimenFiscalReceptor') ?? '616'),
             'formaPago'             => trim($req->getPost('formaPagoCFDI')       ?? '01'),
             'metodoPago'            => trim($req->getPost('metodoPagoCFDI')      ?? 'PUE'),
+            'observaciones'         => trim($req->getPost('observacionesFactura') ?? ''),
         ];
     }
 

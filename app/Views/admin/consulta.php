@@ -793,7 +793,7 @@ function adminAbrirModalFactura(folio) {
     document.getElementById('btnSfFacturar').innerHTML = '<i class="simple-icon-doc mr-1"></i> Facturar';
 
     // Limpiar campos mientras carga
-    ['sfRfc','sfRazonSocial','sfCP'].forEach(function(id) {
+    ['sfRfc','sfRazonSocial','sfCP','sfObservaciones'].forEach(function(id) {
         document.getElementById(id).value = '';
     });
 
@@ -852,7 +852,8 @@ document.addEventListener('DOMContentLoaded', function() {
             usoCFDI:               document.getElementById('sfUsoCFDI').value,
             regimenFiscalReceptor: document.getElementById('sfRegimenFiscal').value,
             formaPagoCFDI:         document.getElementById('sfFormaPago').value,
-            metodoPagoCFDI:        document.getElementById('sfMetodoPago').value
+            metodoPagoCFDI:        document.getElementById('sfMetodoPago').value,
+            observacionesFactura:  document.getElementById('sfObservaciones').value.trim()
         };
 
         var fd = new FormData();
@@ -949,6 +950,14 @@ function sfMostrarPreviewFactura(data) {
     document.getElementById('sfPvEmpCiudad').textContent    = data.emisor.ciudad;
     document.getElementById('sfPvRegimenEmisor').textContent = data.emisor.regimen + ' / ' + data.emisor.regimenTexto;
 
+    var sfObsBox = document.getElementById('sfPvObservacionesBox');
+    if (data.observaciones) {
+        document.getElementById('sfPvObservaciones').textContent = data.observaciones;
+        sfObsBox.classList.remove('d-none');
+    } else {
+        sfObsBox.classList.add('d-none');
+    }
+
     document.getElementById('sfPvRfc').textContent              = data.datosFiscales.rfcReceptor;
     document.getElementById('sfPvRazonSocial').textContent      = data.datosFiscales.razonSocialReceptor;
     document.getElementById('sfPvCP').textContent                = data.datosFiscales.cpReceptor;
@@ -959,14 +968,16 @@ function sfMostrarPreviewFactura(data) {
     var tbody = document.getElementById('sfPvConceptos');
     tbody.innerHTML = '';
     data.conceptos.forEach(function(c) {
-        var total = (Number(c.importe) || 0) + (Number(c.iva) || 0);
+        var descuento = Number(c.descuento) || 0;
+        var baseIva   = (Number(c.importe) || 0) - descuento;
+        var total     = baseIva + (Number(c.iva) || 0);
         var tr = document.createElement('tr');
         tr.innerHTML =
             '<td class="c">' + c.cantidad + '</td>' +
             '<td>' + sfEsc(c.sku ? (c.sku + ' ' + c.descripcion) : c.descripcion) + '</td>' +
             '<td class="r">' + sfMoneda(c.valorUnitario) + '</td>' +
-            '<td class="r">' + sfMoneda(0) + '</td>' +
-            '<td class="r">' + sfMoneda(c.importe) + '</td>' +
+            '<td class="r">' + sfMoneda(descuento) + '</td>' +
+            '<td class="r">' + sfMoneda(baseIva) + '</td>' +
             '<td class="r">' + sfMoneda(c.iva) + '</td>' +
             '<td class="r"></td>' +
             '<td class="r"></td>' +
@@ -975,11 +986,20 @@ function sfMostrarPreviewFactura(data) {
 
         var trImp = document.createElement('tr');
         trImp.className = 'cfdi-imp-row';
-        trImp.innerHTML = '<td colspan="9">Impuesto: ' + sfMoneda(c.importe) + ' x [002{IVA} Tasa 0.160000] = ' + sfMoneda(c.iva) + '</td>';
+        trImp.innerHTML = '<td colspan="9">Impuesto: ' + sfMoneda(baseIva) + ' x [002{IVA} Tasa 0.160000] = ' + sfMoneda(c.iva) + '</td>';
         tbody.appendChild(trImp);
     });
 
     document.getElementById('sfPvSubtotal').textContent = sfMoneda(data.subtotal);
+    var sfDescuentoRow = document.getElementById('sfPvDescuentoRow');
+    if (sfDescuentoRow) {
+        if (Number(data.descuento) > 0) {
+            sfDescuentoRow.style.display = '';
+            document.getElementById('sfPvDescuento').textContent = '- ' + sfMoneda(data.descuento);
+        } else {
+            sfDescuentoRow.style.display = 'none';
+        }
+    }
     document.getElementById('sfPvIva').textContent      = sfMoneda(data.iva);
     document.getElementById('sfPvTotal').textContent    = sfMoneda(data.total);
     document.getElementById('sfPvError').classList.add('d-none');
@@ -1094,6 +1114,11 @@ function sfMostrarPreviewFactura(data) {
                         </div>
                     </div>
                 </div>
+                <div class="form-group">
+                    <label>Observaciones</label>
+                    <textarea id="sfObservaciones" class="form-control" rows="2"
+                              placeholder="Notas o números de ticket para esta factura (opcional)"></textarea>
+                </div>
                 <div id="sfError" class="alert alert-danger d-none mt-2"></div>
             </div>
             <div class="modal-footer">
@@ -1155,6 +1180,10 @@ function sfMostrarPreviewFactura(data) {
                         <b>Régimen Fiscal del Emisor:</b> <span id="sfPvRegimenEmisor"></span>
                     </div>
 
+                    <div id="sfPvObservacionesBox" class="cfdi-cliente-box d-none">
+                        <b>Observaciones:</b> <span id="sfPvObservaciones"></span>
+                    </div>
+
                     <table class="cfdi-conc">
                         <thead>
                             <tr>
@@ -1180,6 +1209,7 @@ function sfMostrarPreviewFactura(data) {
                             <td style="width:45%; vertical-align:top;">
                                 <table class="cfdi-tot" style="margin:0 0 0 auto;">
                                     <tr><td>Subtotal</td><td class="r" id="sfPvSubtotal"></td></tr>
+                                    <tr id="sfPvDescuentoRow" style="display:none;"><td>Descuento</td><td class="r" id="sfPvDescuento"></td></tr>
                                     <tr><td>Total IVA</td><td class="r" id="sfPvIva"></td></tr>
                                     <tr class="cfdi-tot-final"><td>TOTAL</td><td class="r" id="sfPvTotal"></td></tr>
                                 </table>

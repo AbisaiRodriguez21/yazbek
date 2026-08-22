@@ -215,80 +215,35 @@ class DfactureService
     }
 
     // ── Conceptos ───────────────────────────────────────────────────
-    // El descuento ya está reflejado en el total de la nota.
-    // En lugar de usar atributos Descuento en el CFDI, escalamos los precios
-    // proporcionalmente para que el SubTotal del CFDI = subtotal neto de la nota.
-    $xmlConceptos    = '';
-    $sumaSubtotal    = 0.0;
-    $sumaIva         = 0.0;
-    $descuentoGlobal = (float)($nota['descuento'] ?? 0);
-    $subTotalNeto    = (float)($nota['subTotal']  ?? 0);
+    // Precio de lista + atributo Descuento explícito por concepto (visible
+    // en el CFDI/PDF), en vez de escalar los precios silenciosamente.
+    // Incluye también, si aplica, el cargo por bordado/acabado/impresión
+    // como un concepto adicional (no lleva descuento).
+    $calc         = $this->calcularConceptos($nota, $detalle);
+    $xmlConceptos = '';
 
-    // Importes originales (precios de lista × cantidad) de cada línea
-    $importesBrutos = [];
-    foreach ($detalle as $linea) {
-        $cantidad = (int)($linea['cantidad'] ?? 1);
-        $precioU  = (float)($linea['precio'] ?? $linea['pUnitario'] ?? 0);
-        $importesBrutos[] = round((float)($linea['importe'] ?? ($cantidad * $precioU)), 2);
-    }
-    $totalBruto = array_sum($importesBrutos);
+    foreach ($calc['conceptos'] as $c) {
+        $valorUnitF = number_format($c['valorUnitario'], 6, '.', '');
+        $importeF   = number_format($c['importe'],       2, '.', '');
+        $baseF      = number_format($c['baseIva'],       2, '.', '');
+        $ivaLineaF  = number_format($c['iva'],           2, '.', '');
+        $descuentoAttr = $c['descuento'] > 0
+            ? ' Descuento="' . number_format($c['descuento'], 2, '.', '') . '"'
+            : '';
 
-    // Factor de escala: si hay descuento, reducir importes al subtotal neto
-    $hayDescuento = $descuentoGlobal > 0 && $totalBruto > 0;
-    if ($hayDescuento && $subTotalNeto <= 0) {
-        $subTotalNeto = max(0.0, $totalBruto - $descuentoGlobal);
-    }
-    $scaleFactor = ($hayDescuento && $totalBruto > 0) ? ($subTotalNeto / $totalBruto) : 1.0;
+        $descripcion = htmlspecialchars($c['descripcion'], ENT_XML1 | ENT_QUOTES);
+        $sku         = htmlspecialchars($c['sku'],         ENT_XML1 | ENT_QUOTES);
 
-    // Importes escalados; el último absorbe el residuo de redondeo
-    $importesEscalados = [];
-    $acumEscalado = 0.0;
-    foreach ($importesBrutos as $idx => $imp) {
-        if ($idx < count($importesBrutos) - 1) {
-            $sc = round($imp * $scaleFactor, 2);
-        } else {
-            $sc = $hayDescuento
-                ? round($subTotalNeto - $acumEscalado, 2)
-                : round($imp, 2);
-        }
-        $importesEscalados[] = $sc;
-        $acumEscalado += $sc;
-    }
-
-    foreach ($detalle as $idx => $linea) {
-        $cantidad        = (int)($linea['cantidad'] ?? 1);
-        $precioU         = (float)($linea['precio'] ?? $linea['pUnitario'] ?? 0);
-        $importeEscalado = $importesEscalados[$idx];
-        $precioEscalado  = ($cantidad > 0)
-            ? ($importeEscalado / $cantidad)
-            : ($precioU * $scaleFactor);
-        $ivaLinea        = round($importeEscalado * 0.16, 2);
-
-        $sumaSubtotal += $importeEscalado;
-        $sumaIva      += $ivaLinea;
-
-        $valorUnitF = number_format($precioEscalado,   6, '.', '');
-        $importeF   = number_format($importeEscalado,  2, '.', '');
-        $baseF      = number_format($importeEscalado,  2, '.', '');
-        $ivaLineaF  = number_format($ivaLinea,         2, '.', '');
-
-        $descripcion   = htmlspecialchars($linea['descripcion'] ?? $linea['estilo'] ?? $linea['sku'] ?? 'Producto', ENT_XML1 | ENT_QUOTES);
-        $sku           = htmlspecialchars($linea['sku'] ?? $linea['estilo'] ?? '', ENT_XML1 | ENT_QUOTES);
-
-        $claveProdServ = $linea['claveProdServ'] ?? '01010101';
-        $claveUnidad   = $linea['claveUnidad']   ?? 'H87';
-        $unidad        = $linea['unidad']        ?? 'PZA';
-
-        // Sin atributo Descuento: los precios ya reflejan el descuento aplicado
         $xmlConceptos .= "\n        " . '<cfdi:Concepto' .
-            ' ClaveProdServ="' . $claveProdServ . '"' .
+            ' ClaveProdServ="' . $c['claveProdServ'] . '"' .
             ' NoIdentificacion="' . $sku . '"' .
-            ' Cantidad="' . $cantidad . '"' .
-            ' ClaveUnidad="' . $claveUnidad . '"' .
-            ' Unidad="' . $unidad . '"' .
+            ' Cantidad="' . $c['cantidad'] . '"' .
+            ' ClaveUnidad="' . $c['claveUnidad'] . '"' .
+            ' Unidad="' . $c['unidad'] . '"' .
             ' Descripcion="' . $descripcion . '"' .
             ' ValorUnitario="' . $valorUnitF . '"' .
             ' Importe="' . $importeF . '"' .
+            $descuentoAttr .
             ' ObjetoImp="02">' .
             '<cfdi:Impuestos><cfdi:Traslados>' .
             '<cfdi:Traslado Base="' . $baseF . '" Impuesto="002" TipoFactor="Tasa" TasaOCuota="0.160000" Importe="' . $ivaLineaF . '"/>' .
@@ -296,14 +251,22 @@ class DfactureService
             '</cfdi:Concepto>';
     }
 
-    $subtotalF = number_format($sumaSubtotal,              2, '.', '');
-    $ivaF      = number_format($sumaIva,                   2, '.', '');
-    $totalF    = number_format($sumaSubtotal + $sumaIva,   2, '.', '');
+    $subtotalF   = number_format($calc['subtotal'], 2, '.', '');
+    $ivaF        = number_format($calc['iva'],      2, '.', '');
+    $totalF      = number_format($calc['total'],    2, '.', '');
+    $descuentoF  = number_format($calc['descuento'], 2, '.', '');
+    $descuentoComprobanteAttr = $calc['descuento'] > 0
+        ? ' Descuento="' . $descuentoF . '"'
+        : '';
+    // Base del traslado global = suma de las Bases de traslado de cada
+    // concepto (Importe - Descuento de cada uno), NO el SubTotal del
+    // Comprobante — el SAT los valida por separado y con descuento el
+    // SubTotal (precio de lista) y esta Base (neta) difieren.
+    $baseIvaGlobalF = number_format($calc['subtotal'] - $calc['descuento'], 2, '.', '');
 
     // ── XML completo CFDI 4.0 ────────────────────────────────────────
     $xml = '<?xml version="1.0" encoding="UTF-8"?>' . "\n";
 
-    // Sin atributo Descuento en el Comprobante: los importes ya son netos
     $xml .= '<cfdi:Comprobante' .
         ' xmlns:cfdi="http://www.sat.gob.mx/cfd/4"' .
         ' xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"' .
@@ -317,6 +280,7 @@ class DfactureService
         ' NoCertificado=""' .
         ' Certificado=""' .
         ' SubTotal="' . $subtotalF . '"' .
+        $descuentoComprobanteAttr .
         ' Moneda="MXN"' .
         ' Total="' . $totalF . '"' .
         ' TipoDeComprobante="I"' .
@@ -340,7 +304,7 @@ class DfactureService
 
     $xml .= '    <cfdi:Impuestos TotalImpuestosTrasladados="' . $ivaF . '">' . "\n";
     $xml .= '        <cfdi:Traslados>' . "\n";
-    $xml .= '            <cfdi:Traslado Base="' . $subtotalF . '" Impuesto="002" TipoFactor="Tasa" TasaOCuota="0.160000" Importe="' . $ivaF . '"/>' . "\n";
+    $xml .= '            <cfdi:Traslado Base="' . $baseIvaGlobalF . '" Impuesto="002" TipoFactor="Tasa" TasaOCuota="0.160000" Importe="' . $ivaF . '"/>' . "\n";
     $xml .= '        </cfdi:Traslados>' . "\n";
     $xml .= '    </cfdi:Impuestos>' . "\n";
     $xml .= '</cfdi:Comprobante>';
@@ -598,74 +562,158 @@ class DfactureService
 
     /**
      * Calcula conceptos, subtotal, IVA y total para mostrarlos en una vista
-     * previa ANTES de timbrar. Es una copia de solo lectura del mismo
-     * escalado por descuento que usa construirCFDI(); se mantiene separada
-     * a propósito para que un cambio en la vista previa (solo UI) nunca
-     * pueda afectar el cálculo que se firma y se envía a timbrar.
+     * previa ANTES de timbrar. Usa calcularConceptos(), la misma función pura
+     * que arma los conceptos del XML que se firma en construirCFDI(), para
+     * que la vista previa que aprueba el usuario nunca pueda mostrar montos
+     * distintos a los que realmente se van a timbrar.
      */
     public function previsualizarDatos(array $nota, array $detalle): array
     {
-        $sumaSubtotal    = 0.0;
-        $sumaIva         = 0.0;
-        $descuentoGlobal = (float)($nota['descuento'] ?? 0);
-        $subTotalNeto    = (float)($nota['subTotal']  ?? 0);
+        $calc = $this->calcularConceptos($nota, $detalle);
 
+        $conceptos = array_map(static function (array $c): array {
+            return [
+                'descripcion'   => $c['descripcion'],
+                'sku'           => $c['sku'],
+                'cantidad'      => $c['cantidad'],
+                'valorUnitario' => $c['valorUnitario'],
+                'importe'       => $c['importe'],
+                'descuento'     => $c['descuento'],
+                'iva'           => $c['iva'],
+            ];
+        }, $calc['conceptos']);
+
+        return [
+            'conceptos' => $conceptos,
+            'subtotal'  => $calc['subtotal'],
+            'descuento' => $calc['descuento'],
+            'iva'       => $calc['iva'],
+            'total'     => $calc['total'],
+        ];
+    }
+
+    /**
+     * Calcula los conceptos CFDI (con precio de lista + Descuento explícito
+     * por línea) a partir del detalle de productos de la nota, y agrega —
+     * si aplica — un concepto adicional por el cargo de bordado, acabado o
+     * impresión (notas_1.cargoPorImpresion), que no lleva descuento.
+     *
+     * El IVA total se calcula sobre (subtotal neto de productos + cargo por
+     * impresión), igual que en venta_stp_3.php, y se reparte proporcionalmente
+     * entre los conceptos para que la suma coincida centavo a centavo.
+     *
+     * Usada tanto por construirCFDI() (XML que se firma) como por
+     * previsualizarDatos() (vista previa), para que ambos siempre calculen
+     * exactamente lo mismo.
+     */
+    private function calcularConceptos(array $nota, array $detalle): array
+    {
+        $descuentoGlobal  = round((float)($nota['descuento'] ?? 0), 2);
+        $cargoImpresion   = round((float)($nota['cargoPorImpresion'] ?? 0), 2);
+        $detalleImpresion = trim((string)($nota['detalleImpresion'] ?? ''));
+
+        // Importes de lista (precio de catálogo × cantidad) por línea de producto
         $importesBrutos = [];
         foreach ($detalle as $linea) {
             $cantidad = (int)($linea['cantidad'] ?? 1);
             $precioU  = (float)($linea['precio'] ?? $linea['pUnitario'] ?? 0);
             $importesBrutos[] = round((float)($linea['importe'] ?? ($cantidad * $precioU)), 2);
         }
-        $totalBruto = array_sum($importesBrutos);
+        $totalBrutoProductos = array_sum($importesBrutos);
 
-        $hayDescuento = $descuentoGlobal > 0 && $totalBruto > 0;
-        if ($hayDescuento && $subTotalNeto <= 0) {
-            $subTotalNeto = max(0.0, $totalBruto - $descuentoGlobal);
-        }
-        $scaleFactor = ($hayDescuento && $totalBruto > 0) ? ($subTotalNeto / $totalBruto) : 1.0;
+        $subTotalNetoGuardado  = round((float)($nota['subTotal'] ?? 0), 2);
+        $hayDescuento          = $descuentoGlobal > 0 && $totalBrutoProductos > 0;
+        $subTotalNetoProductos = $hayDescuento
+            ? ($subTotalNetoGuardado > 0 ? $subTotalNetoGuardado : max(0.0, $totalBrutoProductos - $descuentoGlobal))
+            : $totalBrutoProductos;
+        $scaleFactor = ($hayDescuento && $totalBrutoProductos > 0)
+            ? ($subTotalNetoProductos / $totalBrutoProductos) : 1.0;
 
-        $importesEscalados = [];
-        $acumEscalado = 0.0;
+        // Importe neto (después de descuento) por línea; el último absorbe el residuo de redondeo
+        $importesNetos = [];
+        $acumNeto = 0.0;
+        $n = count($importesBrutos);
         foreach ($importesBrutos as $idx => $imp) {
-            if ($idx < count($importesBrutos) - 1) {
-                $sc = round($imp * $scaleFactor, 2);
+            if ($idx < $n - 1) {
+                $neto = round($imp * $scaleFactor, 2);
             } else {
-                $sc = $hayDescuento
-                    ? round($subTotalNeto - $acumEscalado, 2)
-                    : round($imp, 2);
+                $neto = $hayDescuento ? round($subTotalNetoProductos - $acumNeto, 2) : round($imp, 2);
             }
-            $importesEscalados[] = $sc;
-            $acumEscalado += $sc;
+            $importesNetos[] = $neto;
+            $acumNeto += $neto;
         }
 
-        $conceptos = [];
-        foreach ($detalle as $idx => $linea) {
-            $cantidad        = (int)($linea['cantidad'] ?? 1);
-            $precioU         = (float)($linea['precio'] ?? $linea['pUnitario'] ?? 0);
-            $importeEscalado = $importesEscalados[$idx];
-            $precioEscalado  = ($cantidad > 0)
-                ? ($importeEscalado / $cantidad)
-                : ($precioU * $scaleFactor);
-            $ivaLinea        = round($importeEscalado * 0.16, 2);
+        // Base gravable total (productos netos + cargo por impresión) — mismo
+        // criterio que usa venta_stp_3.php para calcular el IVA de la nota.
+        $baseIvaTotal = round($subTotalNetoProductos + $cargoImpresion, 2);
+        $ivaTotal     = round($baseIvaTotal * 0.16, 2);
+        $hayImpresion = $cargoImpresion > 0;
+        $numBases     = $n + ($hayImpresion ? 1 : 0);
 
-            $sumaSubtotal += $importeEscalado;
-            $sumaIva      += $ivaLinea;
+        $conceptos        = [];
+        $sumaImporteBruto = 0.0;
+        $sumaDescuento    = 0.0;
+        $sumaIva          = 0.0;
+
+        foreach ($detalle as $idx => $linea) {
+            $cantidad       = (int)($linea['cantidad'] ?? 1);
+            $precioU        = (float)($linea['precio'] ?? $linea['pUnitario'] ?? 0);
+            $importeBruto   = $importesBrutos[$idx];
+            $importeNeto    = $importesNetos[$idx];
+            $descuentoLinea = round($importeBruto - $importeNeto, 2);
+
+            $esUltimaBase = ($idx === $numBases - 1);
+            $ivaLinea = $esUltimaBase
+                ? round($ivaTotal - $sumaIva, 2)
+                : ($baseIvaTotal > 0 ? round($importeNeto / $baseIvaTotal * $ivaTotal, 2) : 0.0);
+
+            $sumaImporteBruto += $importeBruto;
+            $sumaDescuento    += $descuentoLinea;
+            $sumaIva          += $ivaLinea;
 
             $conceptos[] = [
                 'descripcion'   => $linea['descripcion'] ?? $linea['estilo'] ?? $linea['sku'] ?? 'Producto',
                 'sku'           => $linea['sku'] ?? $linea['estilo'] ?? '',
                 'cantidad'      => $cantidad,
-                'valorUnitario' => round($precioEscalado, 2),
-                'importe'       => $importeEscalado,
+                'valorUnitario' => round($precioU, 2),
+                'importe'       => $importeBruto,
+                'descuento'     => $descuentoLinea,
+                'baseIva'       => $importeNeto,
                 'iva'           => $ivaLinea,
+                'claveProdServ' => $linea['claveProdServ'] ?? '01010101',
+                'claveUnidad'   => $linea['claveUnidad']   ?? 'H87',
+                'unidad'        => $linea['unidad']        ?? 'PZA',
+            ];
+        }
+
+        if ($hayImpresion) {
+            $ivaLinea = round($ivaTotal - $sumaIva, 2); // última base: absorbe el residuo de redondeo
+            $sumaImporteBruto += $cargoImpresion;
+            $sumaIva          += $ivaLinea;
+
+            $descImpresion = 'Bordado, acabado o impresión' . ($detalleImpresion !== '' ? ' - ' . $detalleImpresion : '');
+
+            $conceptos[] = [
+                'descripcion'   => $descImpresion,
+                'sku'           => 'SERV-IMP',
+                'cantidad'      => 1,
+                'valorUnitario' => $cargoImpresion,
+                'importe'       => $cargoImpresion,
+                'descuento'     => 0.0,
+                'baseIva'       => $cargoImpresion,
+                'iva'           => $ivaLinea,
+                'claveProdServ' => '01010101',
+                'claveUnidad'   => 'E48',
+                'unidad'        => 'SERVICIO',
             ];
         }
 
         return [
             'conceptos' => $conceptos,
-            'subtotal'  => round($sumaSubtotal, 2),
+            'subtotal'  => round($sumaImporteBruto, 2),
+            'descuento' => round($sumaDescuento, 2),
             'iva'       => round($sumaIva, 2),
-            'total'     => round($sumaSubtotal + $sumaIva, 2),
+            'total'     => round($sumaImporteBruto - $sumaDescuento + $sumaIva, 2),
         ];
     }
 

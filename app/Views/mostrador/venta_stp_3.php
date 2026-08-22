@@ -445,6 +445,44 @@ function renderMetodosPago() {
         $('#lblRestanteMetodos').text('Restante por asignar: ');
         $('#spRestanteMetodos').text('$' + restante.toFixed(2)).removeClass('text-success').addClass('text-danger');
     }
+    actualizarFormaPagoDominante();
+}
+
+// Mismo mapeo que BaseController::calcularFormaPagoDominante() en el
+// backend — tipopago.id → clave SAT c_FormaPago.
+var MAPA_SAT_FORMA_PAGO = {
+    1: '01',  // Contado (Efectivo)
+    4: '02',  // Cheque
+    5: '03',  // Transferencia
+    6: '03',  // Depósito
+    7: '99',  // Sin Pagar
+    8: '04',  // Cargo con tarjeta
+    9: '28',  // Tarjeta Débito
+    10: '04'  // Tarjeta Crédito
+};
+
+// Pre-llena "Forma de Pago" (datos fiscales) con el método que predomina en
+// monto entre los ya agregados arriba, para no tener que volver a elegirlo.
+function actualizarFormaPagoDominante() {
+    if (metodosPago.length === 0 || !$('#formaPagoCFDI').length) { return; }
+
+    var totalesPorTipo = {};
+    metodosPago.forEach(function (m) {
+        totalesPorTipo[m.tipo] = (totalesPorTipo[m.tipo] || 0) + m.monto;
+    });
+
+    var tipoDominante = null, montoMax = -1;
+    Object.keys(totalesPorTipo).forEach(function (tipo) {
+        if (totalesPorTipo[tipo] > montoMax) {
+            montoMax = totalesPorTipo[tipo];
+            tipoDominante = tipo;
+        }
+    });
+
+    var codigoSat = MAPA_SAT_FORMA_PAGO[tipoDominante];
+    if (codigoSat) {
+        $('#formaPagoCFDI').val(codigoSat);
+    }
 }
 
 $('#btnAgregarMetodoPago').on('click', function() {

@@ -54,6 +54,17 @@ class MostradorController extends BaseController
     }
 
     // ──────────────────────────────────────────────────────────────
+    // Todos los usuarios pueden VER cualquier ticket (ver notasDatatable()),
+    // pero solo quien lo creó o un administrativo (acceso=1) puede editarlo
+    // o cancelarlo. $idVendedorNota es el idVendedor guardado en la nota.
+    // ──────────────────────────────────────────────────────────────
+    private function puedeEditarFolio(int $idVendedorNota): bool
+    {
+        return $idVendedorNota === (int) session()->get('user_id')
+            || (int) session()->get('user_acceso') === 1;
+    }
+
+    // ──────────────────────────────────────────────────────────────
     // GET /mostrador  —  Dashboard del módulo mostrador
     // Migrado desde: mostrador/index.php
     // ──────────────────────────────────────────────────────────────
@@ -134,9 +145,16 @@ class MostradorController extends BaseController
     // GET /mostrador/venta/:folio/productos  —  Paso 2: Carrito
     // Migrado desde: mostrador/agregarProducto.php (parte de vista)
     // ──────────────────────────────────────────────────────────────
-    public function ventaStp2(int $folio): string
+    public function ventaStp2(int $folio): string|\CodeIgniter\HTTP\RedirectResponse
     {
         $nota        = $this->notaModel->getPorFolio($folio);
+
+        if (! $nota) {
+            return redirect()->to($this->consultaUrl())->with('error', 'Folio no encontrado.');
+        }
+        if (! $this->puedeEditarFolio((int) ($nota['idVendedor'] ?? 0))) {
+            return redirect()->to($this->consultaUrl())->with('error', 'No puedes editar un ticket que no creaste tú.');
+        }
 
         // Detectar modo mayoreo: por sesión (creada desde /mostrador/mayoreo)
         // o por regla de negocio (>= 12 piezas)
@@ -168,7 +186,10 @@ class MostradorController extends BaseController
     // ──────────────────────────────────────────────────────────────
     public function ventaStp3(int $folio): string|\CodeIgniter\HTTP\RedirectResponse
     {
-        $nota             = $this->notaModel->getPorFolio($folio);
+        $nota = $this->notaModel->getPorFolio($folio);
+        if ($nota && ! $this->puedeEditarFolio((int) ($nota['idVendedor'] ?? 0))) {
+            return redirect()->to($this->consultaUrl())->with('error', 'No puedes editar un ticket que no creaste tú.');
+        }
         $esMayoreoForzado = session()->get("nota_{$folio}_tipo") === 'mayoreo';
 
         $db      = \Config\Database::connect();
@@ -274,6 +295,15 @@ class MostradorController extends BaseController
         // la nota aquí: solo finalizan con un tipo de pago. La nota queda "En
         // proceso" (2) para que Caja (o Admin desde su propia Verificar Caja)
         // la busque por folio, cobre y cierre.
+
+        // Solo quien creó el folio (o un administrativo) puede guardar cambios.
+        $idVendedorFolio = (int) ($db->query(
+            "SELECT idVendedor FROM notas_1 WHERE folio = ? LIMIT 1", [$folio]
+        )->getRowArray()['idVendedor'] ?? 0);
+        if (! $this->puedeEditarFolio($idVendedorFolio)) {
+            return $this->response->setContentType('application/json')
+                        ->setBody(json_encode(['success' => false, 'message' => 'No puedes editar un ticket que no creaste tú.']));
+        }
 
         // ── Detectar formato: JSON legacy (campo 'data') vs nuevo (campos individuales) ──
         $rawData = $this->request->getPost('data');
@@ -498,6 +528,9 @@ class MostradorController extends BaseController
         if (! $nota || (int)($nota['referencia'] ?? 0) > 0) {
             return redirect()->to($this->consultaUrl())->with('error', 'Folio no encontrado.');
         }
+        if (! $this->puedeEditarFolio((int) ($nota['idVendedor'] ?? 0))) {
+            return redirect()->to($this->consultaUrl())->with('error', 'No puedes editar un ticket que no creaste tú.');
+        }
         if ((int)$nota['status'] === 3) {
             return redirect()->to($this->consultaUrl())->with('error', 'La nota está cancelada.');
         }
@@ -535,6 +568,9 @@ class MostradorController extends BaseController
 
         if (! $nota || (int)($nota['referencia'] ?? 0) > 0 || (int)$nota['status'] === 3) {
             return redirect()->to($this->consultaUrl())->with('error', 'Folio no válido.');
+        }
+        if (! $this->puedeEditarFolio((int) ($nota['idVendedor'] ?? 0))) {
+            return redirect()->to($this->consultaUrl())->with('error', 'No puedes editar un ticket que no creaste tú.');
         }
         if (! $this->esNotaSinPagar($nota)) {
             return redirect()->to($this->consultaUrl())
@@ -1451,10 +1487,11 @@ class MostradorController extends BaseController
         $orderDir = $orderDir === 'asc' ? 'ASC' : 'DESC';
 
         $db      = \Config\Database::connect();
-        $userId  = (int) session()->get('user_id');
 
-        // Total solo del vendedor logueado
-        $total = $db->query("SELECT COUNT(*) AS total FROM notas_1 WHERE idVendedor = ?", [$userId])->getRow()->total;
+        // Todos los usuarios ven todos los tickets (solo la edición se
+        // restringe a quien lo creó o a un administrativo — eso se valida
+        // aparte, no aquí).
+        $total = $db->query("SELECT COUNT(*) AS total FROM notas_1")->getRow()->total;
 
         // Base query
         $baseSql = "FROM notas_1 n
@@ -1480,9 +1517,9 @@ class MostradorController extends BaseController
                     ) pm_child ON pm_child.folio_padre = n.folio
                     LEFT JOIN tipopago tpVendedor ON tpVendedor.id = n.tipoPago";
 
-        // Siempre filtrar por el vendedor logueado
-        $whereClauses = ["n.idVendedor = ?"];
-        $params       = [$userId];
+        // Todos los usuarios ven todos los tickets (ver punto anterior).
+        $whereClauses = [];
+        $params       = [];
 
         if ($search !== '') {
             $s = '%' . $search . '%';
@@ -1490,13 +1527,13 @@ class MostradorController extends BaseController
             $params = array_merge($params, [$s, $s, $s]);
         }
 
-        $where = "WHERE " . implode(" AND ", $whereClauses);
+        $where = $whereClauses ? ("WHERE " . implode(" AND ", $whereClauses)) : "";
 
         $countResult = $db->query("SELECT COUNT(*) AS cnt {$baseSql} {$where}", $params)->getRow();
         $filtered = $countResult->cnt ?? 0;
 
         $data = $db->query(
-            "SELECT n.folio, n.fecha_inicial,
+            "SELECT n.folio, n.fecha_inicial, n.idVendedor,
                     COALESCE(c.nombre, '—') AS cliente,
                     COALESCE(u.usuario, '—') AS vendedor,
                     CASE
@@ -1793,12 +1830,15 @@ class MostradorController extends BaseController
         try {
             $db   = \Config\Database::connect();
             $nota = $db->query(
-                "SELECT Id_Notas_1, status FROM notas_1 WHERE folio = ? LIMIT 1",
+                "SELECT Id_Notas_1, status, idVendedor FROM notas_1 WHERE folio = ? LIMIT 1",
                 [$folio]
             )->getRowArray();
 
             if (! $nota) {
                 return $this->response->setContentType('application/json')->setJSON(['ok' => false, 'error' => 'Folio no encontrado']);
+            }
+            if (! $this->puedeEditarFolio((int) ($nota['idVendedor'] ?? 0))) {
+                return $this->response->setContentType('application/json')->setJSON(['ok' => false, 'error' => 'No puedes cancelar un ticket que no creaste tú.']);
             }
             if ((int)$nota['status'] === 3) {
                 return $this->response->setContentType('application/json')->setJSON(['ok' => false, 'error' => 'Folio ya cancelado']);

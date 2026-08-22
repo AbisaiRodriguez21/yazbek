@@ -68,6 +68,13 @@
 <?= $this->section('page_scripts') ?>
 <script>
 /* DataTables JS ya cargado en el layout — no importar de nuevo */
+var USUARIO_ID     = <?= (int) ($usuario['Id'] ?? 0) ?>;
+var USUARIO_ACCESO = <?= (int) ($usuario['acceso'] ?? 0) ?>;
+
+function puedeEditarFolio(idVendedorNota) {
+    return parseInt(idVendedorNota, 10) === USUARIO_ID || USUARIO_ACCESO === 1;
+}
+
 var STATUS_LABELS = {
     1: '<span class="badge badge-primary">Abierta</span>',
     2: '<span class="badge badge-info">En proceso</span>',
@@ -147,11 +154,21 @@ function esSinPagar(tipopago) {
 }
 
 function accionesNota(n) {
-    var btns = '';
     var idstatus   = parseInt(n.idstatus, 10);
     var referencia = parseInt(n.referencia || 0, 10);
     var esHijo     = referencia > 0;
     var BASE       = '<?= base_url('mostrador/venta/') ?>';
+    var esPropio   = puedeEditarFolio(n.idVendedor);
+
+    // Si el folio no es mío (y no soy admin), solo puedo ver el detalle —
+    // ninguna otra acción (editar, cancelar, revivir, pagar, abonar, ticket,
+    // comanda) está disponible.
+    if (!esPropio) {
+        return '<a href="#" class="btn btn-xs btn-outline-primary mr-1"'
+             + ' onclick="mostradorVerFolio(' + n.folio + '); return false;">Ver</a>';
+    }
+
+    var btns = '';
 
     if (esHijo) {
         // Folio hijo (anticipo): abrir modal con detalle del folio hijo

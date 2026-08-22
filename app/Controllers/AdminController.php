@@ -1493,6 +1493,7 @@ class AdminController extends BaseController
             'regimenFiscalReceptor' => trim($req->getPost('regimenFiscalReceptor') ?? '616'),
             'formaPago'             => trim($req->getPost('formaPagoCFDI')       ?? '01'),
             'metodoPago'            => trim($req->getPost('metodoPagoCFDI')      ?? 'PUE'),
+            'observaciones'         => trim($req->getPost('observacionesFactura') ?? ''),
         ];
     }
 
@@ -1555,6 +1556,28 @@ class AdminController extends BaseController
              WHERE m.idNotas = ?",
             [$idNotaPagos]
         )->getResultArray();
+
+        // Nota recién finalizada por el vendedor (status 2), todavía sin que
+        // Caja la verifique: no existe fila en montosnotas todavía, pero el
+        // vendedor sí eligió una forma de pago (notas_1.tipoPago). Se usa esa
+        // para que el ticket la muestre mientras tanto, en vez de salir en blanco.
+        if (empty($pagos) && !empty($nota['tipoPago'])) {
+            $tipoPagoRow = $db->query(
+                "SELECT descripcion FROM tipopago WHERE id = ? LIMIT 1",
+                [$nota['tipoPago']]
+            )->getRowArray();
+
+            if ($tipoPagoRow) {
+                $pagos = [[
+                    'idTipoPago'       => (int) $nota['tipoPago'],
+                    'tipopago'         => $tipoPagoRow['descripcion'],
+                    'monto'            => (float) ($nota['total'] ?? 0),
+                    'cargo'            => 0,
+                    'anticipo'         => 0,
+                    'montoEfectivoIva' => null,
+                ]];
+            }
+        }
 
         // Folios hijos no cancelados (anticipos) con sus pagos
         $pagosHijos = [];
@@ -2373,7 +2396,7 @@ class AdminController extends BaseController
             $db = \Config\Database::connect();
 
             $nota = $db->query(
-                "SELECT Id_Notas_1, status, referencia, tipoPago FROM notas_1 WHERE folio = ? LIMIT 1",
+                "SELECT Id_Notas_1, status, referencia, tipoPago, idVendedor FROM notas_1 WHERE folio = ? LIMIT 1",
                 [$folio]
             )->getRowArray();
 
@@ -2384,6 +2407,16 @@ class AdminController extends BaseController
             if ((int)$nota['status'] !== 3) {
                 return $this->response->setContentType('application/json')
                     ->setJSON(['ok' => false, 'error' => 'La nota no está cancelada']);
+            }
+
+            // Este endpoint es compartido por Admin, Caja y Mostrador. Solo a
+            // Mostrador (vendedor) se le restringe a revivir sus propios
+            // folios; Admin y Caja pueden revivir cualquiera.
+            $accesoSesion = (int) session()->get('user_acceso');
+            if (in_array($accesoSesion, [3, 4], true)
+                && (int) ($nota['idVendedor'] ?? 0) !== (int) session()->get('user_id')) {
+                return $this->response->setContentType('application/json')
+                    ->setJSON(['ok' => false, 'error' => 'No puedes revivir un ticket que no creaste tú.']);
             }
 
             // Validar que el tipo de pago permite revivir
@@ -2568,7 +2601,7 @@ class AdminController extends BaseController
                     'referencia' => $row['mn_referencia'] ?? '',
                     'editable'   => $editableRef,
                 ];
-                if (in_array($row['tipopago'], ['T.Credito','T.Debito']) && $row['cargos']) {
+                if (in_array($descLower, ['tarjeta credito', 'tarjeta crédito', 'tarjeta debito', 'tarjeta débito', 't.credito', 't.debito']) && $row['cargos']) {
                     $agrupadas[$f]['pagos'][] = [
                         'texto'      => 'Cargo / $' . number_format((float)$row['cargos'], 2),
                         'tipopago'   => '',

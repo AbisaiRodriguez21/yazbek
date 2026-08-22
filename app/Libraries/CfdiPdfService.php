@@ -10,7 +10,7 @@ namespace App\Libraries;
  */
 class CfdiPdfService
 {
-    public function generarPDF(string $xmlTimbrado, array $config = []): string
+    public function generarPDF(string $xmlTimbrado, array $config = [], string $observaciones = ''): string
     {
         // ── Parsear XML ──────────────────────────────────────────────────
         $dom = new \DOMDocument();
@@ -244,6 +244,8 @@ table { width: 100%; border-collapse: collapse; }
 <div style="border:1px solid #888;padding:3px 8px;font-size:7.5pt;margin-bottom:4px;">
   <b>Régimen Fiscal del Emisor: ' . htmlspecialchars($emisorRegimen) . ' / ' . htmlspecialchars($empRegimen) . '</b>
 </div>
+
+' . ($observaciones !== '' ? ('<div class="cliente-box"><b>Observaciones:</b> ' . nl2br(htmlspecialchars($observaciones)) . '</div>') : '') . '
 
 <!-- ═══ CONCEPTOS ════════════════════════════════════════════════════════ -->
 <table class="conc">

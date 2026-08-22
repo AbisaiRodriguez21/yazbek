@@ -73,6 +73,7 @@ class FacturacionService
             $regimenFiscalReceptor = trim($datosExtra['regimenFiscalReceptor']            ?? '616');
             $formaPagoCFDI         = trim($datosExtra['formaPago']                        ?? '01');
             $metodoPagoCFDI        = trim($datosExtra['metodoPago']                       ?? 'PUE');
+            $observaciones         = trim($datosExtra['observaciones']                    ?? '');
 
             // Guardar/actualizar datos fiscales en notas_1 y en clientes
             $db->query(
@@ -84,10 +85,11 @@ class FacturacionService
                      uso_cfdi               = ?,
                      regimen_fiscal_receptor= ?,
                      forma_pago_cfdi        = ?,
+                     observaciones_factura  = ?,
                      status_facturacion     = 1
                  WHERE folio = ?",
                 [$rfcReceptor, $razonSocialReceptor, $cpReceptor,
-                 $usoCFDI, $regimenFiscalReceptor, $formaPagoCFDI, $folio]
+                 $usoCFDI, $regimenFiscalReceptor, $formaPagoCFDI, $observaciones ?: null, $folio]
             );
 
             // Actualizar datos fiscales del cliente (RFC, Razón Social, CP)
@@ -114,8 +116,14 @@ class FacturacionService
             $cpReceptor            = $nota['cp_receptor']            ?? '';
             $usoCFDI               = $nota['uso_cfdi']               ?? 'S01';
             $regimenFiscalReceptor = $nota['regimen_fiscal_receptor'] ?? '616';
-            $formaPagoCFDI         = $nota['forma_pago_cfdi']        ?? '01';
+            // Se recalcula contra los pagos reales (montosnotas) en vez de
+            // confiar en el valor guardado en la nota: si Caja registró un
+            // pago distinto al que declaró el vendedor al cerrar, el guardado
+            // queda desactualizado y la factura saldría con la forma de pago
+            // equivocada.
+            $formaPagoCFDI         = $this->calcularFormaPagoDominante($folio) ?? ($nota['forma_pago_cfdi'] ?? '01');
             $metodoPagoCFDI        = 'PUE'; // default; no se guarda separado en notas_1 por ahora
+            $observaciones         = trim($nota['observaciones_factura'] ?? '');
         }
 
         // ── Validación mínima ────────────────────────────────────────────
@@ -211,7 +219,7 @@ class FacturacionService
             $xmlDecoded = base64_decode($xmlTimbrado);
 
             $pdfService = new CfdiPdfService();
-            $pdfBytes   = $pdfService->generarPDF($xmlDecoded, $cfgMap);
+            $pdfBytes   = $pdfService->generarPDF($xmlDecoded, $cfgMap, $observaciones ?? '');
 
             $emailService = new CfdiEmailService();
             $emailResult  = $emailService->enviar(
@@ -264,14 +272,16 @@ class FacturacionService
             $regimenFiscalReceptor = trim($datosExtra['regimenFiscalReceptor']            ?? '616');
             $formaPagoCFDI         = trim($datosExtra['formaPago']                        ?? '01');
             $metodoPagoCFDI        = trim($datosExtra['metodoPago']                       ?? 'PUE');
+            $observaciones         = trim($datosExtra['observaciones']                    ?? '');
         } else {
             $rfcReceptor           = $nota['rfc_receptor']           ?? '';
             $razonSocialReceptor   = $nota['razon_social_receptor']  ?? '';
             $cpReceptor            = $nota['cp_receptor']            ?? '';
             $usoCFDI               = $nota['uso_cfdi']               ?? 'S01';
             $regimenFiscalReceptor = $nota['regimen_fiscal_receptor'] ?? '616';
-            $formaPagoCFDI         = $nota['forma_pago_cfdi']        ?? '01';
+            $formaPagoCFDI         = $this->calcularFormaPagoDominante($folio) ?? ($nota['forma_pago_cfdi'] ?? '01');
             $metodoPagoCFDI        = 'PUE';
+            $observaciones         = trim($nota['observaciones_factura'] ?? '');
         }
 
         if (empty($rfcReceptor) || empty($razonSocialReceptor) || empty($cpReceptor)) {
@@ -318,11 +328,50 @@ class FacturacionService
                 'formaPagoTexto'        => CfdiPdfService::nombreFormaPago($formaPagoCFDI),
                 'metodoPago'            => $metodoPagoCFDI,
             ],
-            'conceptos' => $calculo['conceptos'],
-            'subtotal'  => $calculo['subtotal'],
-            'iva'       => $calculo['iva'],
-            'total'     => $calculo['total'],
+            'conceptos'     => $calculo['conceptos'],
+            'subtotal'      => $calculo['subtotal'],
+            'descuento'     => $calculo['descuento'],
+            'iva'           => $calculo['iva'],
+            'total'         => $calculo['total'],
+            'observaciones' => $observaciones,
         ];
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Forma de pago que predomina por monto entre lo realmente cobrado
+    // (montosnotas), no lo que se haya guardado antes en la nota. Copia de
+    // BaseController::calcularFormaPagoDominante() — aquí no se puede
+    // heredar de un controlador, así que se repite la misma lógica.
+    // ─────────────────────────────────────────────────────────────────────
+    private function calcularFormaPagoDominante(int $folio): ?string
+    {
+        $mapaSat = [
+            1  => '01', // Contado (Efectivo)
+            4  => '02', // Cheque
+            5  => '03', // Transferencia
+            6  => '03', // Depósito (el SAT no tiene clave propia; se usa Transferencia)
+            7  => '99', // Sin Pagar — no debería facturarse así, pero por seguridad
+            8  => '04', // Cargo con tarjeta (genérico, se usa muy poco)
+            9  => '28', // Tarjeta Débito
+            10 => '04', // Tarjeta Crédito
+        ];
+
+        $row = $this->db->query(
+            "SELECT mn.idTipoPago, SUM(mn.monto) AS total
+             FROM notas_1 n
+             INNER JOIN montosnotas mn ON mn.idNotas = n.Id_Notas_1
+             WHERE (n.folio = ? OR n.referencia = ?) AND n.status != 3
+             GROUP BY mn.idTipoPago
+             ORDER BY total DESC
+             LIMIT 1",
+            [$folio, $folio]
+        )->getRowArray();
+
+        if (! $row) {
+            return null;
+        }
+
+        return $mapaSat[(int) $row['idTipoPago']] ?? null;
     }
 
     // ─────────────────────────────────────────────────────────────────────

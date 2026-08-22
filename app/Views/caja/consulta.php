@@ -489,7 +489,7 @@ function cajaAbrirModalFactura(folio) {
     document.getElementById('btnCajaSfFacturar').disabled    = false;
     document.getElementById('btnCajaSfFacturar').innerHTML = '<i class="simple-icon-doc mr-1"></i> Facturar';
 
-    ['cajaSfRfc','cajaSfRazonSocial','cajaSfCP'].forEach(function(id) {
+    ['cajaSfRfc','cajaSfRazonSocial','cajaSfCP','cajaSfObservaciones'].forEach(function(id) {
         document.getElementById(id).value = '';
     });
 
@@ -556,7 +556,8 @@ document.addEventListener('DOMContentLoaded', function() {
             usoCFDI:               document.getElementById('cajaSfUsoCFDI').value,
             regimenFiscalReceptor: document.getElementById('cajaSfRegimenFiscal').value,
             formaPagoCFDI:         document.getElementById('cajaSfFormaPago').value,
-            metodoPagoCFDI:        'PUE'
+            metodoPagoCFDI:        'PUE',
+            observacionesFactura:  document.getElementById('cajaSfObservaciones').value.trim()
         };
 
         var fd = new FormData();
@@ -653,6 +654,14 @@ function cajaMostrarPreviewFactura(data) {
     document.getElementById('cajaSfPvEmpCiudad').textContent    = data.emisor.ciudad;
     document.getElementById('cajaSfPvRegimenEmisor').textContent = data.emisor.regimen + ' / ' + data.emisor.regimenTexto;
 
+    var cajaSfObsBox = document.getElementById('cajaSfPvObservacionesBox');
+    if (data.observaciones) {
+        document.getElementById('cajaSfPvObservaciones').textContent = data.observaciones;
+        cajaSfObsBox.classList.remove('d-none');
+    } else {
+        cajaSfObsBox.classList.add('d-none');
+    }
+
     document.getElementById('cajaSfPvRfc').textContent              = data.datosFiscales.rfcReceptor;
     document.getElementById('cajaSfPvRazonSocial').textContent      = data.datosFiscales.razonSocialReceptor;
     document.getElementById('cajaSfPvCP').textContent               = data.datosFiscales.cpReceptor;
@@ -663,14 +672,16 @@ function cajaMostrarPreviewFactura(data) {
     var tbody = document.getElementById('cajaSfPvConceptos');
     tbody.innerHTML = '';
     data.conceptos.forEach(function(c) {
-        var total = (Number(c.importe) || 0) + (Number(c.iva) || 0);
+        var descuento = Number(c.descuento) || 0;
+        var baseIva   = (Number(c.importe) || 0) - descuento;
+        var total     = baseIva + (Number(c.iva) || 0);
         var tr = document.createElement('tr');
         tr.innerHTML =
             '<td class="c">' + c.cantidad + '</td>' +
             '<td>' + cajaSfEsc(c.sku ? (c.sku + ' ' + c.descripcion) : c.descripcion) + '</td>' +
             '<td class="r">' + cajaSfMoneda(c.valorUnitario) + '</td>' +
-            '<td class="r">' + cajaSfMoneda(0) + '</td>' +
-            '<td class="r">' + cajaSfMoneda(c.importe) + '</td>' +
+            '<td class="r">' + cajaSfMoneda(descuento) + '</td>' +
+            '<td class="r">' + cajaSfMoneda(baseIva) + '</td>' +
             '<td class="r">' + cajaSfMoneda(c.iva) + '</td>' +
             '<td class="r"></td>' +
             '<td class="r"></td>' +
@@ -679,11 +690,20 @@ function cajaMostrarPreviewFactura(data) {
 
         var trImp = document.createElement('tr');
         trImp.className = 'cfdi-imp-row';
-        trImp.innerHTML = '<td colspan="9">Impuesto: ' + cajaSfMoneda(c.importe) + ' x [002{IVA} Tasa 0.160000] = ' + cajaSfMoneda(c.iva) + '</td>';
+        trImp.innerHTML = '<td colspan="9">Impuesto: ' + cajaSfMoneda(baseIva) + ' x [002{IVA} Tasa 0.160000] = ' + cajaSfMoneda(c.iva) + '</td>';
         tbody.appendChild(trImp);
     });
 
     document.getElementById('cajaSfPvSubtotal').textContent = cajaSfMoneda(data.subtotal);
+    var cajaSfDescuentoRow = document.getElementById('cajaSfPvDescuentoRow');
+    if (cajaSfDescuentoRow) {
+        if (Number(data.descuento) > 0) {
+            cajaSfDescuentoRow.style.display = '';
+            document.getElementById('cajaSfPvDescuento').textContent = '- ' + cajaSfMoneda(data.descuento);
+        } else {
+            cajaSfDescuentoRow.style.display = 'none';
+        }
+    }
     document.getElementById('cajaSfPvIva').textContent      = cajaSfMoneda(data.iva);
     document.getElementById('cajaSfPvTotal').textContent    = cajaSfMoneda(data.total);
     document.getElementById('cajaSfPvError').classList.add('d-none');
@@ -788,6 +808,11 @@ function cajaMostrarPreviewFactura(data) {
                         </div>
                     </div>
                 </div>
+                <div class="form-group">
+                    <label>Observaciones</label>
+                    <textarea id="cajaSfObservaciones" class="form-control" rows="2"
+                              placeholder="Notas o números de ticket para esta factura (opcional)"></textarea>
+                </div>
                 <div id="cajaSfError" class="alert alert-danger d-none mt-2"></div>
             </div>
             <div class="modal-footer">
@@ -849,6 +874,10 @@ function cajaMostrarPreviewFactura(data) {
                         <b>Régimen Fiscal del Emisor:</b> <span id="cajaSfPvRegimenEmisor"></span>
                     </div>
 
+                    <div id="cajaSfPvObservacionesBox" class="cfdi-cliente-box d-none">
+                        <b>Observaciones:</b> <span id="cajaSfPvObservaciones"></span>
+                    </div>
+
                     <table class="cfdi-conc">
                         <thead>
                             <tr>
@@ -874,6 +903,7 @@ function cajaMostrarPreviewFactura(data) {
                             <td style="width:45%; vertical-align:top;">
                                 <table class="cfdi-tot" style="margin:0 0 0 auto;">
                                     <tr><td>Subtotal</td><td class="r" id="cajaSfPvSubtotal"></td></tr>
+                                    <tr id="cajaSfPvDescuentoRow" style="display:none;"><td>Descuento</td><td class="r" id="cajaSfPvDescuento"></td></tr>
                                     <tr><td>Total IVA</td><td class="r" id="cajaSfPvIva"></td></tr>
                                     <tr class="cfdi-tot-final"><td>TOTAL</td><td class="r" id="cajaSfPvTotal"></td></tr>
                                 </table>
