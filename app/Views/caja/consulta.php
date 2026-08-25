@@ -171,7 +171,20 @@ var URL_CANCELAR = '<?= base_url('caja/cancelar/') ?>';
             }, className: 'text-right' },
             { data: 'idstatus', render: function(data, type, row) {
                 var sid     = parseInt(data, 10);
-                var label   = STATUS_LABELS[sid] || '<span class="badge badge-secondary">Desconocido</span>';
+                var esHijo  = parseInt(row.referencia || 0, 10) > 0;
+                var esAnticipo = parseInt(row.anticipo, 10) !== 0;
+                var label;
+                var pagadoTotal = parseFloat(row.pagado_total || 0);
+                var totalNota   = parseFloat(row.total || 0);
+                if (sid === 6 && esHijo && esAnticipo) {
+                    label = '<span class="badge" style="background-color:#0d6e6e;color:#fff;">Anticipo Pagado</span>';
+                } else if (sid === 2 && !esHijo && row.tipopago === 'A Crédito' && pagadoTotal >= totalNota - 0.99) {
+                    label = '<span class="badge" style="background-color:#e83e8c;color:#fff;">Listo para Verificar</span>';
+                } else if (sid === 2 && !esHijo && row.tipopago === 'A Crédito') {
+                    label = '<span class="badge" style="background-color:#e67e22;color:#fff;">A Crédito</span>';
+                } else {
+                    label = STATUS_LABELS[sid] || '<span class="badge badge-secondary">Desconocido</span>';
+                }
                 var factura = parseInt(row.factura || 0, 10);
                 var uuid    = row.uuid_fiscal || '';
                 if (uuid) {
@@ -213,7 +226,7 @@ var URL_CANCELAR = '<?= base_url('caja/cancelar/') ?>';
                 }
                 // Ver Ticket: disponible para todos los status, incluyendo cancelado
                 btns += '<button class="btn btn-xs btn-outline-dark mr-1"'
-                      + ' onclick="cajaVerTicket(' + row.folio + ')">Ver Ticket</button>';
+                      + ' onclick="cajaVerTicket(' + row.folio + ')">Imprimir Ticket</button>';
                 // Comanda (solo productos, sin precios) — solo folios padre
                 if (esPadre && idstatus !== 3) {
                     btns += '<button class="btn btn-xs btn-outline-dark mr-1"'

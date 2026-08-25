@@ -458,6 +458,32 @@ class MostradorController extends BaseController
                 "Nota #{$folioN1} finalizada con " . count($metodosPago) . " formas de pago.");
         }
 
+        // ── Anticipo inicial (solo si la nota completa quedó como un único
+        // método "Sin Pagar") ── Se registra como un folio hijo aparte, igual
+        // que un abono manual desde Consultar Folios, pendiente de que Caja lo
+        // reciba y confirme. No se abre un ticket aparte: el ticket de esta
+        // nota ya lo muestra dentro (ver $pagosHijos en verTicket()).
+        $anticipoInicialTipo  = (int)   $this->request->getPost('anticipoInicialTipo');
+        $anticipoInicialMonto = (float) $this->request->getPost('anticipoInicialMonto');
+        if (count($metodosPago) === 1 && $anticipoInicialTipo > 0 && $anticipoInicialMonto > 0) {
+            $notaParaAnticipo = $db->query(
+                "SELECT idCliente, idVendedor FROM notas_1 WHERE folio = ? LIMIT 1", [$folioN1]
+            )->getRowArray();
+            if ($notaParaAnticipo) {
+                $nuevoFolioAnticipo = $this->crearFolioHijoPendiente(
+                    $folioN1,
+                    (int) $notaParaAnticipo['idCliente'],
+                    (int) $notaParaAnticipo['idVendedor'],
+                    $anticipoInicialMonto,
+                    $anticipoInicialTipo,
+                    1 // es anticipo
+                );
+                AuditService::log(AuditService::VENTA_CREADA, 'notas_1', $nuevoFolioAnticipo,
+                    "Anticipo inicial registrado al crear la nota #{$folioN1}: nuevo folio #{$nuevoFolioAnticipo}, " .
+                    "monto $" . number_format($anticipoInicialMonto, 2) . ", pendiente de que caja lo reciba y confirme.");
+            }
+        }
+
         // ── Actualizar datos fiscales del cliente si los llenó en la factura ──
         if ($factura === 1 && ($rfcReceptor || $razonSocialReceptor || $cpReceptor)) {
             $notaParaCliente = $db->query(
@@ -549,14 +575,28 @@ class MostradorController extends BaseController
 
         $tipoPagos = $db->query("SELECT * FROM tipopago ORDER BY id ASC")->getResultArray();
 
+        // Historial de abonos ya registrados (folios hijo = anticipos) para
+        // esta nota, igual que se muestra en Imprimir Ticket.
+        $historialAbonos = $db->query(
+            "SELECT m.idTipoPago, t.descripcion AS tipopago, m.monto, m.cargos AS cargo,
+                    m.anticipo, m.fecha, n2.folio AS folio_pago, n2.status AS folio_status
+             FROM notas_1 n2
+             INNER JOIN montosnotas m ON m.idNotas = n2.Id_Notas_1
+             INNER JOIN tipopago t ON t.id = m.idTipoPago
+             WHERE n2.folio = ? OR n2.referencia = ?
+             ORDER BY n2.folio ASC, m.id ASC",
+            [$folio, $folio]
+        )->getResultArray();
+
         return view('mostrador/abono', [
-            'usuario'   => $this->getUsuarioSesion(),
-            'nota'      => $nota,
-            'folio'     => $folio,
-            'yaPagado'  => $yaPagado,
-            'restante'  => max(0, (float)($nota['total'] ?? 0) - $yaPagado),
-            'tipoPagos' => $tipoPagos,
-            'base'      => (int) session()->get('user_acceso') === 1 ? 'admin' : 'mostrador',
+            'usuario'         => $this->getUsuarioSesion(),
+            'nota'            => $nota,
+            'folio'           => $folio,
+            'yaPagado'        => $yaPagado,
+            'restante'        => max(0, (float)($nota['total'] ?? 0) - $yaPagado),
+            'tipoPagos'       => $tipoPagos,
+            'historialAbonos' => $historialAbonos,
+            'base'            => (int) session()->get('user_acceso') === 1 ? 'admin' : 'mostrador',
         ]);
     }
 
@@ -579,6 +619,9 @@ class MostradorController extends BaseController
 
         $monto      = (float) $this->request->getPost('monto');
         $idTipoPago = (int)   $this->request->getPost('tipoPago');
+        // "anticipo" (default) = pago parcial, todavía queda saldo pendiente.
+        // "liquidar" = este pago cierra/liquida la nota, no es un adelanto.
+        $esAnticipo = $this->request->getPost('tipoAbono') === 'liquidar' ? 0 : 1;
 
         if ($monto <= 0 || $idTipoPago < 1) {
             $base = (int) session()->get('user_acceso') === 1 ? 'admin' : 'mostrador';
@@ -587,12 +630,13 @@ class MostradorController extends BaseController
         }
 
         $nuevoFolio = $this->crearFolioHijoPendiente(
-            $folio, (int)$nota['idCliente'], (int)$nota['idVendedor'], $monto, $idTipoPago
+            $folio, (int)$nota['idCliente'], (int)$nota['idVendedor'], $monto, $idTipoPago, $esAnticipo
         );
 
         AuditService::log(AuditService::VENTA_CREADA, 'notas_1', $nuevoFolio,
             "Abono registrado por vendedor sobre folio #{$folio}: nuevo folio #{$nuevoFolio}, " .
-            "monto $" . number_format($monto, 2) . ", pendiente de que caja lo reciba y confirme.");
+            "monto $" . number_format($monto, 2) . ($esAnticipo ? ', anticipo' : ', liquidación') .
+            ", pendiente de que caja lo reciba y confirme.");
 
         return redirect()->to($this->consultaUrl())
                           ->with('success', "Abono registrado como folio #{$nuevoFolio}. Caja lo recibirá y confirmará el pago.");
@@ -603,8 +647,9 @@ class MostradorController extends BaseController
     // abono individual como por cada método cuando la nota se paga con más
     // de uno. Caja lo recibe y confirma con su flujo normal ("Recibir Pago y
     // Cerrar Nota"), que además liquida al padre cuando todos sus hijos
-    // completan el total.
-    private function crearFolioHijoPendiente(int $folioPadre, int $idCliente, int $idVendedor, float $monto, int $idTipoPago): int
+    // completan el total. $esAnticipo indica si es un pago parcial (1) o si
+    // liquida la nota (0); Caja respeta esta elección al confirmar el pago.
+    private function crearFolioHijoPendiente(int $folioPadre, int $idCliente, int $idVendedor, float $monto, int $idTipoPago, int $esAnticipo = 1): int
     {
         $db         = \Config\Database::connect();
         $nuevoFolio = $this->notaModel->siguienteFolio();
@@ -612,11 +657,11 @@ class MostradorController extends BaseController
 
         $db->query(
             "INSERT INTO notas_1
-             (folio, fecha_inicial, fecha_final, idCliente, idVendedor, referencia,
+             (folio, fecha_inicial, fecha_final, idCliente, idVendedor, referencia, anticipo,
               sumaImportes, subTotal, subTotal2, iva, total, totalPiezas,
               status, descuento, cargoTarjeta, factura, tipoImpresion, tipoPago)
-             VALUES (?, ?, ?, ?, ?, ?, 0, ?, 0, 0, ?, 0, 2, 0, 0, 0, 1, ?)",
-            [$nuevoFolio, $fecha, $fecha, $idCliente, $idVendedor, $folioPadre, $monto, $monto, $idTipoPago]
+             VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, 0, 0, ?, 0, 2, 0, 0, 0, 1, ?)",
+            [$nuevoFolio, $fecha, $fecha, $idCliente, $idVendedor, $folioPadre, $esAnticipo, $monto, $monto, $idTipoPago]
         );
 
         return $nuevoFolio;
@@ -1547,6 +1592,12 @@ class MostradorController extends BaseController
                     COALESCE(s.nombre, '') AS status_nombre,
                     n.verificado,
                     COALESCE(n.referencia, 0) AS referencia,
+                    COALESCE(n.anticipo, 1) AS anticipo,
+                    (SELECT COALESCE(SUM(mn.monto), 0)
+                     FROM notas_1 nn
+                     INNER JOIN montosnotas mn ON mn.idNotas = nn.Id_Notas_1
+                     WHERE (nn.folio = n.folio OR nn.referencia = n.folio) AND nn.status != 3
+                    ) AS pagado_total,
                     n.factura, COALESCE(n.uuid_fiscal, '') AS uuid_fiscal
              {$baseSql} {$where}
              ORDER BY {$orderCol} {$orderDir}
@@ -1653,7 +1704,8 @@ class MostradorController extends BaseController
                 "SELECT m.idTipoPago, t.descripcion AS tipopago,
                         m.monto, m.cargos AS cargo, m.anticipo,
                         n2.folio AS folio_pago,
-                        n2.status AS folio_status
+                        n2.status AS folio_status,
+                        COALESCE(n2.referencia, 0) AS folio_pago_referencia
                  FROM notas_1 n2
                  INNER JOIN montosnotas m ON m.idNotas = n2.Id_Notas_1
                  INNER JOIN tipopago t ON t.id = m.idTipoPago
@@ -1783,7 +1835,11 @@ class MostradorController extends BaseController
             if (in_array($p['idTipoPago'] ?? 0, [2, 3])) {
                 $html .= ' <strong>Cargo: </strong>$&nbsp;' . number_format($p['cargo'] ?? 0, 2);
             }
-            $html .= ' <strong>Es anticipo:</strong> ' . (($p['anticipo'] ?? 0) == 1 ? 'Si' : 'No');
+            if (($p['anticipo'] ?? 0) == 1) {
+                $html .= ' <strong style="color:#e67e22;">Es anticipo:</strong> Si';
+            } elseif ((int) ($p['folio_pago_referencia'] ?? 0) > 0) {
+                $html .= ' <strong style="color:#28a745;">Es liquidación:</strong> Si';
+            }
             $html .= '</td></tr>';
         }
 

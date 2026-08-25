@@ -255,7 +255,20 @@ $(document).ready(function() {
             }, className: 'text-right'},
             { data: 'idstatus', render: function(data, type, row) {
                 var sid    = parseInt(data, 10);
-                var label  = STATUS_LABELS[sid] || '<span class="badge badge-secondary">Desconocido</span>';
+                var esHijo = parseInt(row.referencia || 0, 10) > 0;
+                var esAnticipo = parseInt(row.anticipo, 10) !== 0;
+                var label;
+                var pagadoTotal = parseFloat(row.pagado_total || 0);
+                var totalNota   = parseFloat(row.total || 0);
+                if (sid === 6 && esHijo && esAnticipo) {
+                    label = '<span class="badge" style="background-color:#0d6e6e;color:#fff;">Anticipo Pagado</span>';
+                } else if (sid === 2 && !esHijo && row.tipopago === 'A Crédito' && pagadoTotal >= totalNota - 0.99) {
+                    label = '<span class="badge" style="background-color:#e83e8c;color:#fff;">Listo para Verificar</span>';
+                } else if (sid === 2 && !esHijo && row.tipopago === 'A Crédito') {
+                    label = '<span class="badge" style="background-color:#e67e22;color:#fff;">A Crédito</span>';
+                } else {
+                    label = STATUS_LABELS[sid] || '<span class="badge badge-secondary">Desconocido</span>';
+                }
                 var factura = parseInt(row.factura || 0, 10);
                 var uuid    = row.uuid_fiscal || '';
                 if (uuid) {
@@ -326,7 +339,9 @@ function accionesNota(n) {
     // Editar productos — solo folios padre aún no verificados/cobrados
     // (1=Abierta, 2=En proceso). Reutiliza el Paso 2 con los productos ya
     // cargados; al continuar al Paso 3 se reconfirma forma de pago.
-    if ((idstatus === 1 || idstatus === 2) && esPadre) {
+    // No aplica a notas "Sin Pagar" (a crédito): editar productos después de
+    // dejar anticipos/abonos sobre el total original es muy propenso a error.
+    if ((idstatus === 1 || idstatus === 2) && esPadre && !esSinPagar(n.tipoPagoPropio)) {
         items += '<a class="dropdown-item" href="' + BASE_PAGO + n.folio + '/productos">'
                + '<i class="simple-icon-pencil"></i>Editar productos</a>';
     }
@@ -334,12 +349,12 @@ function accionesNota(n) {
     // Ver modal
     if (!esPadre || idstatus === 2 || idstatus === 5 || idstatus === 6 || idstatus === 3) {
         items += '<a class="dropdown-item" href="#" onclick="adminVerFolio(' + n.folio + '); return false;">'
-               + '<i class="simple-icon-eye"></i>Ver detalle</a>';
+               + '<i class="simple-icon-eye"></i>Verificar Pago</a>';
     }
 
     // Ver Ticket — disponible para todos los folios (padre e hijo), incluyendo cancelados
     items += '<a class="dropdown-item" href="#" onclick="adminVerTicket(' + n.folio + '); return false;">'
-           + '<i class="simple-icon-printer"></i>Ver Ticket</a>';
+           + '<i class="simple-icon-printer"></i>Imprimir Ticket</a>';
 
     // Comanda (solo productos, sin precios) — solo folios padre (los hijos
     // son abonos, sin productos propios) y no cancelados
@@ -547,6 +562,7 @@ function adminLiquidarAnticipo(folio) {
     .then(function(r) { return r.json(); })
     .then(function(data) {
         if (data.ok) {
+            if (data.mensaje) alert(data.mensaje);
             $('#tablaAdminConsulta').DataTable().ajax.reload(null, false);
         } else {
             alert(data.error || 'No se pudo liquidar.');

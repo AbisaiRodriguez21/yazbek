@@ -111,7 +111,20 @@ $(document).ready(function() {
             }, className: 'text-right'},
             { data: 'idstatus', render: function(data, type, row) {
                 var sid    = parseInt(data, 10);
-                var label  = STATUS_LABELS[sid] || '<span class="badge badge-secondary">Desconocido</span>';
+                var esHijo = parseInt(row.referencia || 0, 10) > 0;
+                var esAnticipo = parseInt(row.anticipo, 10) !== 0;
+                var label;
+                var pagadoTotal = parseFloat(row.pagado_total || 0);
+                var totalNota   = parseFloat(row.total || 0);
+                if (sid === 6 && esHijo && esAnticipo) {
+                    label = '<span class="badge" style="background-color:#0d6e6e;color:#fff;">Anticipo Pagado</span>';
+                } else if (sid === 2 && !esHijo && row.tipopago === 'A Crédito' && pagadoTotal >= totalNota - 0.99) {
+                    label = '<span class="badge" style="background-color:#e83e8c;color:#fff;">Listo para Verificar</span>';
+                } else if (sid === 2 && !esHijo && row.tipopago === 'A Crédito') {
+                    label = '<span class="badge" style="background-color:#e67e22;color:#fff;">A Crédito</span>';
+                } else {
+                    label = STATUS_LABELS[sid] || '<span class="badge badge-secondary">Desconocido</span>';
+                }
                 var factura = parseInt(row.factura || 0, 10);
                 var uuid    = row.uuid_fiscal || '';
                 if (uuid) {
@@ -165,7 +178,7 @@ function accionesNota(n) {
     // comanda) está disponible.
     if (!esPropio) {
         return '<a href="#" class="btn btn-xs btn-outline-primary mr-1"'
-             + ' onclick="mostradorVerFolio(' + n.folio + '); return false;">Ver</a>';
+             + ' onclick="mostradorVerFolio(' + n.folio + '); return false;">Verificar Pago</a>';
     }
 
     var btns = '';
@@ -173,7 +186,7 @@ function accionesNota(n) {
     if (esHijo) {
         // Folio hijo (anticipo): abrir modal con detalle del folio hijo
         btns += '<a href="#" class="btn btn-xs btn-outline-primary mr-1"'
-              + ' onclick="mostradorVerFolio(' + n.folio + '); return false;">Ver</a>';
+              + ' onclick="mostradorVerFolio(' + n.folio + '); return false;">Verificar Pago</a>';
         if (idstatus !== 3 && idstatus !== 5) {
             btns += '<a href="#" class="btn btn-xs btn-outline-danger mr-1"'
                   + ' onclick="mostradorCancelarFolioBtn(' + n.folio + '); return false;">Cancelar</a>';
@@ -193,7 +206,7 @@ function accionesNota(n) {
         }
         if (idstatus === 2 || idstatus === 5 || idstatus === 3) {
             btns += '<a href="#" class="btn btn-xs btn-outline-secondary mr-1"'
-                  + ' onclick="mostradorVerFolio(' + n.folio + '); return false;">Ver</a>';
+                  + ' onclick="mostradorVerFolio(' + n.folio + '); return false;">Verificar Pago</a>';
         }
         if (idstatus === 1) {
             btns += '<a href="' + BASE + n.folio + '/productos" class="btn btn-xs btn-outline-secondary mr-1">Editar</a>';
@@ -211,7 +224,7 @@ function accionesNota(n) {
 
     // Ver Ticket disponible para todos los folios (padre e hijo), incluyendo cancelados
     btns += '<a href="#" class="btn btn-xs btn-outline-dark mr-1"'
-          + ' onclick="mostradorVerTicket(' + n.folio + '); return false;">Ver Ticket</a>';
+          + ' onclick="mostradorVerTicket(' + n.folio + '); return false;">Imprimir Ticket</a>';
 
     // Comanda (solo productos, sin precios) — solo folios padre (los hijos
     // son abonos, sin productos propios)

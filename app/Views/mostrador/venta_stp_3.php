@@ -189,6 +189,53 @@
                         </small>
                     </div>
 
+                    <!-- Anticipo inicial: solo aplica cuando la nota es 100% "Sin Pagar" (a
+                         crédito). Se registra como un folio hijo aparte (igual que un abono
+                         manual desde Consultar Folios), pendiente de que Caja lo confirme —
+                         el resto de la nota queda a crédito. No se imprime un ticket aparte:
+                         el ticket de esta nota ya muestra el anticipo dentro. -->
+                    <div class="form-group" id="panelAnticipoInicial" style="display:none;">
+                        <div class="card card-body bg-light border-info">
+                            <div class="custom-control custom-checkbox">
+                                <input type="checkbox" class="custom-control-input" id="chkAnticipoInicial">
+                                <label class="custom-control-label" for="chkAnticipoInicial">¿El cliente deja un anticipo ahora?</label>
+                            </div>
+                            <div id="divAnticipoInicialCampos" style="display:none;" class="mt-2">
+                                <div class="form-row">
+                                    <div class="form-group col-md-6 mb-0">
+                                        <label>Tipo de Pago del Anticipo</label>
+                                        <select class="form-control" id="selAnticipoInicialTipo">
+                                            <option value="">— Selecciona —</option>
+                                            <?php foreach ($tipoPagos as $tp): ?>
+                                            <?php
+                                                $descTp = mb_strtolower($tp['descripcion']);
+                                                $esSinPagarTp = strpos($descTp, 'sin pagar') !== false
+                                                    || strpos($descTp, 'credito') !== false
+                                                    || strpos($descTp, 'crédito') !== false;
+                                            ?>
+                                            <?php if (! $esSinPagarTp): ?>
+                                            <option value="<?= (int)$tp['id'] ?>"><?= esc($tp['descripcion']) ?></option>
+                                            <?php endif; ?>
+                                            <?php endforeach; ?>
+                                        </select>
+                                    </div>
+                                    <div class="form-group col-md-6 mb-0">
+                                        <label>Monto del Anticipo</label>
+                                        <div class="input-group">
+                                            <div class="input-group-prepend"><span class="input-group-text">$</span></div>
+                                            <input type="number" class="form-control" id="inputAnticipoInicialMonto" min="0.01" step="0.01">
+                                        </div>
+                                    </div>
+                                </div>
+                                <small class="form-text text-muted mb-0">
+                                    <i class="simple-icon-info"></i> Este anticipo se registra como un folio de abono
+                                    aparte, pendiente de que Caja lo reciba y confirme. El resto de la nota queda a
+                                    crédito y se sigue abonando después desde Consultar Folios.
+                                </small>
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- Factura -->
                     <div class="form-group">
                         <div class="custom-control custom-checkbox">
@@ -446,7 +493,31 @@ function renderMetodosPago() {
         $('#spRestanteMetodos').text('$' + restante.toFixed(2)).removeClass('text-success').addClass('text-danger');
     }
     actualizarFormaPagoDominante();
+    actualizarPanelAnticipoInicial();
 }
+
+// El bloque de "anticipo inicial" solo tiene sentido cuando la nota completa
+// es "Sin Pagar" (a crédito) — con cualquier otro método, o varios métodos
+// combinados, no aplica (esos ya se cobran normal, sin crédito pendiente).
+function esMetodoSinPagar(desc) {
+    var d = (desc || '').toLowerCase();
+    return d.indexOf('sin pagar') >= 0 || d.indexOf('credito') >= 0 || d.indexOf('crédito') >= 0;
+}
+
+function actualizarPanelAnticipoInicial() {
+    var soloSinPagar = metodosPago.length === 1 && esMetodoSinPagar(metodosPago[0].desc);
+    if (soloSinPagar) {
+        $('#panelAnticipoInicial').show();
+    } else {
+        $('#panelAnticipoInicial').hide();
+        $('#chkAnticipoInicial').prop('checked', false);
+        $('#divAnticipoInicialCampos').hide();
+    }
+}
+
+$('#chkAnticipoInicial').on('change', function() {
+    $('#divAnticipoInicialCampos').toggle($(this).is(':checked'));
+});
 
 // Mismo mapeo que BaseController::calcularFormaPagoDominante() en el
 // backend — tipopago.id → clave SAT c_FormaPago.
@@ -543,6 +614,25 @@ function ejecutarCierreNota() {
         return;
     }
 
+    // Anticipo inicial (solo aplica si la nota completa es "Sin Pagar") — es un
+    // canal aparte de metodosPago, así que nunca cuenta para el "restante" de
+    // arriba: puede ser cualquier cantidad menor al total sin bloquear nada.
+    var soloSinPagar = metodosPago.length === 1 && esMetodoSinPagar(metodosPago[0].desc);
+    var anticipoInicialActivo = soloSinPagar && $('#chkAnticipoInicial').is(':checked');
+    var anticipoInicialTipo   = '';
+    var anticipoInicialMonto  = 0;
+    if (anticipoInicialActivo) {
+        anticipoInicialTipo  = $('#selAnticipoInicialTipo').val();
+        anticipoInicialMonto = parseFloat($('#inputAnticipoInicialMonto').val()) || 0;
+        if (!anticipoInicialTipo) { alert('Selecciona el tipo de pago del anticipo inicial.'); return; }
+        if (anticipoInicialMonto <= 0) { alert('Ingresa un monto válido para el anticipo inicial.'); return; }
+        var totalNotaActual = parseFloat($('#hidTotal').val()) || 0;
+        if (anticipoInicialMonto > totalNotaActual + 0.005) {
+            alert('El anticipo inicial no puede ser mayor al total de la nota ($' + totalNotaActual.toFixed(2) + ').');
+            return;
+        }
+    }
+
     var csrf = {};
     csrf[$('#hidCsrfName').val()] = $('#hidCsrfHash').val();
 
@@ -565,7 +655,9 @@ function ejecutarCierreNota() {
         regimenFiscalReceptor: $('#regimenFiscalReceptor').val(),
         usoCFDI:               $('#usoCFDI').val(),
         formaPagoCFDI:         $('#formaPagoCFDI').val(),
-        metodoPagoCFDI:        $('#metodoPagoCFDI').val()
+        metodoPagoCFDI:        $('#metodoPagoCFDI').val(),
+        anticipoInicialTipo:   anticipoInicialActivo ? anticipoInicialTipo  : '',
+        anticipoInicialMonto:  anticipoInicialActivo ? anticipoInicialMonto : 0
     }, csrf);
 
     $('#btnGuardar').prop('disabled', true).text('Guardando...');

@@ -149,11 +149,12 @@ class CajaController extends BaseController
 
         $db = \Config\Database::connect();
 
-        // Un folio hijo (referencia > 0) ES un abono/anticipo por definición —
-        // igual que ya marcaba por default el checkbox "Es Anticipo" en el
-        // formulario completo de Registrar Pago para folios hijos.
+        // Un folio hijo (referencia > 0) es un abono; el vendedor decide si es
+        // un anticipo (parcial) o si liquida la nota al registrarlo (ver
+        // MostradorController::abonoPost) — se respeta lo que dejó guardado en
+        // notas_1.anticipo en vez de asumir siempre "anticipo".
         $referenciaPadre = (int) ($nota['referencia'] ?? 0);
-        $esAnticipo      = $referenciaPadre > 0 ? 1 : 0;
+        $esAnticipo      = $referenciaPadre > 0 ? (int) ($nota['anticipo'] ?? 1) : 0;
 
         // "Verificar Pago"/"Recibir Pago" cubre dos casos:
         //  1) Ya existe un pago registrado en montosnotas (p. ej. una transferencia
@@ -201,6 +202,7 @@ class CajaController extends BaseController
         // Si este folio es un abono (hijo) de una nota "Sin Pagar", revisar si con
         // este pago ya se cubrió el total del padre — de ser así, liquidar padre e
         // hijos (status 6) para que la venta aparezca como pagada/facturable.
+        $mensaje = "Pago del folio #{$folio} verificado correctamente.";
         if ($referenciaPadre > 0) {
             $padre = $this->notaModel->getPorFolio($referenciaPadre);
             if ($padre && (int)($padre['status'] ?? 0) !== 3) {
@@ -210,11 +212,12 @@ class CajaController extends BaseController
                     $this->notaModel->liquidarAnticipo($referenciaPadre);
                     AuditService::log(AuditService::VENTA_LIQUIDADA, 'notas_1', $referenciaPadre,
                         "Folio #{$referenciaPadre} liquidado automáticamente al completar sus abonos.");
+                    $mensaje .= " La cuenta del folio padre #{$referenciaPadre} ya quedó liquidada.";
                 }
             }
         }
 
-        return $this->response->setJSON(['ok' => true, 'mensaje' => "Pago del folio #{$folio} verificado correctamente."]);
+        return $this->response->setJSON(['ok' => true, 'mensaje' => $mensaje]);
     }
 
     // ──────────────────────────────────────────────────────────────
@@ -525,11 +528,11 @@ class CajaController extends BaseController
             );
             if ($db->affectedRows() === 0) {
                 $nota = $db->query(
-                    "SELECT total, referencia AS ref_padre FROM notas_1 WHERE Id_Notas_1 = ? LIMIT 1",
+                    "SELECT total, referencia AS ref_padre, anticipo FROM notas_1 WHERE Id_Notas_1 = ? LIMIT 1",
                     [$idNotas]
                 )->getRowArray();
                 if ($nota) {
-                    $esAnticipo = (int) ($nota['ref_padre'] ?? 0) > 0 ? 1 : 0;
+                    $esAnticipo = (int) ($nota['ref_padre'] ?? 0) > 0 ? (int) ($nota['anticipo'] ?? 1) : 0;
                     $db->query(
                         "INSERT INTO montosnotas (idNotas, idTipoPago, monto, cargos, anticipo, referencia, fecha)
                          VALUES (?, ?, ?, 0, ?, ?, ?)",
@@ -563,7 +566,7 @@ class CajaController extends BaseController
             // Caso 3: no existe montosnotas, crear el registro usando el
             // tipoPago propio de la nota (comparación por ID, no por texto)
             $nota = $db->query(
-                "SELECT n.Id_Notas_1, n.total, COALESCE(n.referencia,0) AS ref_padre,
+                "SELECT n.Id_Notas_1, n.total, COALESCE(n.referencia,0) AS ref_padre, n.anticipo,
                         (SELECT tp2.id FROM tipopago tp2
                          WHERE tp2.id = n.tipoPago
                            AND TRIM(LOWER(tp2.descripcion)) IN ('transferencia','deposito','depósito','cheque','cargo con tarjeta','tarjeta debito','tarjeta débito','tarjeta credito','tarjeta crédito')
@@ -573,7 +576,7 @@ class CajaController extends BaseController
             )->getRowArray();
 
             if ($nota && $nota['id_tipo_pago']) {
-                $esAnticipo = (int) ($nota['ref_padre'] ?? 0) > 0 ? 1 : 0;
+                $esAnticipo = (int) ($nota['ref_padre'] ?? 0) > 0 ? (int) ($nota['anticipo'] ?? 1) : 0;
                 $db->query(
                     "INSERT INTO montosnotas (idNotas, idTipoPago, monto, cargos, anticipo, referencia, fecha)
                      VALUES (?, ?, ?, 0, ?, ?, ?)",
@@ -815,7 +818,7 @@ class CajaController extends BaseController
                 "SELECT n.Id_Notas_1, n.fecha_inicial,
                         c.nombre  AS NombreCliente,
                         u.usuario AS vendedor,
-                        n.folio, n.referencia, n.verificado, n.factura, n.descuento,
+                        n.folio, n.referencia, n.anticipo, n.verificado, n.factura, n.descuento,
                         n.status AS statusId,
                         n.sumaImportes, n.subTotal, n.tipoPago,
                         tpVendedor.descripcion AS tipoPagoNombre,
@@ -841,7 +844,8 @@ class CajaController extends BaseController
                 "SELECT m.idTipoPago, t.descripcion AS tipopago,
                         m.monto, m.cargos AS cargo, m.anticipo,
                         n2.folio AS folio_pago,
-                        n2.status AS folio_status
+                        n2.status AS folio_status,
+                        COALESCE(n2.referencia, 0) AS folio_pago_referencia
                  FROM notas_1 n2
                  INNER JOIN montosnotas m ON m.idNotas = n2.Id_Notas_1
                  INNER JOIN tipopago t ON t.id = m.idTipoPago
@@ -912,8 +916,30 @@ class CajaController extends BaseController
         $html .= '</td>';
         $html .= '</tr></table></div>';
         if ($referenciaPadre > 0) {
+            $notaPadre   = $db->query("SELECT total FROM notas_1 WHERE folio = ? LIMIT 1", [$referenciaPadre])->getRowArray();
+            $totalPadre  = (float) ($notaPadre['total'] ?? 0);
+            // OJO: $pagos está filtrado por el folio que se está viendo (este
+            // hijo), no por el padre — para "lo ya pagado" hay que sumar TODOS
+            // los pagos del padre y de TODOS sus hermanos, no solo los de este.
+            $pagosPadre = $db->query(
+                "SELECT m.monto, n2.status AS folio_status
+                 FROM notas_1 n2
+                 INNER JOIN montosnotas m ON m.idNotas = n2.Id_Notas_1
+                 WHERE n2.folio = ? OR n2.referencia = ?",
+                [$referenciaPadre, $referenciaPadre]
+            )->getResultArray();
+            $pagadoPadre = array_sum(array_map(
+                fn($p) => (float) ($p['monto'] ?? 0),
+                array_filter($pagosPadre, fn($p) => (int) ($p['folio_status'] ?? 0) !== 3)
+            ));
+            $restantePadre = max(0, $totalPadre - $pagadoPadre);
+            $esAnticipoTxt = ((int) ($nota['anticipo'] ?? 1) === 1) ? 'ANTICIPO (abono)' : 'LIQUIDACIÓN';
+
             $html .= '<div class="alert alert-warning py-2 mb-3">'
-                   . '<strong>Este folio es un ANTICIPO (abono)</strong> del folio padre #' . $referenciaPadre . '.'
+                   . '<strong>Este folio es un ' . $esAnticipoTxt . '</strong> del folio padre #' . $referenciaPadre . '.'
+                   . '<br><span style="font-size:1.15em;"><strong>Total de la nota padre:</strong> $' . number_format($totalPadre, 2)
+                   . ' &nbsp; <strong>Pagado:</strong> $' . number_format($pagadoPadre, 2)
+                   . ' &nbsp; <strong>Restante:</strong> $' . number_format($restantePadre, 2) . '</span>'
                    . '</div>';
         }
         if (! empty($nota['fecha_edicion'])) {
@@ -991,7 +1017,11 @@ class CajaController extends BaseController
             if (in_array($p['idTipoPago'] ?? 0, [2, 3])) {
                 $html .= ' <strong>Cargo:</strong> $&nbsp;' . number_format($p['cargo'] ?? 0, 2);
             }
-            $html .= ' <strong>Es anticipo:</strong> ' . (($p['anticipo'] ?? 0) == 1 ? 'Si' : 'No');
+            if (($p['anticipo'] ?? 0) == 1) {
+                $html .= ' <strong style="color:#e67e22;">Es anticipo:</strong> Si';
+            } elseif ((int) ($p['folio_pago_referencia'] ?? 0) > 0) {
+                $html .= ' <strong style="color:#28a745;">Es liquidación:</strong> Si';
+            }
             $html .= '</td></tr>';
         }
 
@@ -1446,6 +1476,12 @@ class CajaController extends BaseController
                     n.total, n.status AS idstatus,
                     COALESCE(s.nombre, '')                   AS status_nombre,
                     n.verificado, n.referencia,
+                    COALESCE(n.anticipo, 1) AS anticipo,
+                    (SELECT COALESCE(SUM(mn.monto), 0)
+                     FROM notas_1 nn
+                     INNER JOIN montosnotas mn ON mn.idNotas = nn.Id_Notas_1
+                     WHERE (nn.folio = n.folio OR nn.referencia = n.folio) AND nn.status != 3
+                    ) AS pagado_total,
                     n.factura, COALESCE(n.uuid_fiscal, '') AS uuid_fiscal,
                     COALESCE(n.status_facturacion, 0) AS status_facturacion,
                     COALESCE(n.rfc_receptor, '')          AS rfc_receptor,

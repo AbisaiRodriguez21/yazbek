@@ -213,7 +213,7 @@
                             <div class="tab-pane fade" id="tab-stock" role="tabpanel">
                                 <p class="text-muted mb-2">
                                     Actualiza <strong>solo las piezas en stock</strong> de los productos existentes.
-                                    El valor reemplaza el stock actual (no suma). Se busca por SKU.
+                                    El valor se <strong>suma</strong> al stock actual (no lo reemplaza). Se busca por SKU.
                                 </p>
                                 <div class="alert alert-info py-2 mb-2">
                                     <strong>Formato del CSV — columnas requeridas:</strong><br>

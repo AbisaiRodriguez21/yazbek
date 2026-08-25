@@ -41,6 +41,48 @@
                 </table>
             </div>
         </div>
+
+        <div class="card mt-4">
+            <div class="card-header font-weight-bold" style="padding-top: 1rem; padding-bottom: 1rem;">Historial de Abonos</div>
+            <div class="card-body p-0">
+                <?php if (empty($historialAbonos)): ?>
+                <p class="text-muted text-center my-3">Aún no se ha registrado ningún abono para esta nota.</p>
+                <?php else: ?>
+                <table class="table table-sm mb-0">
+                    <thead>
+                        <tr>
+                            <th>Folio</th>
+                            <th>Fecha</th>
+                            <th>Forma de Pago</th>
+                            <th class="text-right">Monto</th>
+                            <th>Estado</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($historialAbonos as $h):
+                            $statusId = (int) ($h['folio_status'] ?? 0);
+                            if ($statusId === 3) {
+                                $badge = '<span class="badge badge-danger">Cancelado</span>';
+                            } elseif ($statusId === 5 || $statusId === 6) {
+                                $badge = '<span class="badge badge-success">Confirmado por Caja</span>';
+                            } else {
+                                $badge = '<span class="badge badge-warning">Pendiente de Caja</span>';
+                            }
+                            $esRowCancelada = $statusId === 3;
+                        ?>
+                        <tr style="<?= $esRowCancelada ? 'opacity:.5;text-decoration:line-through;' : '' ?>">
+                            <td>#<?= (int) $h['folio_pago'] ?></td>
+                            <td><?= esc(substr((string) ($h['fecha'] ?? ''), 0, 16)) ?></td>
+                            <td><?= esc($h['tipopago']) ?></td>
+                            <td class="text-right">$<?= number_format($h['monto'] ?? 0, 2) ?></td>
+                            <td><?= $badge ?></td>
+                        </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+                <?php endif; ?>
+            </div>
+        </div>
     </div>
 
     <div class="col-md-7">
@@ -49,33 +91,44 @@
             <div class="card-body">
                 <form method="POST" action="<?= base_url($basePrefix . '/venta/' . (int)$folio . '/abono') ?>">
                     <?= csrf_field() ?>
-                    <div class="form-group">
-                        <label>Cantidad <span class="text-danger">*</span></label>
-                        <div class="input-group">
-                            <div class="input-group-prepend"><span class="input-group-text">$</span></div>
-                            <input type="number" name="monto" class="form-control" min="0.01" step="0.01"
-                                   value="<?= $restante > 0 ? number_format($restante, 2, '.', '') : '' ?>" required>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label>Cantidad <span class="text-danger">*</span></label>
+                                <div class="input-group">
+                                    <div class="input-group-prepend"><span class="input-group-text">$</span></div>
+                                    <input type="number" name="monto" class="form-control" min="0.01" step="0.01"
+                                           value="<?= $restante > 0 ? number_format($restante, 2, '.', '') : '' ?>" required>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label class="d-block">Este pago es</label>
+                                <div class="btn-group btn-group-toggle w-100" data-toggle="buttons">
+                                    <label class="btn btn-outline-primary active">
+                                        <input type="radio" name="tipoAbono" value="anticipo" id="rdAbonoAnticipo" checked> Anticipo
+                                    </label>
+                                    <label class="btn btn-outline-primary">
+                                        <input type="radio" name="tipoAbono" value="liquidar" id="rdAbonoLiquidar"> Liquidar
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label>Tipo de Pago <span class="text-danger">*</span></label>
+                                <select name="tipoPago" class="form-control" required>
+                                    <option value="">— Selecciona —</option>
+                                    <?php foreach ($tipoPagos as $tp): ?>
+                                    <option value="<?= (int)$tp['id'] ?>"><?= esc($tp['descripcion']) ?></option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </div>
                         </div>
                     </div>
-                    <div class="form-group">
-                        <label>Tipo de Pago <span class="text-danger">*</span></label>
-                        <select name="tipoPago" class="form-control" required>
-                            <option value="">— Selecciona —</option>
-                            <?php foreach ($tipoPagos as $tp): ?>
-                            <option value="<?= (int)$tp['id'] ?>"><?= esc($tp['descripcion']) ?></option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <div class="custom-control custom-checkbox">
-                            <input type="checkbox" class="custom-control-input" id="chkAbonoAnticipo" checked disabled>
-                            <label class="custom-control-label" for="chkAbonoAnticipo">Es Anticipo</label>
-                        </div>
-                    </div>
-                    <div class="alert alert-info py-2 mb-3">
-                        <i class="simple-icon-info"></i> Este abono se envía a Caja como un folio nuevo,
-                        pendiente de que Caja lo reciba y confirme. No se descuenta del restante hasta
-                        que Caja lo confirme.
+                    <div class="alert alert-info py-2 mb-3" id="abonoInfoAlert">
+                        <i class="simple-icon-info"></i>
+                        <span id="abonoInfoTexto">Este es un <strong>anticipo</strong>: se envía a Caja como un folio nuevo,
+                        pendiente de que lo reciba y confirme. No se descuenta del restante hasta que Caja lo confirme.</span>
                     </div>
                     <button type="submit" class="btn btn-success btn-block">
                         <i class="iconsminds-add"></i> Registrar Abono
@@ -86,4 +139,29 @@
     </div>
 </div>
 
+<?= $this->endSection() ?>
+
+<?= $this->section('page_scripts') ?>
+<script>
+function abonoActualizarInfo() {
+    var esLiquidar = document.getElementById('rdAbonoLiquidar').checked;
+    var alertBox   = document.getElementById('abonoInfoAlert');
+    var texto      = document.getElementById('abonoInfoTexto');
+
+    if (esLiquidar) {
+        alertBox.classList.remove('alert-info');
+        alertBox.classList.add('alert-warning');
+        texto.innerHTML = 'Esto <strong>liquida</strong> la nota (no es un adelanto): se envía a Caja como un ' +
+            'folio nuevo, pendiente de que lo reciba y confirme. No se descuenta del restante hasta que Caja lo confirme.';
+    } else {
+        alertBox.classList.remove('alert-warning');
+        alertBox.classList.add('alert-info');
+        texto.innerHTML = 'Este es un <strong>anticipo</strong>: se envía a Caja como un folio nuevo, ' +
+            'pendiente de que lo reciba y confirme. No se descuenta del restante hasta que Caja lo confirme.';
+    }
+}
+
+document.getElementById('rdAbonoAnticipo').addEventListener('change', abonoActualizarInfo);
+document.getElementById('rdAbonoLiquidar').addEventListener('change', abonoActualizarInfo);
+</script>
 <?= $this->endSection() ?>

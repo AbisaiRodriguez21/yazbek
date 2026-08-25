@@ -63,16 +63,22 @@ class AdminController extends BaseController
         $db         = \Config\Database::connect();
 
         // ── KPIs del día (1 sola query en vez de 5) ───────────────
+        // Ingresos: un folio padre con abonos/anticipos (folios hijo) NO se
+        // suma por su cuenta — su dinero ya está representado por sus hijos.
+        // Si se sumaran ambos, al liquidar (padre + hijos con status=6) el
+        // total quedaría duplicado.
         $statsHoy = $db->query(
             "SELECT
                 COUNT(*) AS total,
-                SUM(status=3) AS cancelado,
-                SUM(status=4) AS anticipo,
-                SUM(status=5) AS pagado,
-                SUM(status=6) AS liquidado,
-                COALESCE(SUM(CASE WHEN status IN (4,5,6) THEN total ELSE 0 END),0) AS ingresos
-             FROM notas_1
-             WHERE fecha_inicial >= ? AND fecha_inicial < ?",
+                SUM(n.status=3) AS cancelado,
+                SUM(n.status=4) AS anticipo,
+                SUM(n.status=5) AS pagado,
+                SUM(n.status=6) AS liquidado,
+                COALESCE(SUM(CASE WHEN n.status IN (4,5,6) AND NOT EXISTS (
+                                      SELECT 1 FROM notas_1 h WHERE h.referencia = n.folio AND h.status != 3
+                                  ) THEN n.total ELSE 0 END),0) AS ingresos
+             FROM notas_1 n
+             WHERE n.fecha_inicial >= ? AND n.fecha_inicial < ?",
             ["{$hoy} 00:00:00", "{$hoy} 23:59:59"]
         )->getRow();
 
@@ -85,10 +91,11 @@ class AdminController extends BaseController
         // ── KPIs de mes y año (1 query) ───────────────────────────
         $statsPeriodo = $db->query(
             "SELECT
-                COALESCE(SUM(CASE WHEN fecha_inicial >= ? THEN total ELSE 0 END),0) AS mes,
-                COALESCE(SUM(CASE WHEN fecha_inicial >= ? THEN total ELSE 0 END),0) AS anio
-             FROM notas_1
-             WHERE status IN (4,5,6) AND fecha_inicial >= ? AND fecha_inicial < ?",
+                COALESCE(SUM(CASE WHEN n.fecha_inicial >= ? THEN n.total ELSE 0 END),0) AS mes,
+                COALESCE(SUM(CASE WHEN n.fecha_inicial >= ? THEN n.total ELSE 0 END),0) AS anio
+             FROM notas_1 n
+             WHERE n.status IN (4,5,6) AND n.fecha_inicial >= ? AND n.fecha_inicial < ?
+               AND NOT EXISTS (SELECT 1 FROM notas_1 h WHERE h.referencia = n.folio AND h.status != 3)",
             [$mesInicio, $anioInicio, $anioInicio, $anioFin]
         )->getRow();
 
@@ -102,13 +109,15 @@ class AdminController extends BaseController
 
         // ── Ventas mensuales del año (rangos de fecha = usa índice) ─
         $ventasMensualesRaw = $db->query(
-            "SELECT MONTH(fecha_inicial) AS mes,
-                    COALESCE(SUM(total),0) AS total,
+            "SELECT MONTH(n.fecha_inicial) AS mes,
+                    COALESCE(SUM(CASE WHEN NOT EXISTS (
+                                      SELECT 1 FROM notas_1 h WHERE h.referencia = n.folio AND h.status != 3
+                                  ) THEN n.total ELSE 0 END),0) AS total,
                     COUNT(*) AS notas
-             FROM notas_1
-             WHERE status IN (4,5,6)
-               AND fecha_inicial >= ? AND fecha_inicial < ?
-             GROUP BY MONTH(fecha_inicial)
+             FROM notas_1 n
+             WHERE n.status IN (4,5,6)
+               AND n.fecha_inicial >= ? AND n.fecha_inicial < ?
+             GROUP BY MONTH(n.fecha_inicial)
              ORDER BY mes ASC",
             [$anioInicio, $anioFin]
         )->getResultArray();
@@ -125,14 +134,16 @@ class AdminController extends BaseController
         // ── Histórico anual: todos los años con cualquier actividad ──
         $ventasAnualesRaw = $db->query(
             "SELECT
-                YEAR(fecha_inicial) AS anio,
-                COALESCE(SUM(CASE WHEN status IN (4,5,6) THEN total ELSE 0 END),0) AS total,
+                YEAR(n.fecha_inicial) AS anio,
+                COALESCE(SUM(CASE WHEN n.status IN (4,5,6) AND NOT EXISTS (
+                                      SELECT 1 FROM notas_1 h WHERE h.referencia = n.folio AND h.status != 3
+                                  ) THEN n.total ELSE 0 END),0) AS total,
                 COUNT(*) AS notas,
-                SUM(CASE WHEN status IN (4,5,6) THEN 1 ELSE 0 END) AS notas_pagadas
-             FROM notas_1
-             WHERE fecha_inicial IS NOT NULL
-               AND YEAR(fecha_inicial) >= 2000
-             GROUP BY YEAR(fecha_inicial)
+                SUM(CASE WHEN n.status IN (4,5,6) THEN 1 ELSE 0 END) AS notas_pagadas
+             FROM notas_1 n
+             WHERE n.fecha_inicial IS NOT NULL
+               AND YEAR(n.fecha_inicial) >= 2000
+             GROUP BY YEAR(n.fecha_inicial)
              ORDER BY anio ASC"
         )->getResultArray();
 
@@ -150,16 +161,22 @@ class AdminController extends BaseController
         $statusLabels = [1=>'Abierta', 2=>'En proceso', 3=>'Cancelada', 4=>'Anticipo', 5=>'Pagada', 6=>'Pagado'];
 
         $rawActual   = $db->query(
-            "SELECT status, COUNT(*) AS notas, COALESCE(SUM(total),0) AS total
-             FROM notas_1 WHERE fecha_inicial >= ? AND fecha_inicial < ?
-             GROUP BY status",
+            "SELECT n.status, COUNT(*) AS notas,
+                    COALESCE(SUM(CASE WHEN NOT EXISTS (
+                                  SELECT 1 FROM notas_1 h WHERE h.referencia = n.folio AND h.status != 3
+                              ) THEN n.total ELSE 0 END),0) AS total
+             FROM notas_1 n WHERE n.fecha_inicial >= ? AND n.fecha_inicial < ?
+             GROUP BY n.status",
             [$mesActualInicio, $mesActualFin]
         )->getResultArray();
 
         $rawAnterior = $db->query(
-            "SELECT status, COUNT(*) AS notas, COALESCE(SUM(total),0) AS total
-             FROM notas_1 WHERE fecha_inicial >= ? AND fecha_inicial < ?
-             GROUP BY status",
+            "SELECT n.status, COUNT(*) AS notas,
+                    COALESCE(SUM(CASE WHEN NOT EXISTS (
+                                  SELECT 1 FROM notas_1 h WHERE h.referencia = n.folio AND h.status != 3
+                              ) THEN n.total ELSE 0 END),0) AS total
+             FROM notas_1 n WHERE n.fecha_inicial >= ? AND n.fecha_inicial < ?
+             GROUP BY n.status",
             [$mesAnteriorInicio, $mesAnteriorFin]
         )->getResultArray();
 
@@ -278,7 +295,9 @@ class AdminController extends BaseController
         // ── Ingresos por vendedor (año) ───────────────────────────
         $ventasVendedor = $db->query(
             "SELECT u.usuario AS vendedor,
-                    COALESCE(SUM(CASE WHEN n.status IN (4,5,6) THEN n.total ELSE 0 END),0) AS total,
+                    COALESCE(SUM(CASE WHEN n.status IN (4,5,6) AND NOT EXISTS (
+                                      SELECT 1 FROM notas_1 h WHERE h.referencia = n.folio AND h.status != 3
+                                  ) THEN n.total ELSE 0 END),0) AS total,
                     SUM(CASE WHEN n.status IN (4,5,6) THEN 1 ELSE 0 END) AS notas,
                     SUM(CASE WHEN n.status = 3 THEN 1 ELSE 0 END) AS canceladas
              FROM notas_1 n
@@ -329,13 +348,19 @@ class AdminController extends BaseController
         // ── Comparativa mensual por estatus ───────────────────────
         $statusLabels = [1=>'Abierta', 2=>'En proceso', 3=>'Cancelada', 4=>'Anticipo', 5=>'Pagada', 6=>'Pagado'];
         $rawActual   = $db->query(
-            "SELECT status, COUNT(*) AS notas, COALESCE(SUM(total),0) AS total
-             FROM notas_1 WHERE fecha_inicial >= ? AND fecha_inicial < ? GROUP BY status",
+            "SELECT n.status, COUNT(*) AS notas,
+                    COALESCE(SUM(CASE WHEN NOT EXISTS (
+                                  SELECT 1 FROM notas_1 h WHERE h.referencia = n.folio AND h.status != 3
+                              ) THEN n.total ELSE 0 END),0) AS total
+             FROM notas_1 n WHERE n.fecha_inicial >= ? AND n.fecha_inicial < ? GROUP BY n.status",
             [$mesActualInicio, $mesActualFin]
         )->getResultArray();
         $rawAnterior = $db->query(
-            "SELECT status, COUNT(*) AS notas, COALESCE(SUM(total),0) AS total
-             FROM notas_1 WHERE fecha_inicial >= ? AND fecha_inicial < ? GROUP BY status",
+            "SELECT n.status, COUNT(*) AS notas,
+                    COALESCE(SUM(CASE WHEN NOT EXISTS (
+                                  SELECT 1 FROM notas_1 h WHERE h.referencia = n.folio AND h.status != 3
+                              ) THEN n.total ELSE 0 END),0) AS total
+             FROM notas_1 n WHERE n.fecha_inicial >= ? AND n.fecha_inicial < ? GROUP BY n.status",
             [$mesAnteriorInicio, $mesAnteriorFin]
         )->getResultArray();
         $comp = [];
@@ -348,13 +373,15 @@ class AdminController extends BaseController
 
         // ── Ventas mensuales del año ──────────────────────────────
         $ventasMensualesRaw = $db->query(
-            "SELECT MONTH(fecha_inicial) AS mes,
-                    COALESCE(SUM(total),0) AS total,
+            "SELECT MONTH(n.fecha_inicial) AS mes,
+                    COALESCE(SUM(CASE WHEN NOT EXISTS (
+                                  SELECT 1 FROM notas_1 h WHERE h.referencia = n.folio AND h.status != 3
+                              ) THEN n.total ELSE 0 END),0) AS total,
                     COUNT(*) AS notas
-             FROM notas_1
-             WHERE status IN (4,5,6)
-               AND fecha_inicial >= ? AND fecha_inicial < ?
-             GROUP BY MONTH(fecha_inicial)
+             FROM notas_1 n
+             WHERE n.status IN (4,5,6)
+               AND n.fecha_inicial >= ? AND n.fecha_inicial < ?
+             GROUP BY MONTH(n.fecha_inicial)
              ORDER BY mes ASC",
             [$anioInicio, $anioFin]
         )->getResultArray();
@@ -370,14 +397,16 @@ class AdminController extends BaseController
         // ── Histórico anual (todos los años, siempre completo) ────
         $ventasAnualesRaw = $db->query(
             "SELECT
-                YEAR(fecha_inicial) AS anio,
-                COALESCE(SUM(CASE WHEN status IN (4,5,6) THEN total ELSE 0 END),0) AS total,
+                YEAR(n.fecha_inicial) AS anio,
+                COALESCE(SUM(CASE WHEN n.status IN (4,5,6) AND NOT EXISTS (
+                                      SELECT 1 FROM notas_1 h WHERE h.referencia = n.folio AND h.status != 3
+                                  ) THEN n.total ELSE 0 END),0) AS total,
                 COUNT(*) AS notas,
-                SUM(CASE WHEN status IN (4,5,6) THEN 1 ELSE 0 END) AS notas_pagadas
-             FROM notas_1
-             WHERE fecha_inicial IS NOT NULL
-               AND YEAR(fecha_inicial) >= 2000
-             GROUP BY YEAR(fecha_inicial)
+                SUM(CASE WHEN n.status IN (4,5,6) THEN 1 ELSE 0 END) AS notas_pagadas
+             FROM notas_1 n
+             WHERE n.fecha_inicial IS NOT NULL
+               AND YEAR(n.fecha_inicial) >= 2000
+             GROUP BY YEAR(n.fecha_inicial)
              ORDER BY anio ASC"
         )->getResultArray();
 
@@ -385,7 +414,9 @@ class AdminController extends BaseController
         $hoy = date('Y-m-d');
         $vendedoresHoy = $db->query(
             "SELECT u.usuario AS vendedor,
-                    COALESCE(SUM(CASE WHEN n.status IN (4,5,6) THEN n.total ELSE 0 END),0) AS total,
+                    COALESCE(SUM(CASE WHEN n.status IN (4,5,6) AND NOT EXISTS (
+                                      SELECT 1 FROM notas_1 h WHERE h.referencia = n.folio AND h.status != 3
+                                  ) THEN n.total ELSE 0 END),0) AS total,
                     COALESCE(SUM(CASE WHEN n.status IN (4,5,6) THEN 1 ELSE 0 END),0) AS notas,
                     COALESCE(SUM(CASE WHEN n.status = 3 THEN 1 ELSE 0 END),0) AS canceladas
              FROM notas_1 n
@@ -996,8 +1027,12 @@ class AdminController extends BaseController
             $sku = trim($di['sku'] ?? '');
             if ($sku === '') continue;
 
+            // Suma al stock existente en vez de reemplazarlo (a diferencia de
+            // Actualizar Precios, que sí reemplaza): esta importación se usa
+            // para registrar piezas que entran (compras/producción), no para
+            // fijar un total absoluto.
             $db->query(
-                "UPDATE productosyazbek SET piezas = ? WHERE sku = ?",
+                "UPDATE productosyazbek SET piezas = piezas + ? WHERE sku = ?",
                 [(int)($di['piezas'] ?? 0), $sku]
             );
 
@@ -1317,7 +1352,25 @@ class AdminController extends BaseController
         $this->notaModel->liquidarAnticipo($folio);
         AuditService::log(AuditService::VENTA_LIQUIDADA, 'notas_1', $folio,
             "Folio #{$folio} liquidado por admin");
-        return $this->response->setJSON(['ok' => true, 'mensaje' => "Folio #{$folio} liquidado correctamente."]);
+
+        $mensaje = "Folio #{$folio} liquidado correctamente.";
+
+        // Si este folio es un abono/liquidación (hijo) y con este pago ya se
+        // cubrió el total del padre, avisar que el padre ya está listo para
+        // verificarse (no se liquida aquí automáticamente, solo se informa).
+        $referenciaPadre = (int) ($nota['referencia'] ?? 0);
+        if ($referenciaPadre > 0) {
+            $padre = $this->notaModel->getPorFolio($referenciaPadre);
+            if ($padre && (int) ($padre['status'] ?? 0) !== 3 && (int) ($padre['status'] ?? 0) !== 6) {
+                $totalPagadoPadre = $this->notaModel->getTotalPagadoAnticipo($referenciaPadre);
+                $totalNotaPadre   = (float) ($padre['total'] ?? 0);
+                if ($totalPagadoPadre >= $totalNotaPadre - 0.99) {
+                    $mensaje .= " La cuenta del folio padre #{$referenciaPadre} ya quedó liquidada — ya está disponible para verificar su pago.";
+                }
+            }
+        }
+
+        return $this->response->setJSON(['ok' => true, 'mensaje' => $mensaje]);
     }
 
     // ──────────────────────────────────────────────────────────────
@@ -1509,7 +1562,7 @@ class AdminController extends BaseController
             "SELECT n.Id_Notas_1, n.fecha_inicial, n.fecha_final,
                     c.nombre AS NombreCliente, c.direccion, c.telefono, c.mail AS email,
                     u.usuario AS vendedor,
-                    n.folio, n.referencia, n.factura, n.descuento,
+                    n.folio, n.referencia, n.anticipo, n.factura, n.descuento,
                     n.status AS statusId, n.verificado,
                     n.sumaImportes, n.subTotal, n.tipoPago,
                     n.cargoTarjeta, n.subTotal2, n.iva, n.total,
@@ -1579,12 +1632,13 @@ class AdminController extends BaseController
             }
         }
 
-        // Folios hijos no cancelados (anticipos) con sus pagos
+        // Folios hijos no cancelados (anticipos/liquidaciones) con sus pagos
         $pagosHijos = [];
         if ($referencia === 0) {
             // Solo aplica para notas padre (referencia = 0)
             $hijos = $db->query(
-                "SELECT n.folio, n.Id_Notas_1, n.fecha_inicial
+                "SELECT n.folio, n.Id_Notas_1, n.fecha_inicial, n.tipoPago, n.total, n.anticipo,
+                        n.status AS statusHijo, n.verificado AS verificadoHijo
                  FROM notas_1 n
                  WHERE n.referencia = ? AND n.status != 3
                  ORDER BY n.folio ASC",
@@ -1600,11 +1654,36 @@ class AdminController extends BaseController
                     [$hijo['Id_Notas_1']]
                 )->getResultArray();
 
+                // Anticipo recién creado (p.ej. al finalizar la nota padre), aún
+                // sin que Caja lo confirme: no hay fila en montosnotas todavía,
+                // pero sí un tipo de pago propio — se muestra con eso mientras
+                // tanto, para que el ticket lo indique de una vez (sin ticket
+                // aparte) en lugar de omitirlo hasta que Caja lo reciba.
+                if (empty($pgHijo) && !empty($hijo['tipoPago'])) {
+                    $tipoPagoHijoRow = $db->query(
+                        "SELECT descripcion FROM tipopago WHERE id = ? LIMIT 1",
+                        [$hijo['tipoPago']]
+                    )->getRowArray();
+                    if ($tipoPagoHijoRow) {
+                        $pgHijo = [[
+                            'monto'    => (float) ($hijo['total'] ?? 0),
+                            'cargo'    => 0,
+                            'tipopago' => $tipoPagoHijoRow['descripcion'],
+                            'anticipo' => (int) ($hijo['anticipo'] ?? 1),
+                            'fecha'    => null,
+                        ]];
+                    }
+                }
+
                 if (! empty($pgHijo)) {
+                    $statusIdHijo = (int) ($hijo['statusHijo'] ?? 0);
+                    $esConfirmado = ($hijo['verificadoHijo'] ?? '') === 'Pagado' || $statusIdHijo === 5 || $statusIdHijo === 6;
                     $pagosHijos[] = [
-                        'folio'  => $hijo['folio'],
-                        'fecha'  => $hijo['fecha_inicial'],
-                        'pagos'  => $pgHijo,
+                        'folio'        => $hijo['folio'],
+                        'fecha'        => $hijo['fecha_inicial'],
+                        'pagos'        => $pgHijo,
+                        'estatusTexto' => $esConfirmado ? 'Confirmado por Caja' : 'En proceso',
+                        'estatusColor' => $esConfirmado ? '#1a7a3c' : '#FF0000',
                     ];
                 }
             }
@@ -1970,7 +2049,7 @@ class AdminController extends BaseController
                 "SELECT n.Id_Notas_1, n.fecha_inicial,
                         c.nombre  AS NombreCliente,
                         u.usuario AS vendedor,
-                        n.folio, n.referencia, n.verificado, n.factura, n.descuento,
+                        n.folio, n.referencia, n.anticipo, n.verificado, n.factura, n.descuento,
                         n.status AS statusId,
                         n.sumaImportes, n.subTotal, n.tipoPago,
                         tpVendedor.descripcion AS tipoPagoNombre,
@@ -1998,7 +2077,8 @@ class AdminController extends BaseController
                 "SELECT m.idTipoPago, t.descripcion AS tipopago,
                         m.monto, m.cargos AS cargo, m.anticipo,
                         n2.folio AS folio_pago,
-                        n2.status AS folio_status
+                        n2.status AS folio_status,
+                        COALESCE(n2.referencia, 0) AS folio_pago_referencia
                  FROM notas_1 n2
                  INNER JOIN montosnotas m ON m.idNotas = n2.Id_Notas_1
                  INNER JOIN tipopago t ON t.id = m.idTipoPago
@@ -2079,8 +2159,30 @@ class AdminController extends BaseController
         $html .= '</td>';
         $html .= '</tr></table></div>';
         if ($referenciaPadre > 0) {
+            $notaPadre   = $db->query("SELECT total FROM notas_1 WHERE folio = ? LIMIT 1", [$referenciaPadre])->getRowArray();
+            $totalPadre  = (float) ($notaPadre['total'] ?? 0);
+            // OJO: $pagos está filtrado por el folio que se está viendo (este
+            // hijo), no por el padre — para "lo ya pagado" hay que sumar TODOS
+            // los pagos del padre y de TODOS sus hermanos, no solo los de este.
+            $pagosPadre = $db->query(
+                "SELECT m.monto, n2.status AS folio_status
+                 FROM notas_1 n2
+                 INNER JOIN montosnotas m ON m.idNotas = n2.Id_Notas_1
+                 WHERE n2.folio = ? OR n2.referencia = ?",
+                [$referenciaPadre, $referenciaPadre]
+            )->getResultArray();
+            $pagadoPadre = array_sum(array_map(
+                fn($p) => (float) ($p['monto'] ?? 0),
+                array_filter($pagosPadre, fn($p) => (int) ($p['folio_status'] ?? 0) !== 3)
+            ));
+            $restantePadre = max(0, $totalPadre - $pagadoPadre);
+            $esAnticipoTxt = ((int) ($nota['anticipo'] ?? 1) === 1) ? 'ANTICIPO (abono)' : 'LIQUIDACIÓN';
+
             $html .= '<div class="alert alert-warning py-2 mb-3">'
-                   . '<strong>Este folio es un ANTICIPO (abono)</strong> del folio padre #' . $referenciaPadre . '.'
+                   . '<strong>Este folio es un ' . $esAnticipoTxt . '</strong> del folio padre #' . $referenciaPadre . '.'
+                   . '<br><span style="font-size:1.15em;"><strong>Total de la nota padre:</strong> $' . number_format($totalPadre, 2)
+                   . ' &nbsp; <strong>Pagado:</strong> $' . number_format($pagadoPadre, 2)
+                   . ' &nbsp; <strong>Restante:</strong> $' . number_format($restantePadre, 2) . '</span>'
                    . '</div>';
         }
         if (! empty($nota['fecha_edicion'])) {
@@ -2161,7 +2263,11 @@ class AdminController extends BaseController
             if (in_array($p['idTipoPago'] ?? 0, [2, 3])) {
                 $html .= ' <strong>Cargo: </strong>$&nbsp;' . number_format($p['cargo'] ?? 0, 2);
             }
-            $html .= ' <strong>Es anticipo:</strong> ' . (($p['anticipo'] ?? 0) == 1 ? 'Si' : 'No');
+            if (($p['anticipo'] ?? 0) == 1) {
+                $html .= ' <strong style="color:#e67e22;">Es anticipo:</strong> Si';
+            } elseif ((int) ($p['folio_pago_referencia'] ?? 0) > 0) {
+                $html .= ' <strong style="color:#28a745;">Es liquidación:</strong> Si';
+            }
             $html .= '</td></tr>';
         }
 
@@ -2267,7 +2373,7 @@ class AdminController extends BaseController
             return "El folio #{$nota['folio']} no tiene tipo de pago asignado. Regístralo manualmente.";
         }
 
-        $esAnticipo = (int) ($nota['referencia'] ?? 0) > 0 ? 1 : 0;
+        $esAnticipo = (int) ($nota['referencia'] ?? 0) > 0 ? (int) ($nota['anticipo'] ?? 1) : 0;
 
         $db->query(
             "INSERT INTO montosnotas (idNotas, idTipoPago, monto, cargos, anticipo, fecha)
@@ -2648,11 +2754,11 @@ class AdminController extends BaseController
             );
             if ($db->affectedRows() === 0) {
                 $nota = $db->query(
-                    "SELECT total, referencia AS ref_padre FROM notas_1 WHERE Id_Notas_1 = ? LIMIT 1",
+                    "SELECT total, referencia AS ref_padre, anticipo FROM notas_1 WHERE Id_Notas_1 = ? LIMIT 1",
                     [$idNotas]
                 )->getRowArray();
                 if ($nota) {
-                    $esAnticipo = (int) ($nota['ref_padre'] ?? 0) > 0 ? 1 : 0;
+                    $esAnticipo = (int) ($nota['ref_padre'] ?? 0) > 0 ? (int) ($nota['anticipo'] ?? 1) : 0;
                     $db->query(
                         "INSERT INTO montosnotas (idNotas, idTipoPago, monto, cargos, anticipo, referencia, fecha)
                          VALUES (?, ?, ?, 0, ?, ?, ?)",
@@ -2686,7 +2792,7 @@ class AdminController extends BaseController
             // Caso 3: no existe montosnotas, crear el registro usando el
             // tipoPago propio de la nota (comparación por ID, no por texto)
             $nota = $db->query(
-                "SELECT n.Id_Notas_1, n.total, COALESCE(n.referencia,0) AS ref_padre,
+                "SELECT n.Id_Notas_1, n.total, COALESCE(n.referencia,0) AS ref_padre, n.anticipo,
                         (SELECT tp2.id FROM tipopago tp2
                          WHERE tp2.id = n.tipoPago
                            AND TRIM(LOWER(tp2.descripcion)) IN ('transferencia','deposito','depósito','cheque','cargo con tarjeta','tarjeta debito','tarjeta débito','tarjeta credito','tarjeta crédito')
@@ -2696,7 +2802,7 @@ class AdminController extends BaseController
             )->getRowArray();
 
             if ($nota && $nota['id_tipo_pago']) {
-                $esAnticipo = (int) ($nota['ref_padre'] ?? 0) > 0 ? 1 : 0;
+                $esAnticipo = (int) ($nota['ref_padre'] ?? 0) > 0 ? (int) ($nota['anticipo'] ?? 1) : 0;
                 $db->query(
                     "INSERT INTO montosnotas (idNotas, idTipoPago, monto, cargos, anticipo, referencia, fecha)
                      VALUES (?, ?, ?, 0, ?, ?, ?)",
@@ -3156,6 +3262,12 @@ class AdminController extends BaseController
                         COALESCE(s.nombre, '')    AS status_nombre,
                         n.verificado,
                         COALESCE(n.referencia, 0) AS referencia,
+                        COALESCE(n.anticipo, 1)   AS anticipo,
+                        (SELECT COALESCE(SUM(mn.monto), 0)
+                         FROM notas_1 nn
+                         INNER JOIN montosnotas mn ON mn.idNotas = nn.Id_Notas_1
+                         WHERE (nn.folio = n.folio OR nn.referencia = n.folio) AND nn.status != 3
+                        ) AS pagado_total,
                         n.factura, COALESCE(n.uuid_fiscal, '') AS uuid_fiscal,
                         COALESCE(n.status_facturacion, 0) AS status_facturacion,
                         COALESCE(n.rfc_receptor, '')          AS rfc_receptor,

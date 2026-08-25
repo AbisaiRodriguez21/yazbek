@@ -70,7 +70,7 @@
                 <?php endif; ?>
             </td>
         </tr>
-        <?php if (!empty($nota['referencia']) && (int)$nota['referencia'] !== 0): ?>
+        <?php if (!empty($nota['referencia']) && (int)$nota['referencia'] !== 0 && ($nota['anticipo'] ?? 1) == 1): ?>
         <tr>
             <td colspan="4" class="center">
                 <span class="red strong">*** ESTE TICKET ES UN ANTICIPO (abono) del folio #<?= $nota['referencia'] ?> ***</span>
@@ -200,7 +200,7 @@
         <?php if (! empty($pagosHijos)): ?>
         <!-- Folio padre con hijos: mostrar pagos de cada folio hijo -->
         <tr class="sep">
-            <td colspan="4" class="strong">Pagos de Anticipo</td>
+            <td colspan="4" class="strong">Pagos / Abonos</td>
         </tr>
         <?php foreach ($pagosHijos as $hijo): ?>
         <tr class="sep">
@@ -218,7 +218,23 @@
         <tr>
             <td colspan="4">&nbsp;&nbsp;Monto: $ <?= number_format($p['monto'], 2) ?></td>
         </tr>
+        <tr>
+            <td colspan="4">
+                <?php if (($p['anticipo'] ?? 0) == 1): ?>
+                &nbsp;&nbsp;<span class="red strong">Es anticipo: Si</span>
+                <?php else: ?>
+                &nbsp;&nbsp;<span class="strong">Es liquidación: Si</span>
+                <?php endif; ?>
+            </td>
+        </tr>
         <?php endforeach; ?>
+        <?php if (!empty($hijo['estatusTexto'])): ?>
+        <tr>
+            <td colspan="4">
+                &nbsp;&nbsp;<span class="strong" style="color:<?= esc($hijo['estatusColor'] ?? '#000') ?>;">Estatus: <?= esc($hijo['estatusTexto']) ?></span>
+            </td>
+        </tr>
+        <?php endif; ?>
         <?php endforeach; ?>
 
         <?php else: ?>
@@ -258,9 +274,11 @@
                 <?php endif; ?>
             </td>
         </tr>
+        <?php if (($p['anticipo'] ?? 0) == 1): ?>
         <tr>
-            <td colspan="4">Es anticipo: <?= ($p['anticipo'] ?? 0) == 1 ? 'Si' : 'No' ?></td>
+            <td colspan="4">Es anticipo: Si</td>
         </tr>
+        <?php endif; ?>
         <?php endforeach; ?>
 
         <?php endif; /* fin if pagosHijos */ ?>
