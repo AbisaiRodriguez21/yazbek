@@ -348,6 +348,13 @@ $routes->group('caja', ['filter' => 'role:2'], function ($routes) {
     $routes->get('venta/(:num)', 'CajaController::ventaStp2/$1');
     $routes->post('venta/(:num)', 'CajaController::ventaStp2Post/$1');
 
+    // Editar productos desde caja (notas "Sin Pagar" a crédito y demás,
+    // reutiliza el mismo carrito de admin/mostrador)
+    $routes->get('venta/(:num)/productos',  'MostradorController::ventaProductosCaja/$1');
+    $routes->post('productos/buscar',       'MostradorController::buscarProductos');
+    $routes->post('nota/agregarProducto',   'MostradorController::agregarProducto');
+    $routes->post('nota/eliminarProducto',  'MostradorController::eliminarProducto');
+
     // Consulta de folios (accesible también desde caja — igual que original: roles 1,2,3,4)
     $routes->get('consulta', 'CajaController::consulta');
     $routes->get('consulta/datatable', 'CajaController::consultaDatatable');

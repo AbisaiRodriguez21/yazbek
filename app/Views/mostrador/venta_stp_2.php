@@ -25,7 +25,23 @@
 <?= $this->endSection() ?>
 
 <?= $this->section('content') ?>
-<?php $basePrefix = $base ?? 'mostrador'; ?>
+<?php
+$basePrefix = $base ?? 'mostrador';
+$folioActual = (int) $nota['folio'];
+
+// Caja no tiene un Paso 3 propio (confirmar) ni una ruta venta/:folio/cancelar:
+// su pantalla de cobro (venta/:folio) ya incluye el detalle y el cierre, y
+// cancelar vive en su propia ruta raíz cancelar/:folio.
+if ($basePrefix === 'caja') {
+    $breadcrumbLabel = 'Caja';
+    $urlSiguiente     = base_url('caja/venta/' . $folioActual);
+    $urlCancelar      = base_url('caja/cancelar/' . $folioActual);
+} else {
+    $breadcrumbLabel = $basePrefix === 'admin' ? 'Admin' : 'Mostrador';
+    $urlSiguiente     = base_url($basePrefix . '/venta/' . $folioActual . '/confirmar');
+    $urlCancelar      = base_url($basePrefix . '/venta/' . $folioActual . '/cancelar');
+}
+?>
 
 <div class="page-title-container">
     <div class="page-title d-flex justify-content-between w-100">
@@ -33,13 +49,13 @@
             <h1>Nota #<?= (int)$nota['folio'] ?> — Paso 2: Productos</h1>
             <nav aria-label="breadcrumb">
                 <ol class="breadcrumb">
-                    <li class="breadcrumb-item"><a href="<?= base_url($basePrefix) ?>"><?= $basePrefix === 'admin' ? 'Admin' : 'Mostrador' ?></a></li>
+                    <li class="breadcrumb-item"><a href="<?= base_url($basePrefix) ?>"><?= esc($breadcrumbLabel) ?></a></li>
                     <li class="breadcrumb-item active">Agregar Productos</li>
                 </ol>
             </nav>
         </div>
         <div class="pt-2">
-            <a href="<?= base_url($basePrefix . '/venta/' . (int)$nota['folio'] . '/cancelar') ?>"
+            <a href="<?= $urlCancelar ?>"
                class="btn btn-outline-danger"
                onclick="return confirm('¿Cancelar esta nota?')">
                 <i class="iconsminds-close"></i> Cancelar Nota
@@ -170,7 +186,7 @@
                     <i class="iconsminds-danger"></i> Agrega al menos un producto antes de continuar.
                 </div>
                 <button id="btnSiguiente" type="button" class="btn btn-success"
-                        data-url="<?= base_url($basePrefix . '/venta/' . (int)$nota['folio'] . '/confirmar') ?>">
+                        data-url="<?= $urlSiguiente ?>">
                     Siguiente: Confirmar <i class="iconsminds-arrow-right ml-1"></i>
                 </button>
             </div>

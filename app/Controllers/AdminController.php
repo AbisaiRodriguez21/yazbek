@@ -873,13 +873,67 @@ class AdminController extends BaseController
         if (! empty($faltantes)) {
             fclose($handle); unlink($ruta);
             return [
-                'ok'    => false,
-                'error' => 'Columnas faltantes en el CSV: ' . implode(', ', $faltantes)
-                         . '. Columnas encontradas: ' . implode(', ', $headers),
+                'ok'      => false,
+                'error'   => 'Columnas faltantes en el CSV: ' . implode(', ', $faltantes)
+                           . '. Columnas encontradas: ' . implode(', ', $headers),
+                'headers' => $headers,
             ];
         }
 
         return ['ok' => true, 'handle' => $handle, 'ruta' => $ruta, 'headers' => $headers, 'sep' => $separador];
+    }
+
+    /**
+     * Cuando un CSV no trae las columnas requeridas para la pestaña donde se
+     * subió, revisa si en realidad coincide con el formato de OTRA pestaña —
+     * así se le puede decir al usuario exactamente dónde debió subirlo, en
+     * vez de solo listar columnas técnicas que la gente no relaciona con
+     * "me equivoqué de pestaña".
+     */
+    private function sugerirPestanaCsv(array $headersEncontrados, string $tipoActual): ?array
+    {
+        $headersLower = array_map('strtolower', $headersEncontrados);
+
+        $definiciones = [
+            'producto' => ['nombre' => 'Nuevo Producto',     'requeridas' => ['sku', 'estilo', 'descripcion larga', 'talla', 'color', 'precio menudeo', 'precio mayoreo', 'piezas']],
+            'precios'  => ['nombre' => 'Actualizar Precios', 'requeridas' => ['sku', 'pmayoreo', 'pmenudeo']],
+            'stock'    => ['nombre' => 'Actualizar Stock',   'requeridas' => ['sku', 'piezas']],
+        ];
+
+        foreach ($definiciones as $tipo => $def) {
+            if ($tipo === $tipoActual) continue;
+            if (empty(array_diff($def['requeridas'], $headersLower))) {
+                return ['tipo' => $tipo, 'nombre' => $def['nombre']];
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Arma la redirección de error para una importación CSV fallida: guarda
+     * el detalle técnico (para quien lo quiera ver) y además un mensaje claro
+     * para mostrar en un alert() del navegador, porque el aviso rojo de la
+     * página se pasa por alto. También recuerda qué pestaña estaba activa
+     * para reabrirla en el mismo lugar tras la recarga.
+     */
+    private function respuestaErrorCsv(array $csv, string $tipoActual, string $nombreTipoActual): \CodeIgniter\HTTP\RedirectResponse
+    {
+        $sugerido = $this->sugerirPestanaCsv($csv['headers'] ?? [], $tipoActual);
+
+        $alerta = 'El archivo que subiste no tiene el formato de la pestaña "' . $nombreTipoActual . '".';
+        if ($sugerido) {
+            $alerta .= "\n\nParece que es un archivo para la pestaña \"" . $sugerido['nombre'] . '". '
+                     . 'Ve a esa pestaña y súbelo ahí.';
+        } else {
+            $alerta .= "\n\nRevisa que el CSV tenga las columnas que pide esta pestaña "
+                     . '(puedes usar el botón "Descargar plantilla" como referencia).';
+        }
+
+        return redirect()->to('/admin/inventario')
+            ->with('error', $csv['error'] ?? 'No se pudo leer el archivo.')
+            ->with('error_alert', $alerta)
+            ->with('tab_activo', $tipoActual);
     }
 
     // ──────────────────────────────────────────────────────────────
@@ -893,7 +947,7 @@ class AdminController extends BaseController
         $csv = $this->abrirCsv('archivo_csv', $requeridas);
 
         if (! $csv['ok']) {
-            return redirect()->to('/admin/inventario')->with('error', $csv['error']);
+            return $this->respuestaErrorCsv($csv, 'producto', 'Nuevo Producto');
         }
 
         $handle  = $csv['handle'];
@@ -945,8 +999,23 @@ class AdminController extends BaseController
         unlink($ruta);
         AuditService::log(AuditService::PRODUCTOS_IMPORTADOS, 'productosyazbek', null,
             "Importación CSV productos: {$insertados} insertados, {$omitidos} omitidos, {$errores} errores");
+
+        // Mensaje claro: primero confirma qué SÍ se hizo; el resto de los
+        // conteos solo se agregan si hay algo relevante que informar (evita
+        // que un "0" al lado de una palabra negativa se lea como que falló).
+        $mensaje = $insertados > 0
+            ? "✔ Se agregaron {$insertados} producto(s) nuevo(s) al inventario."
+            : 'No se agregó ningún producto nuevo (todos los SKU del archivo ya existían).';
+        if ($omitidos > 0) {
+            $mensaje .= " {$omitidos} fila(s) se omitieron porque el SKU ya existía.";
+        }
+        if ($errores > 0) {
+            $mensaje .= " ⚠ {$errores} fila(s) tuvieron un error y no se pudieron guardar.";
+        }
+
         return redirect()->to('/admin/inventario')
-            ->with('success', "Productos nuevos insertados: {$insertados}. Omitidos (SKU ya existe): {$omitidos}. Errores: {$errores}.");
+            ->with('success', $mensaje)
+            ->with('tab_activo', 'producto');
     }
 
     // ──────────────────────────────────────────────────────────────
@@ -959,7 +1028,7 @@ class AdminController extends BaseController
         $csv = $this->abrirCsv('archivo_csv', $requeridas);
 
         if (! $csv['ok']) {
-            return redirect()->to('/admin/inventario')->with('error', $csv['error']);
+            return $this->respuestaErrorCsv($csv, 'precios', 'Actualizar Precios');
         }
 
         $handle  = $csv['handle'];
@@ -993,8 +1062,17 @@ class AdminController extends BaseController
         unlink($ruta);
         AuditService::log(AuditService::PRECIOS_IMPORTADOS, 'productosyazbek', null,
             "Importación CSV precios: {$actualizados} actualizados, {$noEncontrados} no encontrados");
+
+        $mensaje = $actualizados > 0
+            ? "✔ Se actualizó el precio de {$actualizados} producto(s) correctamente."
+            : 'No se actualizó ningún precio.';
+        if ($noEncontrados > 0) {
+            $mensaje .= " ⚠ {$noEncontrados} SKU del archivo no existen en el inventario y se omitieron.";
+        }
+
         return redirect()->to('/admin/inventario')
-            ->with('success', "Precios actualizados: {$actualizados}. SKUs no encontrados: {$noEncontrados}.");
+            ->with('success', $mensaje)
+            ->with('tab_activo', 'precios');
     }
 
     // ──────────────────────────────────────────────────────────────
@@ -1007,7 +1085,7 @@ class AdminController extends BaseController
         $csv = $this->abrirCsv('archivo_csv', $requeridas);
 
         if (! $csv['ok']) {
-            return redirect()->to('/admin/inventario')->with('error', $csv['error']);
+            return $this->respuestaErrorCsv($csv, 'stock', 'Actualizar Stock');
         }
 
         $handle  = $csv['handle'];
@@ -1046,8 +1124,16 @@ class AdminController extends BaseController
         AuditService::log(AuditService::STOCK_IMPORTADO, 'productosyazbek', null,
             "Importación CSV stock: {$actualizados} actualizados, {$noEncontrados} no encontrados");
 
+        $mensaje = $actualizados > 0
+            ? "✔ Se actualizó el stock de {$actualizados} producto(s) correctamente."
+            : 'No se actualizó el stock de ningún producto.';
+        if ($noEncontrados > 0) {
+            $mensaje .= " ⚠ {$noEncontrados} SKU del archivo no existen en el inventario y se omitieron.";
+        }
+
         return redirect()->to('/admin/inventario')
-            ->with('success', "Stock actualizado: {$actualizados} productos. SKUs no encontrados: {$noEncontrados}.");
+            ->with('success', $mensaje)
+            ->with('tab_activo', 'stock');
     }
 
     // ──────────────────────────────────────────────────────────────

@@ -127,6 +127,13 @@ function puedeRevivir(tipopago) {
     return true;
 }
 
+// Solo las notas "Sin Pagar" (crédito) se pagan en varios abonos.
+function esSinPagar(tipopago) {
+    if (!tipopago) return false;
+    var tp = (tipopago + '').toLowerCase();
+    return tp.indexOf('sin pagar') >= 0 || tp.indexOf('crédito') >= 0 || tp.indexOf('credito') >= 0;
+}
+
 var STATUS_LABELS = {
     1: '<span class="badge badge-primary">Abierta</span>',
     2: '<span class="badge badge-info">En proceso</span>',
@@ -210,6 +217,14 @@ var URL_CANCELAR = '<?= base_url('caja/cancelar/') ?>';
                 if (idstatus === 2) {
                     btns += '<button class="btn btn-xs btn-outline-success mr-1"'
                           + ' onclick="cajaVerificarPago(' + row.folio + ')">Verificar pago</button>';
+                }
+                // Editar productos — folios padre aún no cobrados (1=Abierta,
+                // 2=En proceso), igual para cualquier método de pago incluyendo
+                // "Sin Pagar" (a crédito) — pero ya no si esa nota a crédito
+                // tiene abonos registrados (el servidor también lo bloquea).
+                var _yaConAbono = esSinPagar(row.tipopago) && parseFloat(row.pagado_total || 0) > 0;
+                if ((idstatus === 1 || idstatus === 2) && esPadre && !_yaConAbono) {
+                    btns += '<a href="' + URL_VER + row.folio + '/productos" class="btn btn-xs btn-outline-secondary mr-1">Editar productos</a>';
                 }
                 if (idstatus !== 5 && idstatus !== 3) {
                     btns += '<button class="btn btn-xs btn-outline-danger mr-1"'

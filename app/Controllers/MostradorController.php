@@ -54,14 +54,16 @@ class MostradorController extends BaseController
     }
 
     // ──────────────────────────────────────────────────────────────
-    // Todos los usuarios pueden VER cualquier ticket (ver notasDatatable()),
-    // pero solo quien lo creó o un administrativo (acceso=1) puede editarlo
-    // o cancelarlo. $idVendedorNota es el idVendedor guardado en la nota.
+    // Todos los usuarios pueden VER cualquier ticket (ver notasDatatable()).
+    // Pueden editarlo/cancelarlo: quien lo creó, un administrativo (acceso=1)
+    // o cualquier otro vendedor de Mostrador (acceso=3,4) — en Mostrador ya
+    // no importa quién creó el folio, cualquiera puede operarlo igual que si
+    // fuera propio. $idVendedorNota es el idVendedor guardado en la nota.
     // ──────────────────────────────────────────────────────────────
     private function puedeEditarFolio(int $idVendedorNota): bool
     {
         return $idVendedorNota === (int) session()->get('user_id')
-            || (int) session()->get('user_acceso') === 1;
+            || in_array((int) session()->get('user_acceso'), [1, 3, 4], true);
     }
 
     // ──────────────────────────────────────────────────────────────
@@ -154,6 +156,10 @@ class MostradorController extends BaseController
         }
         if (! $this->puedeEditarFolio((int) ($nota['idVendedor'] ?? 0))) {
             return redirect()->to($this->consultaUrl())->with('error', 'No puedes editar un ticket que no creaste tú.');
+        }
+        if ($this->esNotaSinPagar($nota) && $this->tieneAbonosRegistrados($folio)) {
+            return redirect()->to($this->consultaUrl())
+                              ->with('error', 'Esta nota ya tiene abonos registrados; no se pueden editar sus productos.');
         }
 
         // Detectar modo mayoreo: por sesión (creada desde /mostrador/mayoreo)
@@ -693,6 +699,14 @@ class MostradorController extends BaseController
             || mb_stripos($descripcion, 'crédito') !== false;
     }
 
+    // Una nota "Sin Pagar" (crédito) ya con abonos registrados (folios hijo,
+    // confirmados o pendientes de que Caja los reciba) no debe permitir editar
+    // productos: cambiaría el total sobre el que esos abonos ya se calcularon.
+    private function tieneAbonosRegistrados(int $folioPadre): bool
+    {
+        return !empty($this->notaModel->getPagosHijos($folioPadre));
+    }
+
     // ──────────────────────────────────────────────────────────────
     // POST /mostrador/nota/agregarProducto  —  AJAX: Agrega un producto a la nota
     //
@@ -732,7 +746,7 @@ class MostradorController extends BaseController
 
         // Obtener nota y producto
         $nota = $db->query(
-            "SELECT Id_Notas_1, status FROM notas_1 WHERE folio = ? LIMIT 1", [$folio]
+            "SELECT Id_Notas_1, status, tipoPago FROM notas_1 WHERE folio = ? LIMIT 1", [$folio]
         )->getRowArray();
 
         if (!$nota) {
@@ -747,6 +761,13 @@ class MostradorController extends BaseController
         if (in_array((int) $nota['status'], [5, 6], true)) {
             return $this->response->setContentType('application/json')
                         ->setBody(json_encode(['success' => false, 'message' => 'Esta nota ya fue verificada/cerrada y no se puede editar.']));
+        }
+
+        // "Sin Pagar" (crédito) con abonos ya registrados: no se permite tocar
+        // productos porque cambiaría el total sobre el que se calcularon.
+        if ($this->esNotaSinPagar($nota) && $this->tieneAbonosRegistrados($folio)) {
+            return $this->response->setContentType('application/json')
+                        ->setBody(json_encode(['success' => false, 'message' => 'Esta nota ya tiene abonos registrados; no se pueden editar sus productos.']));
         }
 
         $producto = $db->query(
@@ -848,10 +869,17 @@ class MostradorController extends BaseController
         // Nota: las notas nuevas se crean con status=3 (mismo valor que
         // "Cancelada") mientras se arman en Paso 1/2 — por eso NO se usa una
         // lista de permitidos, sino bloquear específicamente lo ya pagado.
-        $notaStatus = $db->query("SELECT status FROM notas_1 WHERE folio = ? LIMIT 1", [$folio])->getRowArray();
+        $notaStatus = $db->query("SELECT status, tipoPago FROM notas_1 WHERE folio = ? LIMIT 1", [$folio])->getRowArray();
         if ($notaStatus && in_array((int) $notaStatus['status'], [5, 6], true)) {
             return $this->response->setContentType('application/json')
                         ->setBody(json_encode(['success' => false, 'message' => 'Esta nota ya fue verificada/cerrada y no se puede editar.']));
+        }
+
+        // "Sin Pagar" (crédito) con abonos ya registrados: no se permite tocar
+        // productos porque cambiaría el total sobre el que se calcularon.
+        if ($notaStatus && $this->esNotaSinPagar($notaStatus) && $this->tieneAbonosRegistrados($folio)) {
+            return $this->response->setContentType('application/json')
+                        ->setBody(json_encode(['success' => false, 'message' => 'Esta nota ya tiene abonos registrados; no se pueden editar sus productos.']));
         }
 
         // Obtener la línea para saber sku y cantidad a devolver
@@ -1428,9 +1456,16 @@ class MostradorController extends BaseController
     // Wrapper público para que el admin pueda usar la misma vista de carrito
     // que mostrador, pasando $base='admin' para que las URLs apunten a /admin/...
     // ──────────────────────────────────────────────────────────────
-    public function ventaProductosAdmin(int $folio): string
+    public function ventaProductosAdmin(int $folio): string|\CodeIgniter\HTTP\RedirectResponse
     {
-        $nota             = $this->notaModel->getPorFolio($folio);
+        $nota = $this->notaModel->getPorFolio($folio);
+        if (! $nota) {
+            return redirect()->to('/admin/consulta')->with('error', 'Folio no encontrado.');
+        }
+        if ($this->esNotaSinPagar($nota) && $this->tieneAbonosRegistrados($folio)) {
+            return redirect()->to('/admin/consulta')
+                              ->with('error', 'Esta nota ya tiene abonos registrados; no se pueden editar sus productos.');
+        }
         $esMayoreoForzado = session()->get("nota_{$folio}_tipo") === 'mayoreo';
         $db               = \Config\Database::connect();
         $carrito          = $this->getCarritoData($folio, $db, $esMayoreoForzado);
@@ -1444,6 +1479,39 @@ class MostradorController extends BaseController
             'sumaImportes' => $carrito['sumaImportes'],
             'esMayoreo'    => $carrito['esMayoreo'],
             'base'         => 'admin',
+        ]);
+    }
+
+    // ──────────────────────────────────────────────────────────────
+    // GET /caja/venta/:folio/productos  —  Paso 2 desde caja
+    // Wrapper público para que Caja pueda editar productos (p. ej. notas
+    // "Sin Pagar" a crédito) usando la misma vista de carrito que
+    // mostrador/admin, pasando $base='caja' para que las URLs apunten a
+    // /caja/... y regresen a la pantalla de cobro de caja al terminar.
+    // ──────────────────────────────────────────────────────────────
+    public function ventaProductosCaja(int $folio): string|\CodeIgniter\HTTP\RedirectResponse
+    {
+        $nota = $this->notaModel->getPorFolio($folio);
+        if (! $nota) {
+            return redirect()->to('/caja/consulta')->with('error', 'Folio no encontrado.');
+        }
+        if ($this->esNotaSinPagar($nota) && $this->tieneAbonosRegistrados($folio)) {
+            return redirect()->to('/caja/consulta')
+                              ->with('error', 'Esta nota ya tiene abonos registrados; no se pueden editar sus productos.');
+        }
+        $esMayoreoForzado = session()->get("nota_{$folio}_tipo") === 'mayoreo';
+        $db               = \Config\Database::connect();
+        $carrito          = $this->getCarritoData($folio, $db, $esMayoreoForzado);
+
+        return view('mostrador/venta_stp_2', [
+            'usuario'      => $this->getUsuarioSesion(),
+            'nota'         => $nota,
+            'folio'        => $folio,
+            'detalle'      => $carrito['detalle'],
+            'totalPiezas'  => $carrito['totalPiezas'],
+            'sumaImportes' => $carrito['sumaImportes'],
+            'esMayoreo'    => $carrito['esMayoreo'],
+            'base'         => 'caja',
         ]);
     }
 

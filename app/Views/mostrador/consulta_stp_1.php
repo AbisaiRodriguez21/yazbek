@@ -63,6 +63,56 @@
 
 <?= $this->section('page_css') ?>
 <?php /* DataTables CSS ya viene en el layout — no duplicar */ ?>
+<style>
+/* ── Dropdown de acciones en DataTable (igual que Admin → Consultar Folios) ── */
+.btn-acciones {
+    font-size: .78rem;
+    font-weight: 600;
+    padding: 3px 10px;
+    border-radius: 4px;
+    border: 1px solid #145388;
+    color: #145388;
+    background: #fff;
+    transition: background .15s, color .15s;
+    white-space: nowrap;
+}
+.btn-acciones:hover,
+.btn-acciones:focus {
+    background: #145388;
+    color: #fff;
+}
+.btn-acciones .caret-icon {
+    font-size: .65rem;
+    margin-left: 4px;
+    vertical-align: middle;
+}
+
+/* Menú flotante (se mueve al body para evitar overflow:hidden) */
+body > .dd-acc-menu {
+    border: none;
+    border-radius: 6px;
+    box-shadow: 0 4px 20px rgba(0,0,0,.18);
+    min-width: 175px;
+    padding: 4px 0;
+}
+body > .dd-acc-menu .dropdown-item {
+    font-size: .82rem;
+    padding: 6px 14px;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    color: #333;
+    transition: background .12s;
+}
+body > .dd-acc-menu .dropdown-item:hover {
+    background: #f0f5fb;
+    color: #145388;
+}
+body > .dd-acc-menu .dropdown-item.text-danger  { color: #dc3545 !important; }
+body > .dd-acc-menu .dropdown-item.text-danger:hover  { background: #fff5f5; }
+body > .dd-acc-menu .dropdown-item.text-warning { color: #b8860b !important; }
+body > .dd-acc-menu .dropdown-item.text-warning:hover { background: #fffaf0; }
+</style>
 <?= $this->endSection() ?>
 
 <?= $this->section('page_scripts') ?>
@@ -72,7 +122,8 @@ var USUARIO_ID     = <?= (int) ($usuario['Id'] ?? 0) ?>;
 var USUARIO_ACCESO = <?= (int) ($usuario['acceso'] ?? 0) ?>;
 
 function puedeEditarFolio(idVendedorNota) {
-    return parseInt(idVendedorNota, 10) === USUARIO_ID || USUARIO_ACCESO === 1;
+    return parseInt(idVendedorNota, 10) === USUARIO_ID
+        || USUARIO_ACCESO === 1 || USUARIO_ACCESO === 3 || USUARIO_ACCESO === 4;
 }
 
 var STATUS_LABELS = {
@@ -148,6 +199,67 @@ $(document).ready(function() {
             url: '<?= base_url('assets/js/vendor/datatables.spanish.json') ?>'
         }
     });
+
+    // ── Custom dropdown (sin Bootstrap JS — evita conflicto con DataTable overflow:hidden) ──
+    window._accMenu    = null;
+    window._accMenuSrc = null;
+
+    window.closeAccMenu = function() {
+        if (window._accMenu && window._accMenu.parentNode) {
+            window._accMenu.parentNode.removeChild(window._accMenu);
+        }
+        window._accMenu    = null;
+        window._accMenuSrc = null;
+    };
+
+    window.openAccMenu = function(e, btn, menuId) {
+        e.stopPropagation();
+        // Toggle: si ya está abierto el mismo menú, cerrar
+        if (window._accMenuSrc === menuId) { closeAccMenu(); return; }
+        closeAccMenu();
+
+        var src = document.getElementById(menuId);
+        if (!src) return;
+
+        var rect  = btn.getBoundingClientRect();
+        var clone = src.cloneNode(true);
+        clone.id  = '';
+        clone.style.cssText = [
+            'display:block',
+            'position:fixed',
+            'top:'   + (rect.bottom + 3) + 'px',
+            'right:' + Math.round(window.innerWidth - rect.right) + 'px',
+            'left:auto',
+            'z-index:10000',
+            'min-width:175px',
+            'border-radius:6px',
+            'background:#fff',
+            'box-shadow:0 4px 20px rgba(0,0,0,.18)',
+            'padding:4px 0',
+            'border:none'
+        ].join(';');
+
+        document.body.appendChild(clone);
+        window._accMenu    = clone;
+        window._accMenuSrc = menuId;
+
+        // Ajustar si el menú se sale del viewport por abajo
+        requestAnimationFrame(function() {
+            if (!window._accMenu) return;
+            var mr = window._accMenu.getBoundingClientRect();
+            if (mr.bottom > window.innerHeight - 8) {
+                window._accMenu.style.top    = 'auto';
+                window._accMenu.style.bottom = (window.innerHeight - rect.top + 3) + 'px';
+            }
+        });
+    };
+
+    // Cerrar el menú al hacer clic fuera
+    document.addEventListener('click', function(ev) {
+        if (window._accMenu && !window._accMenu.contains(ev.target)) {
+            closeAccMenu();
+        }
+    });
 });
 
 function puedeRevivir(tipopago) {
@@ -173,68 +285,79 @@ function accionesNota(n) {
     var BASE       = '<?= base_url('mostrador/venta/') ?>';
     var esPropio   = puedeEditarFolio(n.idVendedor);
 
-    // Si el folio no es mío (y no soy admin), solo puedo ver el detalle —
-    // ninguna otra acción (editar, cancelar, revivir, pagar, abonar, ticket,
-    // comanda) está disponible.
+    // Cualquier vendedor de Mostrador puede operar cualquier folio igual que
+    // si fuera propio (puedeEditarFolio ya lo permite para acceso 1,3,4).
+    // Esta rama queda como respaldo por si algún día se agrega otro rol con
+    // acceso de solo lectura a esta misma vista.
     if (!esPropio) {
         return '<a href="#" class="btn btn-xs btn-outline-primary mr-1"'
              + ' onclick="mostradorVerFolio(' + n.folio + '); return false;">Verificar Pago</a>';
     }
 
-    var btns = '';
+    var items = '';
 
     if (esHijo) {
         // Folio hijo (anticipo): abrir modal con detalle del folio hijo
-        btns += '<a href="#" class="btn btn-xs btn-outline-primary mr-1"'
+        items += '<a class="dropdown-item" href="#"'
               + ' onclick="mostradorVerFolio(' + n.folio + '); return false;">Verificar Pago</a>';
         if (idstatus !== 3 && idstatus !== 5) {
-            btns += '<a href="#" class="btn btn-xs btn-outline-danger mr-1"'
+            items += '<a class="dropdown-item text-danger" href="#"'
                   + ' onclick="mostradorCancelarFolioBtn(' + n.folio + '); return false;">Cancelar</a>';
         }
         // Los folios hijo no se pueden revivir de forma independiente
     } else {
         // Folio padre
         if (idstatus === 1 || idstatus === 4) {
-            btns += '<a href="' + BASE + n.folio + '/confirmar" class="btn btn-xs btn-outline-primary mr-1">Ver / Pagar</a>';
+            items += '<a class="dropdown-item" href="' + BASE + n.folio + '/confirmar">Ver / Pagar</a>';
         }
         // "Sin Pagar" (crédito, se pagará en varios abonos) en proceso: el
         // vendedor puede registrar abonos (folio hijo pendiente de que Caja
         // lo reciba y confirme). No aplica a otros tipos de pago — esos los
         // cobra Caja completos, de una sola vez.
         if (idstatus === 2 && esSinPagar(n.tipoPagoPropio)) {
-            btns += '<a href="' + BASE + n.folio + '/abono" class="btn btn-xs btn-outline-primary mr-1">Ver / Abonar</a>';
+            items += '<a class="dropdown-item" href="' + BASE + n.folio + '/abono">Ver / Abonar</a>';
         }
         if (idstatus === 2 || idstatus === 5 || idstatus === 3) {
-            btns += '<a href="#" class="btn btn-xs btn-outline-secondary mr-1"'
+            items += '<a class="dropdown-item" href="#"'
                   + ' onclick="mostradorVerFolio(' + n.folio + '); return false;">Verificar Pago</a>';
         }
         if (idstatus === 1) {
-            btns += '<a href="' + BASE + n.folio + '/productos" class="btn btn-xs btn-outline-secondary mr-1">Editar</a>';
-            btns += '<a href="' + BASE + n.folio + '/duplicar" class="btn btn-xs btn-outline-secondary mr-1">Duplicar</a>';
+            items += '<a class="dropdown-item" href="' + BASE + n.folio + '/productos">Editar</a>';
+            items += '<a class="dropdown-item" href="' + BASE + n.folio + '/duplicar">Duplicar</a>';
         }
         if (idstatus !== 5 && idstatus !== 3) {
-            btns += '<a href="#" class="btn btn-xs btn-outline-danger mr-1"'
+            items += '<a class="dropdown-item text-danger" href="#"'
                   + ' onclick="mostradorCancelarFolioBtn(' + n.folio + '); return false;">Cancelar</a>';
         }
         if (idstatus === 3 && puedeRevivir(n.tipopago)) {
-            btns += '<a href="#" class="btn btn-xs btn-warning"'
+            items += '<a class="dropdown-item text-warning" href="#"'
                   + ' onclick="mostradorRevivirFolio(' + n.folio + '); return false;">Revivir</a>';
         }
     }
 
     // Ver Ticket disponible para todos los folios (padre e hijo), incluyendo cancelados
-    btns += '<a href="#" class="btn btn-xs btn-outline-dark mr-1"'
+    items += '<a class="dropdown-item" href="#"'
           + ' onclick="mostradorVerTicket(' + n.folio + '); return false;">Imprimir Ticket</a>';
 
     // Comanda (solo productos, sin precios) — solo folios padre (los hijos
     // son abonos, sin productos propios)
     if (!esHijo && idstatus !== 3) {
-        btns += '<a href="#" class="btn btn-xs btn-outline-dark mr-1"'
+        items += '<a class="dropdown-item" href="#"'
               + ' onclick="mostradorVerComanda(' + n.folio + '); return false;">Comanda</a>';
     }
 
-    if (!btns) btns = '<span class="text-muted">—</span>';
-    return btns;
+    if (!items) return '<span class="text-muted">—</span>';
+
+    var mid = 'accmenuM_' + n.folio;
+    return '<div>'
+         + '<button class="btn-acciones" type="button"'
+         + ' onclick="openAccMenu(event,this,\'' + mid + '\')">'
+         + 'Acciones <i class="simple-icon-arrow-down caret-icon"></i>'
+         + '</button>'
+         + '<div id="' + mid + '" class="dd-acc-menu" style="display:none">'
+         + items
+         + '</div>'
+         + '</div>';
 }
 
 // Abrir ticket en ventana nueva

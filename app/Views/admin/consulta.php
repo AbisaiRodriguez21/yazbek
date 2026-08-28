@@ -339,9 +339,12 @@ function accionesNota(n) {
     // Editar productos — solo folios padre aún no verificados/cobrados
     // (1=Abierta, 2=En proceso). Reutiliza el Paso 2 con los productos ya
     // cargados; al continuar al Paso 3 se reconfirma forma de pago.
-    // No aplica a notas "Sin Pagar" (a crédito): editar productos después de
-    // dejar anticipos/abonos sobre el total original es muy propenso a error.
-    if ((idstatus === 1 || idstatus === 2) && esPadre && !esSinPagar(n.tipoPagoPropio)) {
+    // También aplica a notas "Sin Pagar" (a crédito), igual que los demás
+    // métodos de pago, mientras sigan en este mismo estatus — pero ya no si
+    // esa nota a crédito tiene abonos registrados (cambiaría el total sobre
+    // el que esos abonos se calcularon; el servidor también lo bloquea).
+    var _yaConAbono = esSinPagar(n.tipoPagoPropio) && parseFloat(n.pagado_total || 0) > 0;
+    if ((idstatus === 1 || idstatus === 2) && esPadre && !_yaConAbono) {
         items += '<a class="dropdown-item" href="' + BASE_PAGO + n.folio + '/productos">'
                + '<i class="simple-icon-pencil"></i>Editar productos</a>';
     }

@@ -26,10 +26,42 @@
 .tab-pane .alert-info small {
     font-size: 1rem;
 }
+
+/* ── Selector de archivo CSV: rediseñado para que "Elegir archivo" y
+   "Subir" se vean como dos pasos separados, no como una sola barra ── */
+.csv-upload-box {
+    background: #f8f9fa;
+    border: 1px dashed #ced4da;
+    border-radius: 6px;
+    padding: 14px 16px;
+    max-width: 520px;
+}
+.csv-filename {
+    font-size: .95rem;
+    font-style: italic;
+}
+.csv-filename.csv-filename-elegido {
+    color: #145388;
+    font-style: normal;
+    font-weight: 600;
+}
+.btn-subir-csv:disabled {
+    opacity: .5;
+    cursor: not-allowed;
+}
 </style>
 <?= $this->endSection() ?>
 
 <?= $this->section('content') ?>
+
+<?php
+// Reabrir la pestaña que se acaba de usar (para que el mensaje de éxito/error
+// se vea junto al formato que corresponde, en vez de quedar siempre en
+// "Nuevo Producto" sin importar qué se subió).
+$tabActivo = session()->getFlashdata('tab_activo') ?: 'producto';
+$tabsValidos = ['producto', 'precios', 'stock'];
+if (! in_array($tabActivo, $tabsValidos, true)) { $tabActivo = 'producto'; }
+?>
 
 <div class="row">
     <div class="col-12">
@@ -120,19 +152,19 @@
                         <!-- Tabs -->
                         <ul class="nav nav-tabs mb-4" id="importTabs" role="tablist">
                             <li class="nav-item">
-                                <a class="nav-link active" id="tab-producto-lnk" data-toggle="tab"
+                                <a class="nav-link<?= $tabActivo === 'producto' ? ' active' : '' ?>" id="tab-producto-lnk" data-toggle="tab"
                                    href="#tab-producto" role="tab">
                                     <i class="simple-icon-plus mr-1"></i> Nuevo Producto
                                 </a>
                             </li>
                             <li class="nav-item">
-                                <a class="nav-link" id="tab-precios-lnk" data-toggle="tab"
+                                <a class="nav-link<?= $tabActivo === 'precios' ? ' active' : '' ?>" id="tab-precios-lnk" data-toggle="tab"
                                    href="#tab-precios" role="tab">
                                     <i class="simple-icon-tag mr-1"></i> Actualizar Precios
                                 </a>
                             </li>
                             <li class="nav-item">
-                                <a class="nav-link" id="tab-stock-lnk" data-toggle="tab"
+                                <a class="nav-link<?= $tabActivo === 'stock' ? ' active' : '' ?>" id="tab-stock-lnk" data-toggle="tab"
                                    href="#tab-stock" role="tab">
                                     <i class="simple-icon-layers mr-1"></i> Actualizar Stock
                                 </a>
@@ -142,7 +174,7 @@
                         <div class="tab-content">
 
                             <!-- ── Tab 1: Nuevo Producto ── -->
-                            <div class="tab-pane fade show active" id="tab-producto" role="tabpanel">
+                            <div class="tab-pane fade<?= $tabActivo === 'producto' ? ' show active' : '' ?>" id="tab-producto" role="tabpanel">
                                 <p class="text-muted mb-2">
                                     Agrega productos que <strong>no existen</strong> aún en el inventario.
                                     Si el SKU ya existe, la fila se omite sin modificar nada.
@@ -160,23 +192,24 @@
                                       method="POST" enctype="multipart/form-data"
                                       onsubmit="return validarCsv(this)">
                                     <?= csrf_field() ?>
-                                    <div class="input-group mb-2">
-                                        <div class="custom-file">
-                                            <input type="file" class="custom-file-input" name="archivo_csv"
-                                                   id="file-producto" accept=".csv,.txt">
-                                            <label class="custom-file-label" for="file-producto">Selecciona archivo CSV</label>
-                                        </div>
-                                        <div class="input-group-append">
-                                            <button type="submit" class="btn btn-success">
-                                                <i class="simple-icon-cloud-upload mr-1"></i> Subir
+                                    <div class="csv-upload-box mb-2">
+                                        <input type="file" class="csv-file-input" name="archivo_csv"
+                                               id="file-producto" accept=".csv,.txt" hidden>
+                                        <div class="d-flex align-items-center flex-wrap" style="gap:10px;">
+                                            <button type="button" class="btn btn-outline-secondary btn-elegir-csv" data-target="file-producto">
+                                                <i class="simple-icon-folder mr-1"></i> Elegir archivo
                                             </button>
+                                            <span class="csv-filename text-muted" data-for="file-producto">Ningún archivo seleccionado</span>
                                         </div>
+                                        <button type="submit" class="btn btn-success btn-subir-csv mt-2" disabled>
+                                            <i class="simple-icon-cloud-upload mr-1"></i> Subir
+                                        </button>
                                     </div>
                                 </form>
                             </div>
 
                             <!-- ── Tab 2: Actualizar Precios ── -->
-                            <div class="tab-pane fade" id="tab-precios" role="tabpanel">
+                            <div class="tab-pane fade<?= $tabActivo === 'precios' ? ' show active' : '' ?>" id="tab-precios" role="tabpanel">
                                 <p class="text-muted mb-2">
                                     Actualiza <strong>solo los precios</strong> de los productos existentes.
                                     Se busca por SKU; si el SKU no existe en la BD se omite.
@@ -194,23 +227,24 @@
                                       method="POST" enctype="multipart/form-data"
                                       onsubmit="return validarCsv(this)">
                                     <?= csrf_field() ?>
-                                    <div class="input-group mb-2">
-                                        <div class="custom-file">
-                                            <input type="file" class="custom-file-input" name="archivo_csv"
-                                                   id="file-precios" accept=".csv,.txt">
-                                            <label class="custom-file-label" for="file-precios">Selecciona archivo CSV</label>
-                                        </div>
-                                        <div class="input-group-append">
-                                            <button type="submit" class="btn btn-warning text-white">
-                                                <i class="simple-icon-cloud-upload mr-1"></i> Subir
+                                    <div class="csv-upload-box mb-2">
+                                        <input type="file" class="csv-file-input" name="archivo_csv"
+                                               id="file-precios" accept=".csv,.txt" hidden>
+                                        <div class="d-flex align-items-center flex-wrap" style="gap:10px;">
+                                            <button type="button" class="btn btn-outline-secondary btn-elegir-csv" data-target="file-precios">
+                                                <i class="simple-icon-folder mr-1"></i> Elegir archivo
                                             </button>
+                                            <span class="csv-filename text-muted" data-for="file-precios">Ningún archivo seleccionado</span>
                                         </div>
+                                        <button type="submit" class="btn btn-warning text-white btn-subir-csv mt-2" disabled>
+                                            <i class="simple-icon-cloud-upload mr-1"></i> Subir
+                                        </button>
                                     </div>
                                 </form>
                             </div>
 
                             <!-- ── Tab 3: Actualizar Stock ── -->
-                            <div class="tab-pane fade" id="tab-stock" role="tabpanel">
+                            <div class="tab-pane fade<?= $tabActivo === 'stock' ? ' show active' : '' ?>" id="tab-stock" role="tabpanel">
                                 <p class="text-muted mb-2">
                                     Actualiza <strong>solo las piezas en stock</strong> de los productos existentes.
                                     El valor se <strong>suma</strong> al stock actual (no lo reemplaza). Se busca por SKU.
@@ -228,17 +262,18 @@
                                       method="POST" enctype="multipart/form-data"
                                       onsubmit="return validarCsv(this)">
                                     <?= csrf_field() ?>
-                                    <div class="input-group mb-2">
-                                        <div class="custom-file">
-                                            <input type="file" class="custom-file-input" name="archivo_csv"
-                                                   id="file-stock" accept=".csv,.txt">
-                                            <label class="custom-file-label" for="file-stock">Selecciona archivo CSV</label>
-                                        </div>
-                                        <div class="input-group-append">
-                                            <button type="submit" class="btn btn-primary">
-                                                <i class="simple-icon-cloud-upload mr-1"></i> Subir
+                                    <div class="csv-upload-box mb-2">
+                                        <input type="file" class="csv-file-input" name="archivo_csv"
+                                               id="file-stock" accept=".csv,.txt" hidden>
+                                        <div class="d-flex align-items-center flex-wrap" style="gap:10px;">
+                                            <button type="button" class="btn btn-outline-secondary btn-elegir-csv" data-target="file-stock">
+                                                <i class="simple-icon-folder mr-1"></i> Elegir archivo
                                             </button>
+                                            <span class="csv-filename text-muted" data-for="file-stock">Ningún archivo seleccionado</span>
                                         </div>
+                                        <button type="submit" class="btn btn-primary btn-subir-csv mt-2" disabled>
+                                            <i class="simple-icon-cloud-upload mr-1"></i> Subir
+                                        </button>
                                     </div>
                                 </form>
                             </div>
@@ -458,11 +493,35 @@
         });
     });
 
-    // Mostrar nombre del archivo seleccionado en cualquier custom-file-input
-    $(document).off('change', '.custom-file-input').on('change', '.custom-file-input', function () {
-        var fileName = $(this).val().split('\\').pop();
-        $(this).siblings('.custom-file-label').text(fileName || 'Selecciona archivo CSV');
+    // ── Selector de archivo CSV rediseñado ──
+    // El botón "Elegir archivo" abre el input de archivo oculto; al elegir uno
+    // se muestra el nombre y se habilita "Subir" (antes estaba deshabilitado,
+    // así nadie puede darle clic sin haber elegido un archivo primero).
+    $(document).off('click', '.btn-elegir-csv').on('click', '.btn-elegir-csv', function () {
+        document.getElementById($(this).data('target')).click();
     });
+
+    $(document).off('change', '.csv-file-input').on('change', '.csv-file-input', function () {
+        var fileName = this.files && this.files[0] ? this.files[0].name : '';
+        var $box     = $(this).closest('.csv-upload-box');
+        var $label   = $box.find('.csv-filename');
+        var $btnSubir = $box.find('.btn-subir-csv');
+
+        if (fileName) {
+            $label.text(fileName).addClass('csv-filename-elegido');
+            $btnSubir.prop('disabled', false);
+        } else {
+            $label.text('Ningún archivo seleccionado').removeClass('csv-filename-elegido');
+            $btnSubir.prop('disabled', true);
+        }
+    });
+
+    // Aviso claro cuando el CSV subido no corresponde a esta pestaña — en un
+    // alert() porque el aviso rojo de la página se pasa por alto fácilmente.
+    <?php $errorAlert = session()->getFlashdata('error_alert'); ?>
+    <?php if ($errorAlert): ?>
+    alert(<?= json_encode($errorAlert) ?>);
+    <?php endif; ?>
 })();
 
 // ── Buscar producto por SKU y abrir modal ──
