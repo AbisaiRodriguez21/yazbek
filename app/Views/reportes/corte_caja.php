@@ -26,7 +26,10 @@
         </div>
         <div class="pt-2 d-flex gap-2">
             <a href="<?= base_url('reportes/excel?fecha=' . esc($fecha)) ?>"
-               class="btn btn-success mr-2">
+               class="btn btn-success mr-2"
+               data-download data-filename="reporte_corte.xlsx"
+               data-download-title="Generando reporte…"
+               data-download-sub="Estamos preparando el archivo, esto puede tardar unos segundos.">
                 <i class="iconsminds-microsoft"></i> Excel
             </a>
             <button class="btn btn-outline-secondary" onclick="window.print()">
@@ -44,7 +47,10 @@
             <input type="text" name="fecha" id="inputFecha" class="form-control mr-2"
                    value="<?= esc($fecha) ?>" placeholder="YYYY-MM-DD">
             <button type="submit" class="btn btn-primary mr-2">Ver Reporte</button>
-            <a href="<?= base_url('reportes/excel?fecha=' . esc($fecha)) ?>" class="btn btn-success">
+            <a href="<?= base_url('reportes/excel?fecha=' . esc($fecha)) ?>" class="btn btn-success"
+               data-download data-filename="reporte_corte.xlsx"
+               data-download-title="Generando reporte…"
+               data-download-sub="Estamos preparando el archivo, esto puede tardar unos segundos.">
                 Descargar Excel
             </a>
         </form>

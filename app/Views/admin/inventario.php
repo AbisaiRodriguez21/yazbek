@@ -80,7 +80,10 @@ if (! in_array($tabActivo, $tabsValidos, true)) { $tabActivo = 'producto'; }
             <!-- ERD — Exportar inventario completo como XLS -->
             <div class="col-md-6 col-lg-6 col-12 mb-4">
                 <div class="card d-flex flex-row pt-3 pb-3">
-                    <a href="<?= base_url('admin/inventario/exportar') ?>" class="d-flex">
+                    <a href="<?= base_url('admin/inventario/exportar') ?>" class="d-flex"
+                       data-download data-filename="inventario.xls"
+                       data-download-title="Generando inventario…"
+                       data-download-sub="Estamos preparando el archivo, esto puede tardar unos segundos.">
                         <div class="rounded-circle m-4 align-self-center list-thumbnail-letters small bg-success">
                             ERD
                         </div>
@@ -88,7 +91,10 @@ if (! in_array($tabActivo, $tabsValidos, true)) { $tabActivo = 'producto'; }
                     <div class="d-flex flex-grow-1 min-width-zero">
                         <div class="card-body pl-0 align-self-center d-flex flex-column flex-lg-row justify-content-between min-width-zero">
                             <div class="min-width-zero">
-                                <a href="<?= base_url('admin/inventario/exportar') ?>">
+                                <a href="<?= base_url('admin/inventario/exportar') ?>"
+                                   data-download data-filename="inventario.xls"
+                                   data-download-title="Generando inventario…"
+                                   data-download-sub="Estamos preparando el archivo, esto puede tardar unos segundos.">
                                     <p class="list-item-heading mb-1 truncate">Exportar inventario</p>
                                 </a>
                                 <p class="mb-2 text-muted text-small">Exportar inventario completo: <?= date('Y-m-d') ?></p>
@@ -122,7 +128,10 @@ if (! in_array($tabActivo, $tabsValidos, true)) { $tabActivo = 'producto'; }
             <!-- EBD — Exportar base de datos -->
             <div class="col-md-6 col-lg-6 col-12 mb-4">
                 <div class="card d-flex flex-row pt-3 pb-3">
-                    <a href="<?= base_url('admin/exportar') ?>" class="d-flex">
+                    <a href="<?= base_url('admin/exportar') ?>" class="d-flex"
+                       data-download data-filename="BaseCompleta.xls"
+                       data-download-title="Generando base de datos…"
+                       data-download-sub="Estamos preparando el archivo completo, esto puede tardar unos segundos.">
                         <div class="rounded-circle m-4 align-self-center list-thumbnail-letters small bg-info">
                             EBD
                         </div>
@@ -130,7 +139,10 @@ if (! in_array($tabActivo, $tabsValidos, true)) { $tabActivo = 'producto'; }
                     <div class="d-flex flex-grow-1 min-width-zero">
                         <div class="card-body pl-0 align-self-center d-flex flex-column flex-lg-row justify-content-between min-width-zero">
                             <div class="min-width-zero">
-                                <a href="<?= base_url('admin/exportar') ?>">
+                                <a href="<?= base_url('admin/exportar') ?>"
+                                   data-download data-filename="BaseCompleta.xls"
+                                   data-download-title="Generando base de datos…"
+                                   data-download-sub="Estamos preparando el archivo completo, esto puede tardar unos segundos.">
                                     <p class="list-item-heading mb-1 truncate">Exportar base de datos</p>
                                 </a>
                                 <p class="mb-2 text-muted text-small">Exporta base de datos completa</p>

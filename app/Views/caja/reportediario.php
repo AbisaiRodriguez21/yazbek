@@ -66,7 +66,10 @@
                 <span class="font-weight-bold">Exportar por rango de fechas</span>
             </div>
             <div class="card-body">
-                <form action="<?= base_url('caja/reportediario') ?>" method="post" id="formReporteCaja">
+                <form action="<?= base_url('caja/reportediario') ?>" method="post" id="formReporteCaja"
+                      data-download data-filename="reporte_diario.xlsx"
+                      data-download-title="Generando reporte…"
+                      data-download-sub="Estamos preparando tu archivo, esto puede tardar unos segundos.">
                     <?= csrf_field() ?>
 
                     <!-- Fecha inicio -->
@@ -171,7 +174,10 @@
                         Descarga directamente el xlsx del día <strong><?= date('d/m/Y') ?></strong>
                     </p>
                 </div>
-                <a href="#" class="btn btn-outline-primary" id="btnHoyCaja">
+                <a href="<?= base_url('caja/reportediario/dia') ?>" class="btn btn-outline-primary" id="btnHoyCaja"
+                   data-download data-filename="reporte_diario_hoy.xlsx"
+                   data-download-title="Generando reporte…"
+                   data-download-sub="Estamos preparando el archivo del día, un momento por favor.">
                     <i class="iconsminds-download-1 mr-1"></i> Descargar hoy
                 </a>
             </div>
@@ -183,68 +189,5 @@
 <?= $this->endSection() ?>
 
 <?= $this->section('page_scripts') ?>
-<script>
-(function () {
-    var overlay = document.getElementById('exportOverlayCjD');
-
-    function showOverlay() { overlay.classList.add('active'); }
-    function hideOverlay() { overlay.classList.remove('active'); }
-
-    function triggerDownload(blob, filename) {
-        var url = URL.createObjectURL(blob);
-        var a   = document.createElement('a');
-        a.href     = url;
-        a.download = filename;
-        document.body.appendChild(a);
-        a.click();
-        setTimeout(function () {
-            URL.revokeObjectURL(url);
-            document.body.removeChild(a);
-        }, 1000);
-    }
-
-    var form = document.getElementById('formReporteCaja');
-    if (form) {
-        form.addEventListener('submit', function (e) {
-            e.preventDefault();
-            showOverlay();
-            fetch(form.action, {
-                method     : 'POST',
-                body       : new FormData(form),
-                credentials: 'same-origin'
-            })
-            .then(function (r) {
-                if (!r.ok) throw new Error('Error ' + r.status);
-                return r.blob();
-            })
-            .then(function (blob) {
-                triggerDownload(blob, 'reporte_diario.xlsx');
-                hideOverlay();
-            })
-            .catch(function () { hideOverlay(); });
-        });
-    }
-
-    var btnHoy = document.getElementById('btnHoyCaja');
-    if (btnHoy) {
-        btnHoy.addEventListener('click', function (e) {
-            e.preventDefault();
-            showOverlay();
-            fetch('<?= base_url('caja/reportediario/dia') ?>', {
-                method     : 'GET',
-                credentials: 'same-origin'
-            })
-            .then(function (r) {
-                if (!r.ok) throw new Error('Error ' + r.status);
-                return r.blob();
-            })
-            .then(function (blob) {
-                triggerDownload(blob, 'reporte_diario_hoy.xlsx');
-                hideOverlay();
-            })
-            .catch(function () { hideOverlay(); });
-        });
-    }
-})();
-</script>
+<!-- La descarga la maneja el indicador global (data-download) definido en el layout. -->
 <?= $this->endSection() ?>

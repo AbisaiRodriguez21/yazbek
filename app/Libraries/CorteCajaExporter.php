@@ -63,6 +63,86 @@ class CorteCajaExporter
     }
 
     // ─────────────────────────────────────────────────────────────────
+    // Punto de entrada: SOLO Diario de Ventas (una sola hoja)
+    // Usado por "Reporte Diario", que no debe incluir el Corte de Caja.
+    // ─────────────────────────────────────────────────────────────────
+    public static function buildDiarioVentasOnly(array $rows, string $fechaLabel): string
+    {
+        [$agrupadas] = self::groupRows($rows);
+
+        $spreadsheet = new Spreadsheet();
+        $ws = $spreadsheet->getActiveSheet();
+        $ws->setTitle('DIARIO DE VENTAS');
+
+        $totalRow = 3 + count($agrupadas); // fila del TOTAL, tras el último dato
+        self::buildDiarioVentas($ws, $fechaLabel, array_values($agrupadas), $totalRow);
+
+        $spreadsheet->setActiveSheetIndex(0);
+
+        ob_start();
+        (new Xlsx($spreadsheet))->save('php://output');
+        return ob_get_clean();
+    }
+
+    // ─────────────────────────────────────────────────────────────────
+    // Etiqueta de estatus EXACTAMENTE como en "Consultar Folios"
+    // (texto plano). Refleja la lógica de app/Views/admin/consulta.php:
+    // STATUS_LABELS + casos "Anticipo Pagado" / "Listo para Verificar" /
+    // "A Crédito". Si la consulta no trae 'idstatus', usa el nombre crudo.
+    // ─────────────────────────────────────────────────────────────────
+    private static function estatusLabel(array $g): string
+    {
+        if (!isset($g['idstatus']) || $g['idstatus'] === null || $g['idstatus'] === '') {
+            return (string)($g['estatus'] ?? '');
+        }
+
+        $sid        = (int)$g['idstatus'];
+        $esHijo     = (int)($g['folio_padre'] ?? 0) > 0;
+        $esAnticipo = (int)($g['anticipo'] ?? 1) !== 0;
+        $esCredito  = trim((string)($g['tipopago'] ?? '')) === 'A Crédito';
+        $pagado     = (float)($g['pagado_total'] ?? 0);
+        $total      = (float)($g['total'] ?? 0);
+
+        if ($sid === 6 && $esHijo && $esAnticipo) {
+            return 'Anticipo Pagado';
+        }
+        if ($sid === 2 && !$esHijo && $esCredito && $pagado >= $total - 0.99) {
+            return 'Listo para Verificar';
+        }
+        if ($sid === 2 && !$esHijo && $esCredito) {
+            return 'A Crédito';
+        }
+
+        $map = [1 => 'Abierta', 2 => 'En proceso', 3 => 'Cancelada',
+                4 => 'Anticipo', 5 => 'Pagada', 6 => 'Pagado'];
+        return $map[$sid] ?? 'Desconocido';
+    }
+
+    // ─────────────────────────────────────────────────────────────────
+    // Forma de pago de respaldo cuando la nota no tiene pago directo,
+    // replicando la lógica de "Consultar Folios":
+    //   1) Si el tipo de pago del vendedor es de crédito → "A Crédito".
+    //   2) Si hay pagos en notas hijas (anticipos/abonos) → esos métodos.
+    //   3) Si el vendedor tiene un tipo de pago → ese.
+    //   4) Si no, según estatus: status 2 → "Pendiente de cobro", else "A Crédito".
+    // ─────────────────────────────────────────────────────────────────
+    private static function formaPagoFallback(array $g): string
+    {
+        $tv = strtolower(trim((string)($g['tp_vendedor'] ?? '')));
+        if (in_array($tv, ['sin pagar', 'a credito', 'a crédito', 'credito', 'crédito'], true)) {
+            return 'A Crédito';
+        }
+        $child = trim((string)($g['pm_child'] ?? ''));
+        if ($child !== '') {
+            return $child;
+        }
+        if (trim((string)($g['tp_vendedor'] ?? '')) !== '') {
+            return (string)$g['tp_vendedor'];
+        }
+        return ((int)($g['status_num'] ?? 0) === 2) ? 'Pendiente de cobro' : 'A Crédito';
+    }
+
+    // ─────────────────────────────────────────────────────────────────
     // Agrupa rows por folio y separa secciones
     // ─────────────────────────────────────────────────────────────────
     private static function groupRows(array $rows): array
@@ -82,7 +162,16 @@ class CorteCajaExporter
                     'vendedor' => $row['vendedor'],
                     'tipopago' => '',
                     'total'    => (float)($row['total_nota'] ?? 0),
-                    'estatus'  => $row['estatus'],
+                    'estatus'  => $row['estatus'] ?? '',
+                    // Campos opcionales para calcular el estatus como Consultar Folios
+                    'idstatus'     => $row['idstatus']     ?? null,
+                    'folio_padre'  => $row['folio_padre']  ?? 0,
+                    'anticipo'     => $row['anticipo']     ?? 1,
+                    'pagado_total' => $row['pagado_total'] ?? 0,
+                    // Respaldo de forma de pago (cuando no hay pago directo en la nota)
+                    'tp_vendedor'  => $row['tp_vendedor']  ?? '',
+                    'pm_child'     => $row['pm_child']     ?? '',
+                    'status_num'   => $row['idstatus']     ?? null,
                 ];
             }
 
@@ -128,6 +217,16 @@ class CorteCajaExporter
             }
         }
 
+        // Respaldo de FORMA DE PAGO (igual a Consultar Folios) cuando la nota no
+        // tiene pago directo, y etiqueta final de estatus.
+        foreach ($agrupadas as &$g) {
+            if (trim((string)($g['tipopago'] ?? '')) === '') {
+                $g['tipopago'] = self::formaPagoFallback($g);
+            }
+            $g['estatus'] = self::estatusLabel($g);
+        }
+        unset($g);
+
         return [$agrupadas, $pagosEspeciales, $pagosCredito];
     }
 
@@ -153,26 +252,34 @@ class CorteCajaExporter
         self::hdr($ws, 'D1:F1', self::BLUE_HDR, self::WHITE, 12, true, 'left');
 
         // ── Fila 3: BILLETES ──
+        // Columna C = CANTIDAD (la teclea el cajero); D = IMPORTE (se calcula solo: denominación × cantidad).
         $ws->setCellValue('A3', 'BILLETES');
+        $ws->setCellValue('C3', 'CANTIDAD');
         $ws->setCellValue('D3', 'IMPORTE');
         self::hdr($ws, 'A3:F3', self::GRAY_SEC, '000000', 11, true);
 
         foreach ([4 => 1000, 5 => 500, 6 => 200, 7 => 100, 8 => 50, 9 => 20] as $r => $v) {
             $ws->setCellValue('A'.$r, $v);
-            $ws->setCellValue('D'.$r, 0);
+            $ws->setCellValue('C'.$r, 0);                 // cantidad de billetes (entrada)
+            $ws->setCellValue('D'.$r, '=A'.$r.'*C'.$r);   // importe = denominación × cantidad
             $ws->getStyle('A'.$r)->getNumberFormat()->setFormatCode('"$"#,##0.00');
+            $ws->getStyle('C'.$r)->getNumberFormat()->setFormatCode('#,##0');
             $ws->getStyle('D'.$r)->getNumberFormat()->setFormatCode('"$"#,##0.00');
         }
         self::border($ws, 'A3:F9');
 
         // ── Fila 10: MONEDAS ──
         $ws->setCellValue('A10', 'MONEDAS');
+        $ws->setCellValue('C10', 'CANTIDAD');
+        $ws->setCellValue('D10', 'IMPORTE');
         self::hdr($ws, 'A10:F10', self::GRAY_SEC, '000000', 11, true);
 
         foreach ([11 => 10, 12 => 5, 13 => 2, 14 => 1, 15 => 0.5, 16 => 0.2, 17 => 0.1] as $r => $v) {
             $ws->setCellValue('A'.$r, $v);
-            $ws->setCellValue('D'.$r, 0);
+            $ws->setCellValue('C'.$r, 0);                 // cantidad de monedas (entrada)
+            $ws->setCellValue('D'.$r, '=A'.$r.'*C'.$r);   // importe = denominación × cantidad
             $ws->getStyle('A'.$r)->getNumberFormat()->setFormatCode('"$"#,##0.00');
+            $ws->getStyle('C'.$r)->getNumberFormat()->setFormatCode('#,##0');
             $ws->getStyle('D'.$r)->getNumberFormat()->setFormatCode('"$"#,##0.00');
         }
         self::border($ws, 'A10:F17');
@@ -298,12 +405,12 @@ class CorteCajaExporter
     // ─────────────────────────────────────────────────────────────────
     private static function buildDiarioVentas($ws2, string $fecha, array $notas, int $totalRow = 38): void
     {
-        $ws2->getColumnDimension('A')->setWidth(12);
-        $ws2->getColumnDimension('B')->setWidth(30);
-        $ws2->getColumnDimension('C')->setWidth(14);
-        $ws2->getColumnDimension('D')->setWidth(26);
-        $ws2->getColumnDimension('E')->setWidth(14);
-        $ws2->getColumnDimension('F')->setWidth(16);
+        $ws2->getColumnDimension('A')->setWidth(12);   // FOLIO
+        $ws2->getColumnDimension('B')->setWidth(40);   // CLIENTE (nombres largos)
+        $ws2->getColumnDimension('C')->setWidth(20);   // REALIZÓ
+        $ws2->getColumnDimension('D')->setWidth(42);   // FORMA DE PAGO (puede combinar varias)
+        $ws2->getColumnDimension('E')->setWidth(16);   // IMPORTE
+        $ws2->getColumnDimension('F')->setWidth(20);   // ESTATUS
 
         // Fila 1: Título
         $ws2->mergeCells('A1:D1');
@@ -332,6 +439,12 @@ class CorteCajaExporter
         $lastDataRow = $totalRow - 1;
         if ($lastDataRow >= 2) {
             self::border($ws2, "A2:F{$lastDataRow}");
+            // Ajuste de texto en CLIENTE y FORMA DE PAGO para que nunca se corte,
+            // aunque el nombre o la combinación de pagos sea muy larga.
+            if ($lastDataRow >= 3) {
+                $ws2->getStyle("B3:B{$lastDataRow}")->getAlignment()->setWrapText(true);
+                $ws2->getStyle("D3:D{$lastDataRow}")->getAlignment()->setWrapText(true);
+            }
         }
 
         // Fila TOTAL: inmediatamente después del último dato

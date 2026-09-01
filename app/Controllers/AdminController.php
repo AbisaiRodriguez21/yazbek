@@ -2045,7 +2045,22 @@ class AdminController extends BaseController
                     COALESCE(mn.monto, 0)          AS monto,
                     n.total                        AS total_nota,
                     COALESCE(s.nombre, '—')        AS estatus,
-                    COALESCE(mn.referencia, '')    AS referencia
+                    COALESCE(mn.referencia, '')    AS referencia,
+                    n.status                       AS idstatus,
+                    COALESCE(n.referencia, 0)      AS folio_padre,
+                    COALESCE(n.anticipo, 1)        AS anticipo,
+                    (SELECT COALESCE(SUM(mn2.monto), 0)
+                       FROM notas_1 nn
+                       INNER JOIN montosnotas mn2 ON mn2.idNotas = nn.Id_Notas_1
+                      WHERE (nn.folio = n.folio OR nn.referencia = n.folio)
+                        AND nn.status != 3)        AS pagado_total,
+                    (SELECT descripcion FROM tipopago WHERE id = n.tipoPago) AS tp_vendedor,
+                    (SELECT GROUP_CONCAT(DISTINCT tp2.descripcion ORDER BY tp2.id SEPARATOR ' | ')
+                       FROM notas_1 nc
+                       INNER JOIN montosnotas mn3 ON mn3.idNotas = nc.Id_Notas_1
+                       INNER JOIN tipopago tp2   ON tp2.id       = mn3.idTipoPago
+                      WHERE nc.referencia = n.folio
+                        AND nc.status != 3)        AS pm_child
              FROM notas_1 n
              LEFT JOIN clientes    c  ON c.id         = n.idCliente
              LEFT JOIN usuarios    u  ON u.Id          = n.idVendedor
@@ -2058,7 +2073,7 @@ class AdminController extends BaseController
         )->getResultArray();
 
         $fechaLabel = date('d/m/Y', strtotime($fecha1)) . ' — ' . date('d/m/Y', strtotime($fecha2));
-        $content    = \App\Libraries\CorteCajaExporter::build($rows, $fechaLabel);
+        $content    = \App\Libraries\CorteCajaExporter::buildDiarioVentasOnly($rows, $fechaLabel);
 
         return $this->response
             ->setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
@@ -3003,7 +3018,22 @@ class AdminController extends BaseController
                     COALESCE(mn.monto, 0)          AS monto,
                     n.total                        AS total_nota,
                     COALESCE(s.nombre, '—')        AS estatus,
-                    COALESCE(mn.referencia, '')    AS referencia
+                    COALESCE(mn.referencia, '')    AS referencia,
+                    n.status                       AS idstatus,
+                    COALESCE(n.referencia, 0)      AS folio_padre,
+                    COALESCE(n.anticipo, 1)        AS anticipo,
+                    (SELECT COALESCE(SUM(mn2.monto), 0)
+                       FROM notas_1 nn
+                       INNER JOIN montosnotas mn2 ON mn2.idNotas = nn.Id_Notas_1
+                      WHERE (nn.folio = n.folio OR nn.referencia = n.folio)
+                        AND nn.status != 3)        AS pagado_total,
+                    (SELECT descripcion FROM tipopago WHERE id = n.tipoPago) AS tp_vendedor,
+                    (SELECT GROUP_CONCAT(DISTINCT tp2.descripcion ORDER BY tp2.id SEPARATOR ' | ')
+                       FROM notas_1 nc
+                       INNER JOIN montosnotas mn3 ON mn3.idNotas = nc.Id_Notas_1
+                       INNER JOIN tipopago tp2   ON tp2.id       = mn3.idTipoPago
+                      WHERE nc.referencia = n.folio
+                        AND nc.status != 3)        AS pm_child
              FROM notas_1 n
              LEFT JOIN clientes    c  ON c.id         = n.idCliente
              LEFT JOIN usuarios    u  ON u.Id          = n.idVendedor

@@ -91,7 +91,10 @@
                             . '&fecha_hasta=' . urlencode($fechaHasta ?? '')
                             . '&estatus='     . (int)($estatus  ?? 0)
                             . '&tipopago='    . (int)($tipopago ?? 0) ?>"
-                           class="btn btn-success">
+                           class="btn btn-success"
+                           data-download data-filename="corte_caja.xlsx"
+                           data-download-title="Generando corte de caja…"
+                           data-download-sub="Estamos preparando el archivo, esto puede tardar unos segundos.">
                             Exportar
                         </a>
                     </div>

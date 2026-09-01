@@ -23,6 +23,38 @@
     <link rel="stylesheet" href="<?= base_url('assets/vendor/nouislider.min.css') ?>">
 
     <style>
+    /* ──────────────────────────────────────────────────────────────────
+       ACCESIBILIDAD — Texto un poco más grande y legible en TODO el sistema
+       (admin, mostrador y caja). El tema Dore usa unidades rem relativas a
+       la raíz de 16px; al subir la raíz, textos, títulos, descripciones e
+       indicaciones escalan de forma proporcional y equilibrada.
+       El menú lateral usa anchos fijos en px, así que no se descuadra.
+       ────────────────────────────────────────────────────────────────── */
+    html { font-size: 17.5px; }            /* base 16px → +~9% en todo el sistema */
+    body { font-size: .85rem; }            /* refuerza el cuerpo de texto */
+
+    /* Encabezados un punto más marcados para mantener la jerarquía visual */
+    h1, .h1 { font-size: 1.9rem; }
+    h2, .h2 { font-size: 1.5rem; }
+    h3, .h3 { font-size: 1.28rem; }
+    h4, .h4 { font-size: 1.12rem; }
+    h5, .h5 { font-size: 1rem; }
+
+    /* Controles de formulario y botones: legibles sin agrandar de más */
+    .form-control, .custom-select,
+    .btn, .nav, label, .badge { font-size: .85rem; }
+    .btn-sm, .badge { font-size: .78rem; }
+
+    /* Descripciones, ayudas e indicaciones que suelen ir en "small/text-muted" */
+    small, .small, .text-muted, .form-text { font-size: .8rem; }
+
+    /* Tablas: texto de filas legible (el padding ya se define abajo) */
+    .table, table.dataTable { font-size: .85rem; }
+
+    /* El menú lateral tiene ancho fijo: mantener su texto contenido */
+    .menu .main-menu ul li a { font-size: .78rem; }
+    .menu .sub-menu ul li a  { font-size: .82rem; }
+
     /* ── Card con encabezado degradado (reutilizable en varias vistas) ── */
     .audit-card {
         background: #fff;
@@ -474,6 +506,82 @@
         </div>
     </main>
 
+    <!-- ========== OVERLAY GLOBAL DE DESCARGA ========== -->
+    <!-- Se muestra automáticamente en cualquier descarga marcada con data-download.
+         También disponible manualmente vía window.YZDownload.show()/hide(). -->
+    <div id="yzDownloadOverlay" aria-live="polite" aria-hidden="true">
+        <div class="yz-dl-card">
+            <div class="yz-dl-spinner"></div>
+            <p class="yz-dl-title" id="yzDlTitle">Preparando la descarga…</p>
+            <p class="yz-dl-sub" id="yzDlSub">Esto puede tardar unos segundos, por favor espera.</p>
+            <div class="yz-dl-bar"><span></span></div>
+        </div>
+    </div>
+    <style>
+    #yzDownloadOverlay {
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, .5);
+        z-index: 100000;
+        align-items: center;
+        justify-content: center;
+    }
+    #yzDownloadOverlay.active { display: flex; }
+    #yzDownloadOverlay .yz-dl-card {
+        background: #fff;
+        border-radius: 12px;
+        padding: 2.2rem 2.8rem;
+        text-align: center;
+        box-shadow: 0 12px 45px rgba(0, 0, 0, .28);
+        min-width: 260px;
+        max-width: 90vw;
+    }
+    #yzDownloadOverlay .yz-dl-spinner {
+        display: inline-block;
+        width: 3.4rem;
+        height: 3.4rem;
+        border: 4px solid #d9e4f0;
+        border-top-color: #145388;
+        border-radius: 50%;
+        animation: yzDlSpin .8s linear infinite;
+    }
+    @keyframes yzDlSpin { to { transform: rotate(360deg); } }
+    #yzDownloadOverlay .yz-dl-title {
+        margin-top: 1.1rem;
+        margin-bottom: .25rem;
+        font-weight: 700;
+        color: #145388;
+        font-size: 1.05rem;
+    }
+    #yzDownloadOverlay .yz-dl-sub {
+        color: #888;
+        font-size: .85rem;
+        margin-bottom: 1rem;
+    }
+    #yzDownloadOverlay .yz-dl-bar {
+        height: 6px;
+        border-radius: 6px;
+        background: #e6edf5;
+        overflow: hidden;
+        position: relative;
+    }
+    #yzDownloadOverlay .yz-dl-bar span {
+        position: absolute;
+        left: -35%;
+        width: 35%;
+        height: 100%;
+        border-radius: 6px;
+        background: linear-gradient(90deg, #145388, #1a6bb5);
+        animation: yzDlBar 1.15s ease-in-out infinite;
+    }
+    @keyframes yzDlBar {
+        0%   { left: -35%; }
+        60%  { left: 100%; }
+        100% { left: 100%; }
+    }
+    </style>
+
     <footer class="page-footer">
         <div class="footer-content">
             <div class="container-fluid">
@@ -509,6 +617,109 @@
     <script src="<?= base_url('assets/js/scripts.js') ?>"></script>
 
     <?= $this->renderSection('page_scripts') ?>
+
+    <script>
+    /* ── Indicador GLOBAL de descarga ──────────────────────────────────
+       Muestra un overlay con spinner + barra mientras se prepara y baja
+       cualquier archivo. Se auto-activa en:
+         · <a data-download href="…">           (descarga GET)
+         · <button data-download data-download-url="…">
+         · <form data-download action="…" method="post">  (descarga POST)
+       El nombre del archivo se toma del encabezado Content-Disposition;
+       si no viene, de data-filename; y si tampoco, un nombre genérico.
+       Uso manual disponible: window.YZDownload.show()/hide().
+       ────────────────────────────────────────────────────────────────── */
+    (function () {
+        var overlay = document.getElementById('yzDownloadOverlay');
+        var titleEl = document.getElementById('yzDlTitle');
+        var subEl   = document.getElementById('yzDlSub');
+        var pending = 0;
+
+        function show(title, sub) {
+            if (title) titleEl.textContent = title;
+            if (sub)   subEl.textContent   = sub;
+            pending++;
+            overlay.classList.add('active');
+            overlay.setAttribute('aria-hidden', 'false');
+        }
+        function hide() {
+            pending = Math.max(0, pending - 1);
+            if (pending === 0) {
+                overlay.classList.remove('active');
+                overlay.setAttribute('aria-hidden', 'true');
+                // Restaurar textos por defecto para la próxima descarga
+                titleEl.textContent = 'Preparando la descarga…';
+                subEl.textContent   = 'Esto puede tardar unos segundos, por favor espera.';
+            }
+        }
+        window.YZDownload = { show: show, hide: hide };
+
+        /* Extrae el filename del encabezado Content-Disposition */
+        function filenameFrom(resp, fallback) {
+            var cd = resp.headers.get('Content-Disposition') || '';
+            var m  = /filename\*?=(?:UTF-8'')?["']?([^"';]+)/i.exec(cd);
+            if (m && m[1]) { try { return decodeURIComponent(m[1]); } catch (e) { return m[1]; } }
+            return fallback || 'descarga';
+        }
+
+        function saveBlob(blob, filename) {
+            var url = URL.createObjectURL(blob);
+            var a   = document.createElement('a');
+            a.href = url; a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            setTimeout(function () {
+                URL.revokeObjectURL(url);
+                if (a.parentNode) a.parentNode.removeChild(a);
+            }, 1500);
+        }
+
+        function runDownload(opts) {
+            show(opts.title, opts.sub);
+            fetch(opts.url, opts.init)
+                .then(function (r) {
+                    if (!r.ok) throw new Error('HTTP ' + r.status);
+                    var name = filenameFrom(r, opts.filename);
+                    return r.blob().then(function (b) { saveBlob(b, name); });
+                })
+                .catch(function (err) {
+                    alert('No se pudo generar el archivo. Intenta de nuevo.\n\n' + (err && err.message ? err.message : ''));
+                })
+                .then(hide);   // finally
+        }
+
+        /* Click en enlaces/botones marcados con data-download (GET) */
+        document.addEventListener('click', function (e) {
+            var el = e.target.closest('[data-download]');
+            if (!el || el.tagName === 'FORM') return;
+            var url = el.getAttribute('data-download-url') || el.getAttribute('href');
+            if (!url || url === '#') return;
+            e.preventDefault();
+            e.stopImmediatePropagation(); // evita que la navegación AJAX intente cargar la URL de descarga
+            runDownload({
+                url: url,
+                init: { method: 'GET', credentials: 'same-origin' },
+                filename: el.getAttribute('data-filename') || '',
+                title: el.getAttribute('data-download-title') || '',
+                sub: el.getAttribute('data-download-sub') || ''
+            });
+        });
+
+        /* Submit en formularios marcados con data-download (POST) */
+        document.addEventListener('submit', function (e) {
+            var form = e.target;
+            if (!form.hasAttribute || !form.hasAttribute('data-download')) return;
+            e.preventDefault();
+            runDownload({
+                url: form.action,
+                init: { method: (form.method || 'POST').toUpperCase(), body: new FormData(form), credentials: 'same-origin' },
+                filename: form.getAttribute('data-filename') || '',
+                title: form.getAttribute('data-download-title') || '',
+                sub: form.getAttribute('data-download-sub') || ''
+            });
+        });
+    })();
+    </script>
 
     <script>
     /* ── AJAX Navigation ── */

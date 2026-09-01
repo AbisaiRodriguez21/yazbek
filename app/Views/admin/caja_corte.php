@@ -238,11 +238,8 @@ $(document).ready(function () {
         }
     });
 
-    // Exportar corte con fetch (misma lógica que Reporte Diario)
+    // Exportar corte — usa el indicador GLOBAL de descarga (window.YZDownload)
     document.getElementById('btnExportarCorte').addEventListener('click', function () {
-        var overlay = document.getElementById('exportOverlayCj');
-        overlay.classList.add('active');
-
         var fecha      = document.getElementById('fecha').value;
         var fechaHasta = document.getElementById('fechaHasta').value;
         var estatus    = document.getElementById('estatus').value;
@@ -251,6 +248,7 @@ $(document).ready(function () {
                 + '&fecha_hasta=' + encodeURIComponent(fechaHasta)
                 + '&estatus=' + estatus + '&tipopago=' + tipopago;
 
+        window.YZDownload.show('Generando corte de caja…', 'Estamos preparando el archivo, esto puede tardar unos segundos.');
         fetch(url, { method: 'GET', credentials: 'same-origin' })
             .then(function (r) {
                 if (!r.ok) throw new Error('Error ' + r.status);
@@ -259,16 +257,16 @@ $(document).ready(function () {
             .then(function (blob) {
                 var a = document.createElement('a');
                 a.href = URL.createObjectURL(blob);
-                a.download = 'corte_caja.xls';
+                a.download = 'corte_caja.xlsx';
                 document.body.appendChild(a);
                 a.click();
                 setTimeout(function () {
                     URL.revokeObjectURL(a.href);
                     document.body.removeChild(a);
                 }, 1000);
-                overlay.classList.remove('active');
             })
-            .catch(function () { overlay.classList.remove('active'); });
+            .catch(function () { alert('No se pudo generar el corte. Intenta de nuevo.'); })
+            .then(function () { window.YZDownload.hide(); });
     });
 
 });
