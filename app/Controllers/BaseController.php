@@ -33,6 +33,22 @@ abstract class BaseController extends Controller
     public function initController(RequestInterface $request, ResponseInterface $response, LoggerInterface $logger)
     {
         parent::initController($request, $response, $logger);
+
+        // ──────────────────────────────────────────────────────────────
+        // ZONA HORARIA DE LA CONEXIÓN MYSQL — fija a México (UTC-6).
+        // El servidor de producción corre en UTC; sin esto, current_timestamp()
+        // (que llena fecha_inicial) y las comparaciones de fecha quedan ~6h
+        // adelantadas — un día completo por las tardes/noches — y descuadran
+        // "Ingresos de hoy", el corte y el reporte diario.
+        // Como fecha_inicial es TIMESTAMP (se guarda en UTC y se convierte al
+        // leer), fijar la sesión a -06:00 alinea tanto lo nuevo como lo ya
+        // guardado a la hora real de México. (México no usa horario de verano.)
+        // ──────────────────────────────────────────────────────────────
+        try {
+            \Config\Database::connect()->query("SET time_zone = '-06:00'");
+        } catch (\Throwable $e) {
+            log_message('error', 'No se pudo fijar time_zone de MySQL: ' . $e->getMessage());
+        }
     }
 
     // ──────────────────────────────────────────────────────────────
