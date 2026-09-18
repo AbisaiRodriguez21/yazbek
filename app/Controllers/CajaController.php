@@ -1203,7 +1203,7 @@ class CajaController extends BaseController
         $nota = $db->query(
             "SELECT n.rfc_receptor, n.razon_social_receptor, n.cp_receptor,
                     n.uso_cfdi, n.regimen_fiscal_receptor, n.forma_pago_cfdi,
-                    n.idCliente
+                    n.idCliente, COALESCE(n.referencia, 0) AS referencia
              FROM notas_1 n WHERE n.folio = ? LIMIT 1",
             [$folio]
         )->getRowArray();
@@ -1211,6 +1211,9 @@ class CajaController extends BaseController
         if (! $nota) {
             return $this->response->setJSON(['error' => 'Folio no encontrado']);
         }
+
+        // Folio hijo (referencia > 0) = abono: siempre Método PUE + forma real.
+        $esAbono = (int)($nota['referencia'] ?? 0) > 0;
 
         $cliente = [];
         if (! empty($nota['idCliente'])) {
@@ -1238,8 +1241,9 @@ class CajaController extends BaseController
             'cpReceptor'            => trim($cp),
             'usoCFDI'               => $uso,
             'regimenFiscalReceptor' => $reg,
-            'formaPagoCFDI'         => $forma,
+            'formaPagoCFDI'         => $esAbono ? ($forma === '99' ? '01' : $forma) : $forma,
             'metodoPagoCFDI'        => 'PUE',
+            'esAbono'               => $esAbono,
             'idCliente'             => (int)($nota['idCliente'] ?? 0),
             'correoCliente'         => trim($cliente['mail'] ?? ''),
         ]);
@@ -1514,6 +1518,10 @@ class CajaController extends BaseController
                     ) AS pagado_total,
                     n.factura, COALESCE(n.uuid_fiscal, '') AS uuid_fiscal,
                     COALESCE(n.status_facturacion, 0) AS status_facturacion,
+                    COALESCE((SELECT p.uuid_fiscal FROM notas_1 p WHERE p.folio = n.referencia LIMIT 1), '') AS padre_uuid,
+                    (SELECT COUNT(*) FROM notas_1 h
+                      WHERE h.referencia = n.folio AND h.status != 3
+                        AND COALESCE(h.uuid_fiscal, '') <> '') AS hijos_facturados,
                     COALESCE(n.rfc_receptor, '')          AS rfc_receptor,
                     COALESCE(n.razon_social_receptor, '') AS razon_social_receptor,
                     COALESCE(n.cp_receptor, '')           AS cp_receptor,

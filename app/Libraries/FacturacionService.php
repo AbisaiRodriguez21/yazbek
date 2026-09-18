@@ -63,6 +63,11 @@ class FacturacionService
             return ['success' => false, 'message' => "El folio #{$folio} ya fue facturado (UUID: {$nota['uuid_fiscal']})."];
         }
 
+        // ── Candado padre/hijo: o factura completa, o por abonos, no ambas ─
+        if ($err = $this->validarExclusionPadreHijo($nota)) {
+            return ['success' => false, 'message' => $err];
+        }
+
         // ── Resolver datos fiscales ──────────────────────────────────────
         if ($datosExtra !== null) {
             // Escenario 2: datos vienen del modal
@@ -134,8 +139,10 @@ class FacturacionService
             ];
         }
 
-        // ── Cargar detalle de productos ───────────────────────────────────
-        $detalle = $this->cargarDetalleConPrecios($folio, $nota);
+        // ── Cargar detalle de productos (o concepto de abono si es folio hijo) ─
+        // La forma y el método de pago se toman tal cual los eligió el usuario
+        // en el modal (se sugieren PUE + forma real del abono, pero son editables).
+        [$detalle, $nota] = $this->prepararDetalleYNota($folio, $nota);
 
         // ── Cargar datos del cliente ──────────────────────────────────────
         $cliente = $db->query(
@@ -168,6 +175,10 @@ class FacturacionService
                 "UPDATE notas_1 SET cfdi_error = ? WHERE folio = ?",
                 [substr($msg, 0, 500), $folio]
             );
+            AuditService::log(AuditService::FACTURA_ERROR, 'notas_1', $folio,
+                "Error al timbrar folio #{$folio} (RFC {$rfcReceptor}): " . substr($msg, 0, 200),
+                null,
+                ['rfc' => $rfcReceptor, 'forma_pago' => $formaPagoCFDI, 'metodo_pago' => $metodoPagoCFDI, 'error' => substr($msg, 0, 300)]);
             return ['success' => false, 'message' => $msg];
         }
 
@@ -177,6 +188,10 @@ class FacturacionService
                 "UPDATE notas_1 SET cfdi_error = ? WHERE folio = ?",
                 [substr($msg, 0, 500), $folio]
             );
+            AuditService::log(AuditService::FACTURA_ERROR, 'notas_1', $folio,
+                "Timbrado rechazado folio #{$folio} (RFC {$rfcReceptor}): " . substr($msg, 0, 200),
+                null,
+                ['rfc' => $rfcReceptor, 'forma_pago' => $formaPagoCFDI, 'metodo_pago' => $metodoPagoCFDI, 'error' => substr($msg, 0, 300)]);
             return ['success' => false, 'message' => $msg];
         }
 
@@ -195,13 +210,16 @@ class FacturacionService
             [$uuid, $xmlTimbrado, $folio]
         );
 
-        AuditService::log(AuditService::VENTA_CERRADA, 'notas_1', $folio,
-            "CFDI timbrado desde Consulta Folios: UUID {$uuid}");
-
         // ── Enviar correo ─────────────────────────────────────────────────
+        $esAbono       = (int)($nota['referencia'] ?? 0) > 0;
+        $folioPadre    = (int)($nota['referencia'] ?? 0);
+        $totalFactura  = (float)($nota['total'] ?? 0);
+        $correoCliente = '';
+        $correoEnviado = false;
+        $correoMsg     = 'No se intentó enviar (sin correo del cliente).';
+
         try {
             $idCliente     = (int)($nota['idCliente'] ?? 0);
-            $correoCliente = '';
             $nombreCliente = $cliente['nombre'] ?? '';
 
             if ($idCliente > 0) {
@@ -231,13 +249,49 @@ class FacturacionService
                 $nombreCliente
             );
 
-            if (! $emailResult['success']) {
-                log_message('warning', "[FacturacionService] correo folio={$folio}: " . $emailResult['message']);
+            $correoEnviado = (bool)($emailResult['success'] ?? false);
+            $correoMsg     = (string)($emailResult['message'] ?? ($correoEnviado ? 'Enviado' : 'Falló'));
+
+            if (! $correoEnviado) {
+                log_message('warning', "[FacturacionService] correo folio={$folio}: " . $correoMsg);
             }
         } catch (\Throwable $eEmail) {
             // El correo NO debe bloquear: la factura ya está timbrada
-            log_message('error', "[FacturacionService] correo folio={$folio}: " . $eEmail->getMessage());
+            $correoMsg = $eEmail->getMessage();
+            log_message('error', "[FacturacionService] correo folio={$folio}: " . $correoMsg);
         }
+
+        // ── Auditoría detallada de la factura ─────────────────────────────
+        $correoTxt = $correoCliente !== '' ? $correoCliente : '(sin correo)';
+        $tipoTxt   = $esAbono ? "abono del folio #{$folioPadre}" : "venta completa";
+        AuditService::log(AuditService::FACTURA_EMITIDA, 'notas_1', $folio,
+            "Factura ({$tipoTxt}) del folio #{$folio} timbrada. UUID {$uuid}. "
+            . "Receptor {$rfcReceptor} ({$razonSocialReceptor}). Total $" . number_format($totalFactura, 2) . ". "
+            . "Forma {$formaPagoCFDI} / Método {$metodoPagoCFDI}. "
+            . "Correo -> {$correoTxt}: " . ($correoEnviado ? 'ENVIADO' : 'NO enviado'),
+            null,
+            [
+                'uuid'          => $uuid,
+                'tipo'          => $esAbono ? 'abono' : 'venta_completa',
+                'folio_padre'   => $esAbono ? $folioPadre : null,
+                'rfc_receptor'  => $rfcReceptor,
+                'razon_social'  => $razonSocialReceptor,
+                'uso_cfdi'      => $usoCFDI,
+                'total'         => round($totalFactura, 2),
+                'forma_pago'    => $formaPagoCFDI,
+                'metodo_pago'   => $metodoPagoCFDI,
+                'correo_destino'=> $correoCliente,
+                'correo_enviado'=> $correoEnviado,
+                'correo_detalle'=> $correoMsg,
+            ]);
+
+        // Log específico del correo (para poder filtrar envíos fallidos)
+        AuditService::log(
+            $correoEnviado ? AuditService::FACTURA_CORREO_OK : AuditService::FACTURA_CORREO_FALLIDO,
+            'notas_1', $folio,
+            ($correoEnviado
+                ? "Factura del folio #{$folio} (UUID {$uuid}) enviada a {$correoTxt}"
+                : "No se envió la factura del folio #{$folio} (UUID {$uuid}) a {$correoTxt}: {$correoMsg}"));
 
         return ['success' => true, 'uuid' => $uuid];
     }
@@ -262,6 +316,10 @@ class FacturacionService
 
         if (! empty($nota['uuid_fiscal'])) {
             return ['success' => false, 'message' => "El folio #{$folio} ya fue facturado (UUID: {$nota['uuid_fiscal']})."];
+        }
+
+        if ($err = $this->validarExclusionPadreHijo($nota)) {
+            return ['success' => false, 'message' => $err];
         }
 
         if ($datosExtra !== null) {
@@ -291,7 +349,7 @@ class FacturacionService
             ];
         }
 
-        $detalle = $this->cargarDetalleConPrecios($folio, $nota);
+        [$detalle, $nota] = $this->prepararDetalleYNota($folio, $nota);
 
         try {
             $dfacture = new DfactureService();
@@ -379,6 +437,117 @@ class FacturacionService
     // por línea según si la nota fue a precio mayoreo o menudeo.
     // Usado tanto por procesar() como por previsualizar().
     // ─────────────────────────────────────────────────────────────────────
+    // ─────────────────────────────────────────────────────────────────────
+    // Candado de exclusión padre/hijo. Regla: una venta a crédito se factura
+    // POR ABONO (cada hijo) O COMPLETA (el padre en una sola), nunca ambas.
+    //   · Hijo  → bloqueado si el PADRE ya se facturó completo.
+    //   · Padre → bloqueado si ALGÚN hijo (abono) ya se facturó.
+    // Devuelve el mensaje de error, o null si se puede facturar.
+    // ─────────────────────────────────────────────────────────────────────
+    private function validarExclusionPadreHijo(array $nota): ?string
+    {
+        $db         = $this->db;
+        $folioPadre = (int)($nota['referencia'] ?? 0);
+
+        if ($folioPadre > 0) {
+            // Es un folio hijo (abono)
+            $p = $db->query(
+                "SELECT COALESCE(uuid_fiscal, '') AS u FROM notas_1 WHERE folio = ? LIMIT 1",
+                [$folioPadre]
+            )->getRowArray();
+            if (! empty($p['u'])) {
+                return "La nota #{$folioPadre} ya fue facturada completa; sus abonos no se facturan por separado.";
+            }
+        } else {
+            // Es el folio padre
+            $folio = (int)($nota['folio'] ?? 0);
+            $h = $db->query(
+                "SELECT COUNT(*) AS c FROM notas_1
+                  WHERE referencia = ? AND status != 3 AND COALESCE(uuid_fiscal, '') <> ''",
+                [$folio]
+            )->getRowArray();
+            if ((int)($h['c'] ?? 0) > 0) {
+                return "Esta nota ya tiene abonos facturados; se factura por abono, no en una sola factura.";
+            }
+        }
+
+        return null;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Decide qué se factura según el folio:
+    //   · Folio PADRE  → los productos de la nota (comportamiento normal).
+    //   · Folio HIJO   → un solo concepto por el MONTO DEL ABONO de ese hijo,
+    //                    sin necesidad de que el padre esté liquidado.
+    // Devuelve [detalle, nota] — la nota puede venir ajustada al monto del abono.
+    // ─────────────────────────────────────────────────────────────────────
+    private function prepararDetalleYNota(int $folio, array $nota): array
+    {
+        $esHijo = (int)($nota['referencia'] ?? 0) > 0;
+        if (! $esHijo) {
+            return [$this->cargarDetalleConPrecios($folio, $nota), $nota];
+        }
+        return $this->detalleAbonoHijo($nota);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Construye un concepto único que representa el ABONO de un folio hijo,
+    // extrayendo el IVA (16%) del monto pagado. Ajusta los totales de la nota
+    // al monto del abono (sin descuentos ni cargos por impresión).
+    //
+    // ⚠️ FISCAL: el concepto usa ClaveProdServ 84111506 (abono/anticipo) y
+    // ClaveUnidad ACT. Confirma con tu contador que esta forma de facturar
+    // por abono es la correcta para tu operación (vs. factura PPD + REP).
+    // ─────────────────────────────────────────────────────────────────────
+    private function detalleAbonoHijo(array $nota): array
+    {
+        $db     = $this->db;
+        $idNota = (int)($nota['Id_Notas_1'] ?? 0);
+
+        // Monto realmente confirmado del abono (pagos registrados en este hijo)
+        $row   = $db->query(
+            "SELECT COALESCE(SUM(monto), 0) AS abono FROM montosnotas WHERE idNotas = ?",
+            [$idNota]
+        )->getRowArray();
+        $abono = round((float)($row['abono'] ?? 0), 2);
+        if ($abono <= 0) {
+            $abono = round((float)($nota['total'] ?? 0), 2);
+        }
+
+        // Extraer IVA del monto pagado (el abono incluye IVA)
+        $base = round($abono / 1.16, 2);
+        $iva  = round($abono - $base, 2);
+
+        $folioPadre = (int)($nota['referencia'] ?? 0);
+
+        $detalle = [[
+            'cantidad'      => 1,
+            'sku'           => 'ABONO',
+            'estilo'        => 'ABONO',
+            'descripcion'   => 'Abono a cuenta de la nota #' . $folioPadre,
+            'pUnitario'     => $base,
+            'pUnitarioM'    => $base,
+            'precio'        => $base,
+            'importe'       => $base,
+            'baseIva'       => $base,
+            'iva'           => $iva,
+            'claveProdServ' => '84111506',   // Servicios de facturación / abono-anticipo
+            'claveUnidad'   => 'ACT',        // Actividad
+            'unidad'        => 'Actividad',
+        ]];
+
+        // Ajustar la nota al monto del abono para que el CFDI cuadre exactamente
+        $nota['subTotal']          = $base;
+        $nota['sumaImportes']      = $base;
+        $nota['iva']               = $iva;
+        $nota['total']             = $abono;
+        $nota['descuento']         = 0;
+        $nota['cargoPorImpresion'] = 0;
+        $nota['precioMayoreo']     = 0;
+
+        return [$detalle, $nota];
+    }
+
     private function cargarDetalleConPrecios(int $folio, array $nota): array
     {
         $db = $this->db;

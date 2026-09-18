@@ -264,11 +264,22 @@ var URL_CANCELAR = '<?= base_url('caja/cancelar/') ?>';
                           + ' onclick="cajaAbrirModalReferencia(' + row.folio + ')">Referencia</button>';
                 }
                 // ── Botones de Facturación (Caja Nivel 2) ──
-                if (esPadre && (idstatus === 5 || idstatus === 6) && idstatus !== 3) {
+                // Una venta a crédito se factura O completa (padre) O por abonos
+                // (hijos), nunca ambas. Gana el primer camino que se use:
+                //  · Padre: factura completa solo si NINGÚN hijo se ha facturado.
+                //  · Hijo:  factura el abono solo si el padre no se facturó completo.
+                var _tieneHijoFacturado = parseInt(row.hijos_facturados || 0, 10) > 0;
+                var _padreYaFacturado   = (row.padre_uuid || '').trim() !== '';
+                var _padreFacturable = esPadre && (idstatus === 5 || idstatus === 6) && !_tieneHijoFacturado;
+                var _hijoConfirmado  = !esPadre && (idstatus === 5 || idstatus === 6 || row.verificado === 'Pagado') && !_padreYaFacturado;
+                if ((_padreFacturable || _hijoConfirmado) && idstatus !== 3) {
                     var sf  = parseInt(row.status_facturacion || 0, 10);
                     var uid = (row.uuid_fiscal || '').trim();
                     if (uid !== '') {
                         // Ya facturada — no mostrar nada en Acciones
+                    } else if (_hijoConfirmado) {
+                        btns += '<button class="btn btn-xs btn-primary mr-1"'
+                              + ' onclick="cajaAbrirModalFactura(' + row.folio + ')">Facturar abono</button>';
                     } else if (sf === 1) {
                         btns += '<button class="btn btn-xs btn-primary mr-1"'
                               + ' onclick="cajaAbrirModalFactura(' + row.folio + ')">Facturar</button>';
@@ -547,6 +558,10 @@ function cajaAbrirModalFactura(folio) {
         document.getElementById('cajaSfUsoCFDI').value       = d.usoCFDI               || 'S01';
         document.getElementById('cajaSfRegimenFiscal').value = d.regimenFiscalReceptor || '616';
         document.getElementById('cajaSfFormaPago').value     = d.formaPagoCFDI         || '01';
+
+        // Campo editable: se sugiere la forma de pago real del abono por default,
+        // pero el usuario puede cambiarla.
+        document.getElementById('cajaSfFormaPago').disabled = false;
     })
     .catch(function() { /* campos vacíos, el usuario los llena manualmente */ })
     .finally(function() {

@@ -406,19 +406,23 @@ function accionesNota(n) {
                + '<i class="simple-icon-refresh"></i>Revivir</a>';
     }
 
-    // Facturación
-    if (esPadre && (idstatus === 5 || idstatus === 6) && idstatus !== 3) {
+    // Facturación — una venta a crédito se factura O completa (padre) O por
+    // abonos (hijos), nunca ambas. Gana el primer camino que se use:
+    //  · Padre: factura completa solo si NINGÚN hijo se ha facturado.
+    //  · Hijo:  factura el abono solo si el PADRE no se ha facturado completo.
+    var _tieneHijoFacturado = parseInt(n.hijos_facturados || 0, 10) > 0;
+    var _padreYaFacturado   = (n.padre_uuid || '').trim() !== '';
+    var _padreFacturable = esPadre && (idstatus === 5 || idstatus === 6) && !_tieneHijoFacturado;
+    var _hijoConfirmado  = !esPadre && (idstatus === 5 || idstatus === 6 || n.verificado === 'Pagado') && !_padreYaFacturado;
+    if ((_padreFacturable || _hijoConfirmado) && idstatus !== 3) {
         var sf  = parseInt(n.status_facturacion || 0, 10);
         var uid = (n.uuid_fiscal || '').trim();
         if (uid === '') {
             items += '<div class="dropdown-divider"></div>';
-            if (sf === 1) {
-                items += '<a class="dropdown-item" href="#" onclick="adminAbrirModalFactura(' + n.folio + '); return false;">'
-                       + '<i class="simple-icon-doc"></i>Facturar</a>';
-            } else {
-                items += '<a class="dropdown-item" href="#" onclick="adminAbrirModalFactura(' + n.folio + '); return false;">'
-                       + '<i class="simple-icon-doc"></i>Solicitar Factura</a>';
-            }
+            var _lblFactura = _hijoConfirmado ? 'Facturar abono'
+                            : (sf === 1 ? 'Facturar' : 'Solicitar Factura');
+            items += '<a class="dropdown-item" href="#" onclick="adminAbrirModalFactura(' + n.folio + '); return false;">'
+                   + '<i class="simple-icon-doc"></i>' + _lblFactura + '</a>';
         }
     }
 
@@ -838,6 +842,11 @@ function adminAbrirModalFactura(folio) {
         document.getElementById('sfRegimenFiscal').value = d.regimenFiscalReceptor || '616';
         document.getElementById('sfFormaPago').value     = d.formaPagoCFDI         || '01';
         document.getElementById('sfMetodoPago').value    = 'PUE';
+
+        // Campos editables: se sugieren Método PUE + la forma de pago real del
+        // abono como valores por default, pero el usuario puede cambiarlos.
+        document.getElementById('sfFormaPago').disabled  = false;
+        document.getElementById('sfMetodoPago').disabled = false;
     })
     .catch(function() { /* campos vacíos, el usuario los llena manualmente */ });
 }

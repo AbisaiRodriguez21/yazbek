@@ -639,10 +639,34 @@ class MostradorController extends BaseController
             $folio, (int)$nota['idCliente'], (int)$nota['idVendedor'], $monto, $idTipoPago, $esAnticipo
         );
 
-        AuditService::log(AuditService::VENTA_CREADA, 'notas_1', $nuevoFolio,
-            "Abono registrado por vendedor sobre folio #{$folio}: nuevo folio #{$nuevoFolio}, " .
-            "monto $" . number_format($monto, 2) . ($esAnticipo ? ', anticipo' : ', liquidación') .
-            ", pendiente de que caja lo reciba y confirme.");
+        // ── Auditoría detallada del abono ─────────────────────────────────
+        $tipoPagoNom = (string)(($db->query("SELECT descripcion FROM tipopago WHERE id = ? LIMIT 1", [$idTipoPago])->getRowArray()['descripcion'] ?? '') ?: "id {$idTipoPago}");
+        $clienteNom  = (string)(($db->query("SELECT nombre FROM clientes WHERE id = ? LIMIT 1", [(int)$nota['idCliente']])->getRowArray()['nombre'] ?? '') ?: 'PUBLICO GENERAL');
+        $totalNota   = (float)($nota['total'] ?? 0);
+        $pagadoConf  = (float)$this->notaModel->getTotalPagadoAnticipo($folio);
+        $saldoRest   = max(0, $totalNota - $pagadoConf);
+
+        AuditService::log(AuditService::ANTICIPO_CREADO, 'notas_1', $nuevoFolio,
+            "Abono #{$nuevoFolio} -> nota #{$folio} | Cliente: {$clienteNom} | "
+            . "Pago: {$tipoPagoNom} $" . number_format($monto, 2)
+            . ($esAnticipo ? ' (anticipo)' : ' (liquidación)')
+            . " | Confirmado por Caja $" . number_format($pagadoConf, 2) . " de $" . number_format($totalNota, 2)
+            . " | Saldo $" . number_format($saldoRest, 2)
+            . " | Pendiente de que Caja lo reciba y confirme",
+            null,
+            [
+                'folio_hijo'        => $nuevoFolio,
+                'folio_padre'       => $folio,
+                'cliente'           => $clienteNom,
+                'vendedor_id'       => (int)($nota['idVendedor'] ?? 0),
+                'tipo_pago'         => $tipoPagoNom,
+                'monto'             => round($monto, 2),
+                'es_anticipo'       => (bool)$esAnticipo,
+                'total_nota'        => round($totalNota, 2),
+                'pagado_confirmado' => round($pagadoConf, 2),
+                'saldo_restante'    => round($saldoRest, 2),
+                'estado'            => 'pendiente_confirmacion_caja',
+            ]);
 
         return redirect()->to($this->consultaUrl())
                           ->with('success', "Abono registrado como folio #{$nuevoFolio}. Caja lo recibirá y confirmará el pago.");
@@ -1414,17 +1438,41 @@ class MostradorController extends BaseController
 
         // Cargo de tarjeta si aplica
         $db       = \Config\Database::connect();
-        $tipoPago = $db->query("SELECT cargo FROM tipopago WHERE id = ? LIMIT 1", [$idTipoPago])->getRowArray();
+        $tipoPago = $db->query("SELECT cargo, descripcion FROM tipopago WHERE id = ? LIMIT 1", [$idTipoPago])->getRowArray();
         $cargoPct = (float)($tipoPago['cargo'] ?? 0);
+        $tipoPagoNom = (string)($tipoPago['descripcion'] ?? "id {$idTipoPago}");
         $cargo    = $monto * $cargoPct / 100;
 
         $folioHijo = $this->notaModel->crearFolioPagoAnticipo($foliopadre, $idCliente, $idVendedor, $monto, $idTipoPago, $cargo);
-        AuditService::log(AuditService::ANTICIPO_CREADO, 'notas_1', $folioHijo,
-            "Anticipo registrado: folio hijo #{$folioHijo} -> padre #{$foliopadre}, monto $" . number_format($monto, 2));
 
-        // Verificar si ya está liquidado (total pagado >= total nota)
+        // Datos para una auditoría detallada del anticipo
+        $clienteRowLog = $db->query("SELECT nombre FROM clientes WHERE id = ? LIMIT 1", [$idCliente])->getRowArray();
+        $clienteNom    = (string)(($clienteRowLog['nombre'] ?? '') ?: 'PUBLICO GENERAL');
         $totalPagado = $this->notaModel->getTotalPagadoAnticipo($foliopadre);
         $totalNota   = (float)($padre['total'] ?? 0);
+        $saldoRest   = max(0, $totalNota - $totalPagado);
+
+        AuditService::log(AuditService::ANTICIPO_CREADO, 'notas_1', $folioHijo,
+            "Anticipo/abono #{$folioHijo} -> nota #{$foliopadre} | Cliente: {$clienteNom} | "
+            . "Pago: {$tipoPagoNom} $" . number_format($monto, 2)
+            . ($cargo > 0 ? " (cargo $" . number_format($cargo, 2) . ")" : "")
+            . " | Pagado $" . number_format($totalPagado, 2) . " de $" . number_format($totalNota, 2)
+            . " | Saldo restante $" . number_format($saldoRest, 2),
+            null,
+            [
+                'folio_hijo'     => $folioHijo,
+                'folio_padre'    => $foliopadre,
+                'cliente'        => $clienteNom,
+                'vendedor_id'    => $idVendedor,
+                'tipo_pago'      => $tipoPagoNom,
+                'monto'          => round($monto, 2),
+                'cargo'          => round($cargo, 2),
+                'total_nota'     => round($totalNota, 2),
+                'pagado_total'   => round($totalPagado, 2),
+                'saldo_restante' => round($saldoRest, 2),
+            ]);
+
+        // Verificar si ya está liquidado (total pagado >= total nota)
         if ($totalPagado >= $totalNota - 0.99) {
             $this->notaModel->liquidarAnticipo($foliopadre);
             AuditService::log(AuditService::VENTA_LIQUIDADA, 'notas_1', $foliopadre,

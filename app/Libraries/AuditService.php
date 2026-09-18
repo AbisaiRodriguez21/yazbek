@@ -36,6 +36,12 @@ class AuditService
     const PAGO_CANCELADO    = 'PAGO_CANCELADO';
     const ANTICIPO_CREADO   = 'ANTICIPO_CREADO';
 
+    // ── Facturación (CFDI) ────────────────────────────────────────
+    const FACTURA_EMITIDA        = 'FACTURA_EMITIDA';        // CFDI timbrado con éxito
+    const FACTURA_ERROR          = 'FACTURA_ERROR';          // Falló el timbrado
+    const FACTURA_CORREO_OK      = 'FACTURA_CORREO_OK';      // Correo de la factura enviado
+    const FACTURA_CORREO_FALLIDO = 'FACTURA_CORREO_FALLIDO'; // No se pudo enviar el correo
+
     // ── Inventario ────────────────────────────────────────────────
     const PRODUCTO_CREADO      = 'PRODUCTO_CREADO';
     const PRODUCTO_ACTUALIZADO = 'PRODUCTO_ACTUALIZADO';
