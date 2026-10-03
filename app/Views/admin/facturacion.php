@@ -370,7 +370,7 @@
                             </div>
                         </div>
                         <div class="cfdi-header-right">
-                            <div class="cfdi-tipo-box">TIPO DE COMPROBANTE (I) FACTURA — VISTA PREVIA</div>
+                            <div class="cfdi-tipo-box" id="mfsPvTipoBox">TIPO DE COMPROBANTE (I) FACTURA — VISTA PREVIA</div>
                             <table class="cfdi-tipo-tabla">
                                 <tr><td class="lbl">Folio</td><td id="mfsPvFolioNum2"></td></tr>
                                 <tr><td class="lbl">Folio Fiscal</td><td class="cfdi-pend">se asigna al timbrar</td></tr>
@@ -379,7 +379,7 @@
                                 <tr><td class="lbl">Fecha emisión</td><td id="mfsPvFecha"></td></tr>
                                 <tr><td class="lbl">Fecha certificación</td><td class="cfdi-pend">se asigna al timbrar</td></tr>
                                 <tr><td class="lbl">Lugar Expedición</td><td id="mfsPvLugarExp"></td></tr>
-                                <tr><td class="lbl">Forma Pago</td><td id="mfsPvFormaPago"></td></tr>
+                                <tr id="mfsPvFormaPagoRow"><td class="lbl">Forma Pago</td><td id="mfsPvFormaPago"></td></tr>
                                 <tr><td class="lbl">Moneda</td><td>MXN</td></tr>
                             </table>
                         </div>
@@ -402,6 +402,7 @@
                         <b>Observaciones:</b> <span id="mfsPvObservaciones"></span>
                     </div>
 
+                    <div id="mfsPvConceptosSection">
                     <table class="cfdi-conc">
                         <thead>
                             <tr>
@@ -434,6 +435,24 @@
                             </td>
                         </tr>
                     </table>
+                    </div>
+
+                    <div id="mfsPvRepSection" class="d-none">
+                        <div class="cfdi-sec-title">PAGO A APLICAR (REP — Recepción de Pago)</div>
+                        <div class="cfdi-cliente-box">
+                            Este abono se timbrará como un <b>Recibo Electrónico de Pago</b>, apuntando a la
+                            factura del folio padre — <b>no</b> es una venta nueva ni lleva productos.
+                        </div>
+                        <table class="cfdi-tot" style="width:100%;">
+                            <tr><td>Factura del folio padre</td><td class="r">#<span id="mfsPvRepFolioPadre"></span></td></tr>
+                            <tr><td>UUID de esa factura</td><td class="r" style="font-size:6.5pt;word-break:break-all;" id="mfsPvRepUuidPadre"></td></tr>
+                            <tr><td>Número de parcialidad</td><td class="r" id="mfsPvRepParcialidad"></td></tr>
+                            <tr><td>Forma de pago de este abono</td><td class="r" id="mfsPvRepFormaPago"></td></tr>
+                            <tr><td>Saldo anterior</td><td class="r" id="mfsPvRepSaldoAnterior"></td></tr>
+                            <tr><td>Importe pagado (este REP)</td><td class="r" id="mfsPvRepMonto"></td></tr>
+                            <tr class="cfdi-tot-final"><td>Saldo insoluto (después de este pago)</td><td class="r" id="mfsPvRepSaldoInsoluto"></td></tr>
+                        </table>
+                    </div>
 
                     <div class="cfdi-sbox">Sellos digitales, folio fiscal (UUID) y código QR se generan al confirmar el timbrado.</div>
                     <div class="cfdi-pending-note">Este es un cálculo preliminar hecho con los datos capturados; no tiene validez fiscal hasta confirmar y timbrar.</div>
@@ -743,6 +762,13 @@ $(document).ready(function () {
                     if (uid !== '') {
                         return '<i class="simple-icon-check text-success" title="Ya facturado"></i>';
                     }
+                    // Un abono (folio hijo) se factura individual como recibo
+                    // de pago (REP) ligado al padre — no tiene productos
+                    // propios, así que no se puede incluir en una factura
+                    // consolidada junto con otras ventas.
+                    if (parseInt(row.referencia || 0, 10) > 0) {
+                        return '<span class="text-muted" title="Un abono se factura individual, no se puede consolidar">—</span>';
+                    }
                     var checked = factSeleccion[row.folio] ? ' checked' : '';
                     return '<input type="checkbox" class="chk-folio"'
                          + ' data-folio="' + row.folio + '"'
@@ -751,7 +777,12 @@ $(document).ready(function () {
                          + checked + '>';
                 }
             },
-            { data: 'folio' },
+            { data: 'folio', render: function (d, type, row) {
+                if (parseInt(row.referencia || 0, 10) > 0) {
+                    return d + ' <span class="badge" style="background:#6f42c1;color:#fff;font-size:.65rem;">Abono de #' + row.referencia + '</span>';
+                }
+                return d;
+            }},
             { data: 'fecha_inicial', render: function (d) { return d ? d.substr(0, 10) : ''; } },
             { data: 'cliente' },
             { data: 'vendedor' },
@@ -1197,7 +1228,7 @@ function factAbrirModalIndividual(folio) {
             document.getElementById('mfsUsoCFDI').value       = d.usoCFDI               || 'S01';
             document.getElementById('mfsRegimenFiscal').value = d.regimenFiscalReceptor || '616';
             document.getElementById('mfsFormaPago').value     = d.formaPagoCFDI         || '01';
-            document.getElementById('mfsMetodoPago').value    = 'PUE';
+            document.getElementById('mfsMetodoPago').value    = d.metodoPagoCFDI        || 'PUE';
             factCheckCorreoModal(d.idCliente || 0, d.correoCliente || '');
         })
         .catch(function () {});
@@ -1329,45 +1360,68 @@ function mfsMostrarPreviewFactura(data) {
     document.getElementById('mfsPvCP').textContent             = data.datosFiscales.cpReceptor;
     document.getElementById('mfsPvRegimenReceptor').textContent = data.datosFiscales.regimenFiscalReceptor;
     document.getElementById('mfsPvUsoCFDI').textContent        = data.datosFiscales.usoCFDI;
-    document.getElementById('mfsPvFormaPago').textContent      = data.datosFiscales.formaPagoTexto + ' / ' + data.datosFiscales.metodoPago;
 
-    var tbody = document.getElementById('mfsPvConceptos');
-    tbody.innerHTML = '';
-    data.conceptos.forEach(function (c) {
-        var descuento = Number(c.descuento) || 0;
-        var baseIva   = (Number(c.importe) || 0) - descuento;
-        var total     = baseIva + (Number(c.iva) || 0);
-        var tr = document.createElement('tr');
-        tr.innerHTML =
-            '<td class="c">' + c.cantidad + '</td>' +
-            '<td>' + mfsEsc(c.sku ? (c.sku + ' ' + c.descripcion) : c.descripcion) + '</td>' +
-            '<td class="r">' + mfsMoneda(c.valorUnitario) + '</td>' +
-            '<td class="r">' + mfsMoneda(descuento) + '</td>' +
-            '<td class="r">' + mfsMoneda(baseIva) + '</td>' +
-            '<td class="r">' + mfsMoneda(c.iva) + '</td>' +
-            '<td class="r"></td>' +
-            '<td class="r"></td>' +
-            '<td class="r">' + mfsMoneda(total) + '</td>';
-        tbody.appendChild(tr);
+    var esRep = data.tipo === 'rep';
 
-        var trImp = document.createElement('tr');
-        trImp.className = 'cfdi-imp-row';
-        trImp.innerHTML = '<td colspan="9">Impuesto: ' + mfsMoneda(baseIva) + ' x [002{IVA} Tasa 0.160000] = ' + mfsMoneda(c.iva) + '</td>';
-        tbody.appendChild(trImp);
-    });
+    document.getElementById('mfsPvTipoBox').textContent = esRep
+        ? 'TIPO DE COMPROBANTE (P) RECIBO DE PAGO — VISTA PREVIA'
+        : 'TIPO DE COMPROBANTE (I) FACTURA — VISTA PREVIA';
+    document.getElementById('mfsPvFormaPagoRow').classList.toggle('d-none', esRep);
+    document.getElementById('mfsPvConceptosSection').classList.toggle('d-none', esRep);
+    document.getElementById('mfsPvRepSection').classList.toggle('d-none', !esRep);
 
-    document.getElementById('mfsPvSubtotal').textContent = mfsMoneda(data.subtotal);
-    var mfsDescuentoRow = document.getElementById('mfsPvDescuentoRow');
-    if (mfsDescuentoRow) {
-        if (Number(data.descuento) > 0) {
-            mfsDescuentoRow.style.display = '';
-            document.getElementById('mfsPvDescuento').textContent = '- ' + mfsMoneda(data.descuento);
-        } else {
-            mfsDescuentoRow.style.display = 'none';
+    if (esRep) {
+        // ── Vista previa de REP (folio hijo / abono) ──────────────────
+        document.getElementById('mfsPvRepFolioPadre').textContent    = data.rep.folioPadre;
+        document.getElementById('mfsPvRepUuidPadre').textContent     = data.rep.uuidPadre;
+        document.getElementById('mfsPvRepParcialidad').textContent   = data.rep.numParcialidad;
+        document.getElementById('mfsPvRepFormaPago').textContent     = data.rep.formaDePagoPTexto;
+        document.getElementById('mfsPvRepSaldoAnterior').textContent = mfsMoneda(data.rep.saldoAnterior);
+        document.getElementById('mfsPvRepMonto').textContent         = mfsMoneda(data.rep.montoPago);
+        document.getElementById('mfsPvRepSaldoInsoluto').textContent = mfsMoneda(data.rep.saldoInsoluto);
+    } else {
+        // ── Vista previa de factura de Ingreso (folio padre) ──────────
+        document.getElementById('mfsPvFormaPago').textContent = data.datosFiscales.formaPagoTexto + ' / ' + data.datosFiscales.metodoPago;
+
+        var tbody = document.getElementById('mfsPvConceptos');
+        tbody.innerHTML = '';
+        data.conceptos.forEach(function (c) {
+            var descuento = Number(c.descuento) || 0;
+            var baseIva   = (Number(c.importe) || 0) - descuento;
+            var total     = baseIva + (Number(c.iva) || 0);
+            var tr = document.createElement('tr');
+            tr.innerHTML =
+                '<td class="c">' + c.cantidad + '</td>' +
+                '<td>' + mfsEsc(c.sku ? (c.sku + ' ' + c.descripcion) : c.descripcion) + '</td>' +
+                '<td class="r">' + mfsMoneda(c.valorUnitario) + '</td>' +
+                '<td class="r">' + mfsMoneda(descuento) + '</td>' +
+                '<td class="r">' + mfsMoneda(baseIva) + '</td>' +
+                '<td class="r">' + mfsMoneda(c.iva) + '</td>' +
+                '<td class="r"></td>' +
+                '<td class="r"></td>' +
+                '<td class="r">' + mfsMoneda(total) + '</td>';
+            tbody.appendChild(tr);
+
+            var trImp = document.createElement('tr');
+            trImp.className = 'cfdi-imp-row';
+            trImp.innerHTML = '<td colspan="9">Impuesto: ' + mfsMoneda(baseIva) + ' x [002{IVA} Tasa 0.160000] = ' + mfsMoneda(c.iva) + '</td>';
+            tbody.appendChild(trImp);
+        });
+
+        document.getElementById('mfsPvSubtotal').textContent = mfsMoneda(data.subtotal);
+        var mfsDescuentoRow = document.getElementById('mfsPvDescuentoRow');
+        if (mfsDescuentoRow) {
+            if (Number(data.descuento) > 0) {
+                mfsDescuentoRow.style.display = '';
+                document.getElementById('mfsPvDescuento').textContent = '- ' + mfsMoneda(data.descuento);
+            } else {
+                mfsDescuentoRow.style.display = 'none';
+            }
         }
+        document.getElementById('mfsPvIva').textContent      = mfsMoneda(data.iva);
+        document.getElementById('mfsPvTotal').textContent    = mfsMoneda(data.total);
     }
-    document.getElementById('mfsPvIva').textContent      = mfsMoneda(data.iva);
-    document.getElementById('mfsPvTotal').textContent    = mfsMoneda(data.total);
+
     document.getElementById('mfsPvError').classList.add('d-none');
 
     $('#modalFacturacionSAT').modal('hide');

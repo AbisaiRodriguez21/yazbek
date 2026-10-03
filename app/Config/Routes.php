@@ -140,6 +140,10 @@ $routes->group('admin', ['filter' => 'role:1'], function ($routes) {
     // Liquidar anticipo
     $routes->post('folio/(:num)/liquidar', 'AdminController::liquidarAnticipo/$1');
 
+    // Confirmar folio padre "Sin Pagar" (habilita facturar sin liquidar —
+    // no bloquea los abonos/folios hijo)
+    $routes->post('folio/(:num)/confirmar', 'AdminController::confirmarPadreSinPagar/$1');
+
     // Datos fiscales para modal de facturación (GET)
     $routes->get('folio/(:num)/datos-fiscales',               'AdminController::datosFiscales/$1');
     $routes->get('clientes/(:num)/datos-fiscales-cliente',    'AdminController::datosFiscalesCliente/$1');
@@ -316,6 +320,10 @@ $routes->group('caja', ['filter' => 'role:2'], function ($routes) {
     // Pago verificado / confirmar pago
     $routes->get('pago/verificado/(:num)', 'CajaController::pagoVerificado/$1');
     $routes->post('pago/procesar', 'CajaController::procesarPago');
+
+    // Confirmar folio padre "Sin Pagar" (habilita facturar sin liquidar —
+    // no bloquea los abonos/folios hijo)
+    $routes->post('folio/(:num)/confirmar', 'CajaController::confirmarPadreSinPagar/$1');
 
     // Corte de caja
     $routes->get('corte', 'CajaController::corte');

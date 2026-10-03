@@ -247,6 +247,18 @@ class NotaModel extends Model
     }
 
     /**
+     * Confirma un folio padre "Sin Pagar" (crédito) sin liquidarlo: no toca
+     * `status` (sigue en 2, para que los abonos/folios hijo sigan
+     * disponibles) — solo habilita la factura del padre (99/PPD).
+     */
+    public function confirmarPadreSinPagar(int $id): bool
+    {
+        return $this->update($id, [
+            'verificado' => 'Confirmado',
+        ]);
+    }
+
+    /**
      * Genera el siguiente número de folio disponible.
      */
     /**

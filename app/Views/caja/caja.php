@@ -356,6 +356,21 @@ function cajaModalVerificar() {
     }).fail(function() { alert('Error al verificar el pago.'); });
 }
 
+/* Confirmar folio padre "Sin Pagar" (crédito) — llamado desde el HTML
+   generado por folioDetalleAjax; NO liquida la nota, solo habilita su
+   factura (99/PPD) sin bloquear los abonos/folios hijo */
+function cajaModalConfirmarPadre() {
+    var folio = ($('#folio_input_caja_modal').val() || '').trim();
+    if (!folio) return;
+    if (!confirm('¿Confirmar la nota #' + folio + '? Con esto ya se puede generar su factura. El cliente puede seguir abonando (pagando poco a poco) sin ningún problema.')) return;
+    var fd = {};
+    fd[csrfName] = csrfHash;
+    $.post(baseUrl + 'caja/folio/' + folio + '/confirmar', fd, function(resp) {
+        alert((resp && (resp.mensaje || resp.error)) || 'Listo.');
+        $('#btnBuscar').trigger('click');
+    }).fail(function() { alert('Error al confirmar el folio.'); });
+}
+
 /* Solicitar Factura — llamado desde el HTML generado por folioDetalleAjax */
 var _cajaSfFolioActivo = null;
 

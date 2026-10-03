@@ -336,23 +336,42 @@ function accionesNota(n) {
                + '<i class="simple-icon-wallet"></i>Ver / Abonar</a>';
     }
 
+    // Confirmar folio padre "Sin Pagar" (crédito) — NO liquida la nota (no
+    // registra un pago falso por el total ni bloquea los abonos/folios
+    // hijo): solo habilita la factura (99/PPD) del padre. La liquidación
+    // real ("Pagado") sigue ocurriendo sola cuando los abonos cubren el
+    // total.
+    var _cubreTotalAcc = parseFloat(n.pagado_total || 0) >= parseFloat(n.total || 0) - 0.99;
+    if (idstatus === 2 && esPadre && esSinPagar(n.tipoPagoPropio) && !_cubreTotalAcc && n.verificado !== 'Confirmado') {
+        items += '<a class="dropdown-item text-info" href="#" onclick="adminConfirmarPadre(' + n.folio + '); return false;">'
+               + '<i class="simple-icon-check"></i>Confirmar para Facturar</a>';
+    }
+
     // Editar productos — solo folios padre aún no verificados/cobrados
     // (1=Abierta, 2=En proceso). Reutiliza el Paso 2 con los productos ya
     // cargados; al continuar al Paso 3 se reconfirma forma de pago.
     // También aplica a notas "Sin Pagar" (a crédito), igual que los demás
     // métodos de pago, mientras sigan en este mismo estatus — pero ya no si
     // esa nota a crédito tiene abonos registrados (cambiaría el total sobre
-    // el que esos abonos se calcularon; el servidor también lo bloquea).
-    var _yaConAbono = esSinPagar(n.tipoPagoPropio) && parseFloat(n.pagado_total || 0) > 0;
-    if ((idstatus === 1 || idstatus === 2) && esPadre && !_yaConAbono) {
+    // el que esos abonos se calcularon) NI si ya se facturó (cambiar los
+    // productos dejaría el inventario/ticket sin coincidir con la factura
+    // ya generada). El servidor también bloquea ambos casos.
+    var _yaConAbono   = esSinPagar(n.tipoPagoPropio) && parseFloat(n.pagado_total || 0) > 0;
+    var _yaFacturada  = (n.uuid_fiscal || '').trim() !== '';
+    if ((idstatus === 1 || idstatus === 2) && esPadre && !_yaConAbono && !_yaFacturada) {
         items += '<a class="dropdown-item" href="' + BASE_PAGO + n.folio + '/productos">'
                + '<i class="simple-icon-pencil"></i>Editar productos</a>';
     }
 
-    // Ver modal
+    // Ver modal — para un folio padre "Sin Pagar" recién creado (aún sin
+    // confirmar/cubrir) el label "Verificar Pago" confunde: dentro de ese
+    // modal ya no se ofrece la liquidación completa (ver "Verificar Pago
+    // Padre" arriba), así que aquí se etiqueta solo como "Ver Detalle".
     if (!esPadre || idstatus === 2 || idstatus === 5 || idstatus === 6 || idstatus === 3) {
+        var _esPadreSinPagarSinCubrir = esPadre && idstatus === 2 && esSinPagar(n.tipoPagoPropio) && !_cubreTotalAcc;
+        var _lblVerFolio = _esPadreSinPagarSinCubrir ? 'Ver Detalle' : 'Verificar Pago';
         items += '<a class="dropdown-item" href="#" onclick="adminVerFolio(' + n.folio + '); return false;">'
-               + '<i class="simple-icon-eye"></i>Verificar Pago</a>';
+               + '<i class="simple-icon-eye"></i>' + _lblVerFolio + '</a>';
     }
 
     // Ver Ticket — disponible para todos los folios (padre e hijo), incluyendo cancelados
@@ -406,14 +425,18 @@ function accionesNota(n) {
                + '<i class="simple-icon-refresh"></i>Revivir</a>';
     }
 
-    // Facturación — una venta a crédito se factura O completa (padre) O por
-    // abonos (hijos), nunca ambas. Gana el primer camino que se use:
-    //  · Padre: factura completa solo si NINGÚN hijo se ha facturado.
-    //  · Hijo:  factura el abono solo si el PADRE no se ha facturado completo.
+    // Facturación de una venta a crédito (esquema 99/PPD + Recepción de
+    // Pagos): primero se factura el padre UNA vez por el total (Ingreso).
+    // Cada abono (hijo) se factura DESPUÉS, por separado, como un recibo de
+    // pago (REP) que queda ligado al UUID de esa factura del padre — por
+    // eso un abono solo se puede facturar cuando el padre YA tiene factura.
     var _tieneHijoFacturado = parseInt(n.hijos_facturados || 0, 10) > 0;
     var _padreYaFacturado   = (n.padre_uuid || '').trim() !== '';
-    var _padreFacturable = esPadre && (idstatus === 5 || idstatus === 6) && !_tieneHijoFacturado;
-    var _hijoConfirmado  = !esPadre && (idstatus === 5 || idstatus === 6 || n.verificado === 'Pagado') && !_padreYaFacturado;
+    // Un padre "Sin Pagar" confirmado por caja (verificado === 'Confirmado')
+    // puede facturarse aunque siga en status=2 (En proceso) — así no hace
+    // falta liquidarlo (lo que bloquearía los abonos/folios hijo).
+    var _padreFacturable = esPadre && (idstatus === 5 || idstatus === 6 || n.verificado === 'Confirmado') && !_tieneHijoFacturado;
+    var _hijoConfirmado  = !esPadre && (idstatus === 5 || idstatus === 6 || n.verificado === 'Pagado') && _padreYaFacturado;
     if ((_padreFacturable || _hijoConfirmado) && idstatus !== 3) {
         var sf  = parseInt(n.status_facturacion || 0, 10);
         var uid = (n.uuid_fiscal || '').trim();
@@ -573,6 +596,32 @@ function adminLiquidarAnticipo(folio) {
             $('#tablaAdminConsulta').DataTable().ajax.reload(null, false);
         } else {
             alert(data.error || 'No se pudo liquidar.');
+        }
+    })
+    .catch(function() { alert('Error de conexión.'); });
+}
+
+function fn_confirmar_padre_modal() {
+    var folio = document.getElementById('folio_input') ? document.getElementById('folio_input').value : 0;
+    if (!folio) return;
+    $('#modalVerFolio').modal('hide');
+    adminConfirmarPadre(parseInt(folio, 10));
+}
+
+function adminConfirmarPadre(folio) {
+    if (!confirm('¿Confirmar la nota #' + folio + '? Con esto ya se puede generar su factura. El cliente puede seguir abonando (pagando poco a poco) sin ningún problema.')) return;
+    var fd = new FormData();
+    fd.append('<?= csrf_token() ?>', '<?= csrf_hash() ?>');
+    fetch('<?= base_url('admin/folio/') ?>' + folio + '/confirmar', {
+        method: 'POST', body: fd, credentials: 'same-origin'
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (data.ok) {
+            if (data.mensaje) alert(data.mensaje);
+            $('#tablaAdminConsulta').DataTable().ajax.reload(null, false);
+        } else {
+            alert(data.error || 'No se pudo confirmar el folio.');
         }
     })
     .catch(function() { alert('Error de conexión.'); });
@@ -841,12 +890,13 @@ function adminAbrirModalFactura(folio) {
         document.getElementById('sfUsoCFDI').value       = d.usoCFDI               || 'S01';
         document.getElementById('sfRegimenFiscal').value = d.regimenFiscalReceptor || '616';
         document.getElementById('sfFormaPago').value     = d.formaPagoCFDI         || '01';
-        document.getElementById('sfMetodoPago').value    = 'PUE';
+        document.getElementById('sfMetodoPago').value    = d.metodoPagoCFDI        || 'PUE';
 
-        // Campos editables: se sugieren Método PUE + la forma de pago real del
-        // abono como valores por default, pero el usuario puede cambiarlos.
+        // Campos editables: se sugieren según el tipo de nota (ver aviso abajo),
+        // pero el usuario puede cambiarlos.
         document.getElementById('sfFormaPago').disabled  = false;
         document.getElementById('sfMetodoPago').disabled = false;
+        document.getElementById('sfAvisoSinPagar').classList.toggle('d-none', !d.esSinPagarPadre);
     })
     .catch(function() { /* campos vacíos, el usuario los llena manualmente */ });
 }
@@ -998,45 +1048,68 @@ function sfMostrarPreviewFactura(data) {
     document.getElementById('sfPvCP').textContent                = data.datosFiscales.cpReceptor;
     document.getElementById('sfPvRegimenReceptor').textContent   = data.datosFiscales.regimenFiscalReceptor;
     document.getElementById('sfPvUsoCFDI').textContent           = data.datosFiscales.usoCFDI;
-    document.getElementById('sfPvFormaPago').textContent         = data.datosFiscales.formaPagoTexto + ' / ' + data.datosFiscales.metodoPago;
 
-    var tbody = document.getElementById('sfPvConceptos');
-    tbody.innerHTML = '';
-    data.conceptos.forEach(function(c) {
-        var descuento = Number(c.descuento) || 0;
-        var baseIva   = (Number(c.importe) || 0) - descuento;
-        var total     = baseIva + (Number(c.iva) || 0);
-        var tr = document.createElement('tr');
-        tr.innerHTML =
-            '<td class="c">' + c.cantidad + '</td>' +
-            '<td>' + sfEsc(c.sku ? (c.sku + ' ' + c.descripcion) : c.descripcion) + '</td>' +
-            '<td class="r">' + sfMoneda(c.valorUnitario) + '</td>' +
-            '<td class="r">' + sfMoneda(descuento) + '</td>' +
-            '<td class="r">' + sfMoneda(baseIva) + '</td>' +
-            '<td class="r">' + sfMoneda(c.iva) + '</td>' +
-            '<td class="r"></td>' +
-            '<td class="r"></td>' +
-            '<td class="r">' + sfMoneda(total) + '</td>';
-        tbody.appendChild(tr);
+    var esRep = data.tipo === 'rep';
 
-        var trImp = document.createElement('tr');
-        trImp.className = 'cfdi-imp-row';
-        trImp.innerHTML = '<td colspan="9">Impuesto: ' + sfMoneda(baseIva) + ' x [002{IVA} Tasa 0.160000] = ' + sfMoneda(c.iva) + '</td>';
-        tbody.appendChild(trImp);
-    });
+    document.getElementById('sfPvTipoBox').textContent = esRep
+        ? 'TIPO DE COMPROBANTE (P) RECIBO DE PAGO — VISTA PREVIA'
+        : 'TIPO DE COMPROBANTE (I) FACTURA — VISTA PREVIA';
+    document.getElementById('sfPvFormaPagoRow').classList.toggle('d-none', esRep);
+    document.getElementById('sfPvConceptosSection').classList.toggle('d-none', esRep);
+    document.getElementById('sfPvRepSection').classList.toggle('d-none', !esRep);
 
-    document.getElementById('sfPvSubtotal').textContent = sfMoneda(data.subtotal);
-    var sfDescuentoRow = document.getElementById('sfPvDescuentoRow');
-    if (sfDescuentoRow) {
-        if (Number(data.descuento) > 0) {
-            sfDescuentoRow.style.display = '';
-            document.getElementById('sfPvDescuento').textContent = '- ' + sfMoneda(data.descuento);
-        } else {
-            sfDescuentoRow.style.display = 'none';
+    if (esRep) {
+        // ── Vista previa de REP (folio hijo / abono) ──────────────────
+        document.getElementById('sfPvRepFolioPadre').textContent    = data.rep.folioPadre;
+        document.getElementById('sfPvRepUuidPadre').textContent     = data.rep.uuidPadre;
+        document.getElementById('sfPvRepParcialidad').textContent   = data.rep.numParcialidad;
+        document.getElementById('sfPvRepFormaPago').textContent     = data.rep.formaDePagoPTexto;
+        document.getElementById('sfPvRepSaldoAnterior').textContent = sfMoneda(data.rep.saldoAnterior);
+        document.getElementById('sfPvRepMonto').textContent         = sfMoneda(data.rep.montoPago);
+        document.getElementById('sfPvRepSaldoInsoluto').textContent = sfMoneda(data.rep.saldoInsoluto);
+    } else {
+        // ── Vista previa de factura de Ingreso (folio padre) ──────────
+        document.getElementById('sfPvFormaPago').textContent = data.datosFiscales.formaPagoTexto + ' / ' + data.datosFiscales.metodoPago;
+
+        var tbody = document.getElementById('sfPvConceptos');
+        tbody.innerHTML = '';
+        data.conceptos.forEach(function(c) {
+            var descuento = Number(c.descuento) || 0;
+            var baseIva   = (Number(c.importe) || 0) - descuento;
+            var total     = baseIva + (Number(c.iva) || 0);
+            var tr = document.createElement('tr');
+            tr.innerHTML =
+                '<td class="c">' + c.cantidad + '</td>' +
+                '<td>' + sfEsc(c.sku ? (c.sku + ' ' + c.descripcion) : c.descripcion) + '</td>' +
+                '<td class="r">' + sfMoneda(c.valorUnitario) + '</td>' +
+                '<td class="r">' + sfMoneda(descuento) + '</td>' +
+                '<td class="r">' + sfMoneda(baseIva) + '</td>' +
+                '<td class="r">' + sfMoneda(c.iva) + '</td>' +
+                '<td class="r"></td>' +
+                '<td class="r"></td>' +
+                '<td class="r">' + sfMoneda(total) + '</td>';
+            tbody.appendChild(tr);
+
+            var trImp = document.createElement('tr');
+            trImp.className = 'cfdi-imp-row';
+            trImp.innerHTML = '<td colspan="9">Impuesto: ' + sfMoneda(baseIva) + ' x [002{IVA} Tasa 0.160000] = ' + sfMoneda(c.iva) + '</td>';
+            tbody.appendChild(trImp);
+        });
+
+        document.getElementById('sfPvSubtotal').textContent = sfMoneda(data.subtotal);
+        var sfDescuentoRow = document.getElementById('sfPvDescuentoRow');
+        if (sfDescuentoRow) {
+            if (Number(data.descuento) > 0) {
+                sfDescuentoRow.style.display = '';
+                document.getElementById('sfPvDescuento').textContent = '- ' + sfMoneda(data.descuento);
+            } else {
+                sfDescuentoRow.style.display = 'none';
+            }
         }
+        document.getElementById('sfPvIva').textContent      = sfMoneda(data.iva);
+        document.getElementById('sfPvTotal').textContent    = sfMoneda(data.total);
     }
-    document.getElementById('sfPvIva').textContent      = sfMoneda(data.iva);
-    document.getElementById('sfPvTotal').textContent    = sfMoneda(data.total);
+
     document.getElementById('sfPvError').classList.add('d-none');
 
     $('#modalSolicitarFactura').modal('hide');
@@ -1149,6 +1222,11 @@ function sfMostrarPreviewFactura(data) {
                         </div>
                     </div>
                 </div>
+                <div id="sfAvisoSinPagar" class="alert alert-info py-2 mb-2 d-none">
+                    Esta nota es "Sin Pagar" (a crédito) — se sugiere <strong>99 Por definir</strong> /
+                    <strong>PPD</strong>, que es como el SAT espera una venta a crédito que aún no se ha
+                    liquidado por completo. Puedes cambiarlo si ya sabes exactamente cómo se va a cobrar.
+                </div>
                 <div class="form-group">
                     <label>Observaciones</label>
                     <textarea id="sfObservaciones" class="form-control" rows="2"
@@ -1187,7 +1265,7 @@ function sfMostrarPreviewFactura(data) {
                             </div>
                         </div>
                         <div class="cfdi-header-right">
-                            <div class="cfdi-tipo-box">TIPO DE COMPROBANTE (I) FACTURA — VISTA PREVIA</div>
+                            <div class="cfdi-tipo-box" id="sfPvTipoBox">TIPO DE COMPROBANTE (I) FACTURA — VISTA PREVIA</div>
                             <table class="cfdi-tipo-tabla">
                                 <tr><td class="lbl">Folio</td><td id="sfPvFolioNum2"></td></tr>
                                 <tr><td class="lbl">Folio Fiscal</td><td class="cfdi-pend">se asigna al timbrar</td></tr>
@@ -1196,7 +1274,7 @@ function sfMostrarPreviewFactura(data) {
                                 <tr><td class="lbl">Fecha emisión</td><td id="sfPvFecha"></td></tr>
                                 <tr><td class="lbl">Fecha certificación</td><td class="cfdi-pend">se asigna al timbrar</td></tr>
                                 <tr><td class="lbl">Lugar Expedición</td><td id="sfPvLugarExp"></td></tr>
-                                <tr><td class="lbl">Forma Pago</td><td id="sfPvFormaPago"></td></tr>
+                                <tr id="sfPvFormaPagoRow"><td class="lbl">Forma Pago</td><td id="sfPvFormaPago"></td></tr>
                                 <tr><td class="lbl">Moneda</td><td>MXN</td></tr>
                             </table>
                         </div>
@@ -1219,6 +1297,7 @@ function sfMostrarPreviewFactura(data) {
                         <b>Observaciones:</b> <span id="sfPvObservaciones"></span>
                     </div>
 
+                    <div id="sfPvConceptosSection">
                     <table class="cfdi-conc">
                         <thead>
                             <tr>
@@ -1251,6 +1330,24 @@ function sfMostrarPreviewFactura(data) {
                             </td>
                         </tr>
                     </table>
+                    </div>
+
+                    <div id="sfPvRepSection" class="d-none">
+                        <div class="cfdi-sec-title">PAGO A APLICAR (REP — Recepción de Pago)</div>
+                        <div class="cfdi-cliente-box">
+                            Este abono se timbrará como un <b>Recibo Electrónico de Pago</b>, apuntando a la
+                            factura del folio padre — <b>no</b> es una venta nueva ni lleva productos.
+                        </div>
+                        <table class="cfdi-tot" style="width:100%;">
+                            <tr><td>Factura del folio padre</td><td class="r">#<span id="sfPvRepFolioPadre"></span></td></tr>
+                            <tr><td>UUID de esa factura</td><td class="r" style="font-size:6.5pt;word-break:break-all;" id="sfPvRepUuidPadre"></td></tr>
+                            <tr><td>Número de parcialidad</td><td class="r" id="sfPvRepParcialidad"></td></tr>
+                            <tr><td>Forma de pago de este abono</td><td class="r" id="sfPvRepFormaPago"></td></tr>
+                            <tr><td>Saldo anterior</td><td class="r" id="sfPvRepSaldoAnterior"></td></tr>
+                            <tr><td>Importe pagado (este REP)</td><td class="r" id="sfPvRepMonto"></td></tr>
+                            <tr class="cfdi-tot-final"><td>Saldo insoluto (después de este pago)</td><td class="r" id="sfPvRepSaldoInsoluto"></td></tr>
+                        </table>
+                    </div>
 
                     <div class="cfdi-sbox">Sellos digitales, folio fiscal (UUID) y código QR se generan al confirmar el timbrado.</div>
                     <div class="cfdi-pending-note">Este es un cálculo preliminar hecho con los datos capturados; no tiene validez fiscal hasta confirmar y timbrar.</div>

@@ -17,6 +17,15 @@ class CfdiPdfService
         $dom->loadXML($xmlTimbrado);
         $comp = $dom->documentElement;
 
+        // Un REP (TipoDeComprobante=P) no tiene SubTotal/Total/FormaPago/
+        // Conceptos reales — todo el detalle vive en el complemento
+        // pago20:Pagos. Seguir con el flujo de abajo (pensado para un
+        // Comprobante de Ingreso) mostraría "$0.00" y campos vacíos, así
+        // que se renderiza aparte con su propio layout.
+        if ($comp->getAttribute('TipoDeComprobante') === 'P') {
+            return $this->generarPDFPago($dom, $comp, $config);
+        }
+
         $folio      = $comp->getAttribute('Folio');
         $serie      = $comp->getAttribute('Serie');
         $fecha      = $comp->getAttribute('Fecha');
@@ -317,6 +326,229 @@ table { width: 100%; border-collapse: collapse; }
 </body></html>';
 
         // ── Generar PDF ───────────────────────────────────────────────────
+        $mpdf = new \Mpdf\Mpdf([
+            'margin_top'    => 5,
+            'margin_right'  => 7,
+            'margin_bottom' => 7,
+            'margin_left'   => 7,
+            'format'        => 'A4',
+        ]);
+        $mpdf->WriteHTML($html);
+        return $mpdf->Output('', \Mpdf\Output\Destination::STRING_RETURN);
+    }
+
+    /**
+     * PDF de un REP (Complemento de Recepción de Pagos) — representación
+     * impresa de "recibí $X, aplicado a la factura Y". No tiene productos:
+     * el detalle es el/los pago(s) del complemento pago20:Pagos.
+     */
+    private function generarPDFPago(\DOMDocument $dom, \DOMElement $comp, array $config): string
+    {
+        $folio = $comp->getAttribute('Folio');
+        $serie = $comp->getAttribute('Serie');
+        $fecha = $comp->getAttribute('Fecha');
+        $lugar = $comp->getAttribute('LugarExpedicion');
+        $noCert = $comp->getAttribute('NoCertificado');
+
+        $emisorNode    = $dom->getElementsByTagNameNS('http://www.sat.gob.mx/cfd/4', 'Emisor')->item(0);
+        $emisorRfc     = $emisorNode ? $emisorNode->getAttribute('Rfc') : '';
+        $emisorRegimen = $emisorNode ? $emisorNode->getAttribute('RegimenFiscal') : '';
+
+        $receptorNode   = $dom->getElementsByTagNameNS('http://www.sat.gob.mx/cfd/4', 'Receptor')->item(0);
+        $receptorRfc    = $receptorNode ? $receptorNode->getAttribute('Rfc')    : '';
+        $receptorNombre = $receptorNode ? $receptorNode->getAttribute('Nombre') : '';
+        $receptorCP     = $receptorNode ? $receptorNode->getAttribute('DomicilioFiscalReceptor') : '';
+
+        $tfd = $dom->getElementsByTagNameNS('http://www.sat.gob.mx/TimbreFiscalDigital', 'TimbreFiscalDigital')->item(0);
+        $uuid          = $tfd ? $tfd->getAttribute('UUID')          : '';
+        $fechaTimbrado = $tfd ? $tfd->getAttribute('FechaTimbrado') : '';
+        $noCertSAT     = $tfd ? $tfd->getAttribute('NoCertificadoSAT') : '';
+        $selloCFD      = $tfd ? $tfd->getAttribute('SelloCFD') : '';
+        $selloSAT      = $tfd ? $tfd->getAttribute('SelloSAT') : '';
+        $rfcPAC        = $tfd ? $tfd->getAttribute('RfcProvCertif') : '';
+
+        $fe       = substr($selloCFD, -8);
+        $urlSAT   = 'https://verificacfdi.facturaelectronica.sat.gob.mx/default.aspx'
+                  . '?id=' . urlencode($uuid) . '&re=' . urlencode($emisorRfc)
+                  . '&rr=' . urlencode($receptorRfc) . '&tt=0&fe=' . urlencode($fe);
+        $qrHtml = '';
+        try {
+            $qrOptions = new \chillerlan\QRCode\QROptions([
+                'outputInterface' => \chillerlan\QRCode\Output\QRGdImagePNG::class,
+                'eccLevel'        => \chillerlan\QRCode\Common\EccLevel::M,
+                'scale'           => 4,
+                'outputBase64'    => true,
+            ]);
+            $qrB64  = (new \chillerlan\QRCode\QRCode($qrOptions))->render($urlSAT);
+            $qrHtml = '<img src="' . $qrB64 . '" style="width:90px;height:90px;" alt="QR SAT"/>';
+        } catch (\Throwable $e) {
+            // sin QR, el PDF se genera igual
+        }
+
+        $empNombre  = $config['empresa_razon_social'] ?? '';
+        $empDir     = $config['empresa_sucursal']     ?? '';
+        $empCiudad  = $config['empresa_ciudad']       ?? '';
+        $empTel     = $config['empresa_telefono']     ?? '';
+        $empRfc     = preg_replace('/^RFC\s*/i', '', $config['empresa_rfc'] ?? $emisorRfc);
+        $empRegimen = $config['empresa_regimen']      ?? $emisorRegimen;
+
+        $logoPath = FCPATH . 'assets/logos/logo_yazbek_01.png';
+        $logoHtml = '';
+        if (file_exists($logoPath)) {
+            $logoB64  = base64_encode(file_get_contents($logoPath));
+            $logoHtml = '<img src="data:image/png;base64,' . $logoB64 . '" style="max-height:55px;max-width:160px;" alt="Logo"/>';
+        }
+
+        // ── Fila(s) de pago20:Pago — normalmente una sola ────────────────
+        $filasPago = '';
+        foreach ($dom->getElementsByTagNameNS('http://www.sat.gob.mx/Pagos20', 'Pago') as $pago) {
+            $fechaPago    = $pago->getAttribute('FechaPago');
+            $formaPagoP   = self::nombreFormaPago($pago->getAttribute('FormaDePagoP'));
+            $monto        = (float)$pago->getAttribute('Monto');
+
+            foreach ($pago->getElementsByTagNameNS('http://www.sat.gob.mx/Pagos20', 'DoctoRelacionado') as $docto) {
+                $folioDoc    = $docto->getAttribute('Folio');
+                $idDoc       = $docto->getAttribute('IdDocumento');
+                $numParc     = $docto->getAttribute('NumParcialidad');
+                $saldoAnt    = (float)$docto->getAttribute('ImpSaldoAnt');
+                $pagado      = (float)$docto->getAttribute('ImpPagado');
+                $saldoInsol  = (float)$docto->getAttribute('ImpSaldoInsoluto');
+
+                $filasPago .= '
+                <tr>
+                  <td>' . htmlspecialchars($fechaPago) . '</td>
+                  <td>' . htmlspecialchars($formaPagoP) . '</td>
+                  <td>Folio ' . htmlspecialchars($folioDoc) . '<br/><span style="font-size:6.5pt;color:#666;">' . htmlspecialchars($idDoc) . '</span></td>
+                  <td class="c">' . htmlspecialchars($numParc) . '</td>
+                  <td class="r">$ ' . number_format($saldoAnt, 2) . '</td>
+                  <td class="r">$ ' . number_format($pagado, 2) . '</td>
+                  <td class="r">$ ' . number_format($saldoInsol, 2) . '</td>
+                </tr>';
+            }
+        }
+
+        $montoTotal = 0.0;
+        foreach ($dom->getElementsByTagNameNS('http://www.sat.gob.mx/Pagos20', 'Totales') as $t) {
+            $montoTotal = (float)$t->getAttribute('MontoTotalPagos');
+        }
+
+        $html = '<!DOCTYPE html><html><head><meta charset="UTF-8"/>
+<style>
+* { box-sizing: border-box; }
+body { font-family: Arial, sans-serif; font-size: 8pt; color: #111; margin: 0; padding: 0; }
+table { width: 100%; border-collapse: collapse; }
+.r { text-align: right; }
+.c { text-align: center; }
+.header-outer { border: 1px solid #888; margin-bottom: 4px; }
+.header-left  { width: 65%; vertical-align: top; padding: 8px 10px; border-right: 1px solid #888; }
+.header-right { width: 35%; vertical-align: top; padding: 0; }
+.emp-name     { font-size: 13pt; font-weight: bold; color: #1a3a5c; margin-bottom: 3px; }
+.emp-data     { font-size: 7.5pt; line-height: 1.6; }
+.tipo-box     { background: #6f42c1; color: #fff; font-weight: bold; font-size: 8pt; text-align: center; padding: 4px 6px; }
+.tipo-tabla td { font-size: 7.5pt; padding: 2px 6px; border-bottom: 1px solid #ddd; }
+.tipo-tabla .lbl { color: #1a3a5c; font-weight: bold; width: 55%; }
+.sec-title    { background: #222; color: #fff; font-weight: bold; padding: 3px 6px; font-size: 8pt; margin: 4px 0 2px; }
+.cliente-box  { border: 1px solid #aaa; padding: 5px 8px; font-size: 7.5pt; margin-bottom: 4px; }
+.conc th      { background: #222; color: #fff; padding: 3px 4px; font-size: 7.5pt; text-align: center; border: 1px solid #555; }
+.conc td      { border: 1px solid #ddd; padding: 3px 4px; font-size: 7.5pt; }
+.tot-final td { background: #6f42c1; color: #fff; font-weight: bold; font-size: 9pt; padding: 3px 5px; }
+.sbox         { background: #f5f5f5; border: 1px solid #ccc; padding: 5px 7px; font-size: 6.5pt; word-break: break-all; margin-top: 4px; }
+.sbox .lbl    { font-weight: bold; color: #1a3a5c; font-size: 7pt; }
+.div          { border-top: 2px solid #1a3a5c; margin: 5px 0; }
+</style></head><body>
+
+<table class="header-outer">
+<tr>
+  <td class="header-left">
+    ' . ($logoHtml ? '<div style="margin-bottom:6px;">' . $logoHtml . '</div>' : '') . '
+    <div class="emp-name">' . htmlspecialchars($empNombre) . '</div>
+    <div class="emp-data">
+      <b>RFC:</b> ' . htmlspecialchars($empRfc) . '<br/>
+      ' . htmlspecialchars($empDir) . '<br/>
+      ' . htmlspecialchars($empCiudad) . '<br/>
+      ' . htmlspecialchars($empTel) . '
+    </div>
+  </td>
+  <td class="header-right">
+    <div class="tipo-box">TIPO DE COMPROBANTE (P) RECIBO ELECTRÓNICO DE PAGO</div>
+    <table class="tipo-tabla">
+      <tr><td class="lbl">Folio</td>              <td>' . htmlspecialchars($serie . ' ' . $folio) . '</td></tr>
+      <tr><td class="lbl">Folio Fiscal</td>        <td style="font-size:6.5pt;">' . htmlspecialchars($uuid) . '</td></tr>
+      <tr><td class="lbl">No. Serie CSD Emisor</td><td style="font-size:6.5pt;">' . htmlspecialchars($noCert) . '</td></tr>
+      <tr><td class="lbl">No. Serie CSD SAT</td>   <td style="font-size:6.5pt;">' . htmlspecialchars($noCertSAT) . '</td></tr>
+      <tr><td class="lbl">Fecha emisión</td>        <td>' . htmlspecialchars($fecha) . '</td></tr>
+      <tr><td class="lbl">Fecha certificación</td>  <td>' . htmlspecialchars($fechaTimbrado) . '</td></tr>
+      <tr><td class="lbl">Lugar Expedición</td>     <td>' . htmlspecialchars($lugar) . '</td></tr>
+    </table>
+  </td>
+</tr>
+</table>
+
+<div class="sec-title">DATOS DEL CLIENTE</div>
+<div class="cliente-box">
+  <b>' . htmlspecialchars($receptorNombre) . '</b><br/>
+  <b>RFC:</b> ' . htmlspecialchars($receptorRfc) . '
+  &nbsp;&nbsp; <b>CP Fiscal:</b> ' . htmlspecialchars($receptorCP) . '
+</div>
+
+<div style="border:1px solid #888;padding:3px 8px;font-size:7.5pt;margin-bottom:4px;">
+  <b>Régimen Fiscal del Emisor: ' . htmlspecialchars($emisorRegimen) . ' / ' . htmlspecialchars($empRegimen) . '</b>
+</div>
+
+<div class="sec-title">PAGO(S) APLICADO(S)</div>
+<table class="conc">
+<thead>
+<tr>
+  <th style="width:12%">Fecha</th>
+  <th style="width:16%">Forma de pago</th>
+  <th style="width:26%">Documento relacionado</th>
+  <th style="width:8%">Parcialidad</th>
+  <th style="width:12%" class="r">Saldo anterior</th>
+  <th style="width:13%" class="r">Importe pagado</th>
+  <th style="width:13%" class="r">Saldo insoluto</th>
+</tr>
+</thead>
+<tbody>' . $filasPago . '</tbody>
+</table>
+
+<table style="width:100%; margin-top:6px;">
+<tr>
+  <td style="width:55%; vertical-align:top; font-size:7pt; color:#555;">
+    <b>RFC PAC:</b> ' . htmlspecialchars($rfcPAC) . '
+  </td>
+  <td style="width:45%; vertical-align:top;">
+    <table><tr class="tot-final"><td>TOTAL PAGADO</td><td class="r">$ ' . number_format($montoTotal, 2) . '</td></tr></table>
+  </td>
+</tr>
+</table>
+
+<div class="div"></div>
+
+<div class="sbox">
+  <span class="lbl">SELLO DIGITAL DEL COMPROBANTE FISCAL:</span><br/>
+  ' . htmlspecialchars(wordwrap($selloCFD, 115, "\n", true)) . '
+</div>
+<div class="sbox" style="margin-top:3px;">
+  <span class="lbl">SELLO DIGITAL DEL TIMBRE FISCAL DIGITAL:</span><br/>
+  ' . htmlspecialchars(wordwrap($selloSAT, 115, "\n", true)) . '
+</div>
+
+<table style="width:100%;margin-top:6px;">
+<tr>
+  <td style="width:110px;vertical-align:bottom;">
+    ' . $qrHtml . '
+    <div style="font-size:6pt;color:#555;text-align:center;margin-top:2px;">Verificar ante el SAT</div>
+  </td>
+  <td style="vertical-align:middle;text-align:center;font-size:7pt;color:#666;padding-left:10px;">
+    Este documento es una representación impresa de un CFDI de Recepción de Pagos (REP).<br/>
+    No es una factura de venta — confirma que el pago se aplicó a la factura arriba indicada.<br/>
+    Folio Fiscal (UUID): <b>' . htmlspecialchars($uuid) . '</b>
+  </td>
+</tr>
+</table>
+
+</body></html>';
+
         $mpdf = new \Mpdf\Mpdf([
             'margin_top'    => 5,
             'margin_right'  => 7,

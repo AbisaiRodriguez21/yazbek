@@ -534,12 +534,18 @@ var MAPA_SAT_FORMA_PAGO = {
 
 // Pre-llena "Forma de Pago" (datos fiscales) con el método que predomina en
 // monto entre los ya agregados arriba, para no tener que volver a elegirlo.
+// Si el método dominante es "Sin Pagar" (a crédito, id 7), también se pre-llena
+// Método de Pago = PPD: la nota se pagará en abonos (folios hijo) más adelante,
+// no en una sola exhibición — así es como el SAT espera una venta a crédito
+// que todavía no está liquidada.
 function actualizarFormaPagoDominante() {
     if (metodosPago.length === 0 || !$('#formaPagoCFDI').length) { return; }
 
     var totalesPorTipo = {};
+    var descPorTipo = {};
     metodosPago.forEach(function (m) {
         totalesPorTipo[m.tipo] = (totalesPorTipo[m.tipo] || 0) + m.monto;
+        descPorTipo[m.tipo] = m.desc;
     });
 
     var tipoDominante = null, montoMax = -1;
@@ -553,6 +559,11 @@ function actualizarFormaPagoDominante() {
     var codigoSat = MAPA_SAT_FORMA_PAGO[tipoDominante];
     if (codigoSat) {
         $('#formaPagoCFDI').val(codigoSat);
+    }
+
+    if ($('#metodoPagoCFDI').length) {
+        var esSinPagar = esMetodoSinPagar(descPorTipo[tipoDominante]);
+        $('#metodoPagoCFDI').val(esSinPagar ? 'PPD' : 'PUE');
     }
 }
 

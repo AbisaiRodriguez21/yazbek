@@ -157,6 +157,10 @@ class MostradorController extends BaseController
         if (! $this->puedeEditarFolio((int) ($nota['idVendedor'] ?? 0))) {
             return redirect()->to($this->consultaUrl())->with('error', 'No puedes editar un ticket que no creaste tú.');
         }
+        if ($this->notaYaFacturada($nota)) {
+            return redirect()->to($this->consultaUrl())
+                              ->with('error', 'Esta nota ya fue facturada; no se pueden editar sus productos.');
+        }
         if ($this->esNotaSinPagar($nota) && $this->tieneAbonosRegistrados($folio)) {
             return redirect()->to($this->consultaUrl())
                               ->with('error', 'Esta nota ya tiene abonos registrados; no se pueden editar sus productos.');
@@ -731,6 +735,14 @@ class MostradorController extends BaseController
         return !empty($this->notaModel->getPagosHijos($folioPadre));
     }
 
+    // Una nota ya facturada (tiene UUID fiscal) no debe modificarse: si se
+    // cambian sus productos después de timbrar el CFDI, el inventario y el
+    // ticket dejarían de coincidir con lo que ya se facturó ante el SAT.
+    private function notaYaFacturada(array $nota): bool
+    {
+        return trim((string) ($nota['uuid_fiscal'] ?? '')) !== '';
+    }
+
     // ──────────────────────────────────────────────────────────────
     // POST /mostrador/nota/agregarProducto  —  AJAX: Agrega un producto a la nota
     //
@@ -770,7 +782,7 @@ class MostradorController extends BaseController
 
         // Obtener nota y producto
         $nota = $db->query(
-            "SELECT Id_Notas_1, status, tipoPago FROM notas_1 WHERE folio = ? LIMIT 1", [$folio]
+            "SELECT Id_Notas_1, status, tipoPago, COALESCE(uuid_fiscal, '') AS uuid_fiscal FROM notas_1 WHERE folio = ? LIMIT 1", [$folio]
         )->getRowArray();
 
         if (!$nota) {
@@ -785,6 +797,13 @@ class MostradorController extends BaseController
         if (in_array((int) $nota['status'], [5, 6], true)) {
             return $this->response->setContentType('application/json')
                         ->setBody(json_encode(['success' => false, 'message' => 'Esta nota ya fue verificada/cerrada y no se puede editar.']));
+        }
+
+        // Ya facturada: cambiar los productos rompería la coincidencia entre
+        // el inventario/ticket y la factura ya timbrada ante el SAT.
+        if ($this->notaYaFacturada($nota)) {
+            return $this->response->setContentType('application/json')
+                        ->setBody(json_encode(['success' => false, 'message' => 'Esta nota ya fue facturada; no se pueden editar sus productos.']));
         }
 
         // "Sin Pagar" (crédito) con abonos ya registrados: no se permite tocar
@@ -893,10 +912,17 @@ class MostradorController extends BaseController
         // Nota: las notas nuevas se crean con status=3 (mismo valor que
         // "Cancelada") mientras se arman en Paso 1/2 — por eso NO se usa una
         // lista de permitidos, sino bloquear específicamente lo ya pagado.
-        $notaStatus = $db->query("SELECT status, tipoPago FROM notas_1 WHERE folio = ? LIMIT 1", [$folio])->getRowArray();
+        $notaStatus = $db->query("SELECT status, tipoPago, COALESCE(uuid_fiscal, '') AS uuid_fiscal FROM notas_1 WHERE folio = ? LIMIT 1", [$folio])->getRowArray();
         if ($notaStatus && in_array((int) $notaStatus['status'], [5, 6], true)) {
             return $this->response->setContentType('application/json')
                         ->setBody(json_encode(['success' => false, 'message' => 'Esta nota ya fue verificada/cerrada y no se puede editar.']));
+        }
+
+        // Ya facturada: cambiar los productos rompería la coincidencia entre
+        // el inventario/ticket y la factura ya timbrada ante el SAT.
+        if ($notaStatus && $this->notaYaFacturada($notaStatus)) {
+            return $this->response->setContentType('application/json')
+                        ->setBody(json_encode(['success' => false, 'message' => 'Esta nota ya fue facturada; no se pueden editar sus productos.']));
         }
 
         // "Sin Pagar" (crédito) con abonos ya registrados: no se permite tocar
@@ -1510,6 +1536,10 @@ class MostradorController extends BaseController
         if (! $nota) {
             return redirect()->to('/admin/consulta')->with('error', 'Folio no encontrado.');
         }
+        if ($this->notaYaFacturada($nota)) {
+            return redirect()->to('/admin/consulta')
+                              ->with('error', 'Esta nota ya fue facturada; no se pueden editar sus productos.');
+        }
         if ($this->esNotaSinPagar($nota) && $this->tieneAbonosRegistrados($folio)) {
             return redirect()->to('/admin/consulta')
                               ->with('error', 'Esta nota ya tiene abonos registrados; no se pueden editar sus productos.');
@@ -1542,6 +1572,10 @@ class MostradorController extends BaseController
         $nota = $this->notaModel->getPorFolio($folio);
         if (! $nota) {
             return redirect()->to('/caja/consulta')->with('error', 'Folio no encontrado.');
+        }
+        if ($this->notaYaFacturada($nota)) {
+            return redirect()->to('/caja/consulta')
+                              ->with('error', 'Esta nota ya fue facturada; no se pueden editar sus productos.');
         }
         if ($this->esNotaSinPagar($nota) && $this->tieneAbonosRegistrados($folio)) {
             return redirect()->to('/caja/consulta')

@@ -4,7 +4,7 @@ namespace Config;
 
 use CodeIgniter\Config\BaseConfig;
 use CodeIgniter\Session\Handlers\BaseHandler;
-use CodeIgniter\Session\Handlers\FileHandler;
+use CodeIgniter\Session\Handlers\DatabaseHandler;
 
 class Session extends BaseConfig
 {
@@ -20,9 +20,15 @@ class Session extends BaseConfig
      * - `CodeIgniter\Session\Handlers\MemcachedHandler`
      * - `CodeIgniter\Session\Handlers\RedisHandler`
      *
+     * Se usa DatabaseHandler (no FileHandler) porque bajo un servidor con
+     * varios hilos/procesos reales (Apache), dos peticiones casi
+     * simultáneas pueden chocar al escribir el mismo archivo de sesión
+     * ("touch(): ... No such file or directory" al regenerar el ID). La
+     * base de datos maneja esa concurrencia de forma segura.
+     *
      * @var class-string<BaseHandler>
      */
-    public string $driver = FileHandler::class;
+    public string $driver = DatabaseHandler::class;
 
     /**
      * --------------------------------------------------------------------------
@@ -58,21 +64,7 @@ class Session extends BaseConfig
      *
      * IMPORTANT: You are REQUIRED to set a valid save path!
      */
-    public string $savePath = WRITEPATH . 'session';
-
-    public function __construct()
-    {
-        parent::__construct();
-        // En Windows, WRITEPATH puede no tener permisos de escritura (ej. OneDrive).
-        // Si la carpeta no es escribible, usar el directorio temporal del sistema.
-        if (! is_writable($this->savePath)) {
-            $tempPath = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'ci4_sessions';
-            if (! is_dir($tempPath)) {
-                mkdir($tempPath, 0700, true);
-            }
-            $this->savePath = $tempPath;
-        }
-    }
+    public string $savePath = 'ci_sessions';
 
     /**
      * --------------------------------------------------------------------------

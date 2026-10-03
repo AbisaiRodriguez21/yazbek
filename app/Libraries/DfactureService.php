@@ -40,9 +40,12 @@ class DfactureService
 
     public function __construct()
     {
-        $this->usuario  = getenv('DFACTURE_USUARIO')  ?: '';
-        $this->password = getenv('DFACTURE_PASSWORD') ?: '';
-        $this->urlBase  = getenv('DFACTURE_URL')      ?: '';
+        // env() (no getenv()) — getenv()/putenv() no son fiables bajo un
+        // servidor con varios hilos reales (p. ej. Apache mpm_winnt): una
+        // petición puede no ver el valor que otro hilo acaba de poner.
+        $this->usuario  = env('DFACTURE_USUARIO')  ?: '';
+        $this->password = env('DFACTURE_PASSWORD') ?: '';
+        $this->urlBase  = env('DFACTURE_URL')      ?: '';
 
         if (!$this->usuario || !$this->password || !$this->urlBase) {
             throw new \RuntimeException('Credenciales DFacture no configuradas. Revisa DFACTURE_USUARIO, DFACTURE_PASSWORD y DFACTURE_URL en el .env');
@@ -191,6 +194,56 @@ class DfactureService
     }
 
     // ─────────────────────────────────────────────────────────────────────
+    // MÉTODO: Timbrar un REP (Complemento de Recepción de Pagos)
+    //
+    // Se usa para un folio HIJO (abono) de una nota "Sin Pagar" cuyo folio
+    // PADRE ya está facturado (Ingreso, 99/PPD). El REP no es una venta
+    // nueva: es un recibo fiscal que dice "recibí $X del UUID del padre",
+    // con el saldo antes/después. Se timbra por el MISMO método
+    // timbrarCFDI40 (confirmado con IDEA15 — no hay un método separado
+    // para Pagos, el servicio acepta cualquier tipo de comprobante válido).
+    //
+    // @param array $datosPago:
+    //   folioHijo, uuidPadre, seriePadre, folioPadre, montoPago (con IVA),
+    //   saldoAnterior, numParcialidad, formaDePagoP (clave SAT del abono),
+    //   rfcReceptor, razonSocialReceptor, cpReceptor, regimenFiscalReceptor
+    // ─────────────────────────────────────────────────────────────────────
+    public function timbrarREP(array $datosPago): array
+    {
+        try {
+            $this->cargarEmisorDesdeDB();
+
+            $xmlRaw = $this->construirCFDIPago($datosPago);
+            $xmlRaw = $this->sellarXML($xmlRaw);
+            $xmlB64 = base64_encode($xmlRaw);
+
+            $respuesta = $this->llamarServicio('timbrarCFDI40', [
+                'user'     => $this->usuario,
+                'password' => $this->password,
+                'xml'      => $xmlB64,
+            ]);
+
+            return $this->parsearRespuestaTimbrado($respuesta);
+
+        } catch (\Throwable $e) {
+            log_message('error', '[DfactureService] timbrarREP folioHijo=' . ($datosPago['folioHijo'] ?? '?') . ' → ' . $e->getMessage());
+            return [
+                'success' => false,
+                'uuid'    => '',
+                'xml'     => '',
+                'message' => $e->getMessage(),
+            ];
+        }
+    }
+
+    /** Devuelve el XML del REP sin timbrar (para vista previa / depuración) */
+    public function previsualizarXMLPago(array $datosPago): string
+    {
+        $this->cargarEmisorDesdeDB();
+        return $this->construirCFDIPago($datosPago);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
     // CONSTRUIR XML CFDI 4.0
     // ─────────────────────────────────────────────────────────────────────
 
@@ -310,6 +363,112 @@ class DfactureService
     $xml .= '</cfdi:Comprobante>';
 
     return $xml;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // CONSTRUIR XML REP (Complemento de Recepción de Pagos 2.0)
+    //
+    // A diferencia de construirCFDI() (venta con productos reales), este
+    // comprobante es tipo "P": SubTotal/Total en 0, un único Concepto
+    // genérico obligatorio por el esquema, y el detalle real va en el
+    // complemento pago20:Pagos — un único pago que referencia el UUID del
+    // folio padre ya facturado. Solo maneja IVA tasa 16% porque es el único
+    // que usa el sistema hasta ahora.
+    // ─────────────────────────────────────────────────────────────────────
+    private function construirCFDIPago(array $d): string
+    {
+        $fecha = date('Y-m-d\TH:i:s');
+
+        $rfcReceptor    = strtoupper(trim($d['rfcReceptor']           ?? ''));
+        $nombreReceptor = strtoupper(trim($d['razonSocialReceptor']   ?? ''));
+        $cpReceptor     = trim($d['cpReceptor']                       ?? $this->cpEmisor);
+        $regReceptor    = trim($d['regimenFiscalReceptor']            ?? '616');
+        $formaDePagoP   = trim($d['formaDePagoP']                     ?? '01');
+
+        $monto       = round((float)($d['montoPago'] ?? 0), 2);
+        $baseIva     = round($monto / 1.16, 2);
+        $ivaMonto    = round($monto - $baseIva, 2);
+
+        $saldoAnt      = round((float)($d['saldoAnterior'] ?? $monto), 2);
+        $saldoInsoluto = max(0.0, round($saldoAnt - $monto, 2));
+        $numParcialidad = max(1, (int)($d['numParcialidad'] ?? 1));
+
+        $montoF      = number_format($monto, 2, '.', '');
+        $baseIvaF    = number_format($baseIva, 2, '.', '');
+        $ivaMontoF   = number_format($ivaMonto, 2, '.', '');
+        $saldoAntF   = number_format($saldoAnt, 2, '.', '');
+        $saldoInsolF = number_format($saldoInsoluto, 2, '.', '');
+
+        $serieDoc  = trim((string)($d['seriePadre'] ?? $this->serie));
+        $serieAttr = $serieDoc !== '' ? ' Serie="' . htmlspecialchars($serieDoc, ENT_XML1 | ENT_QUOTES) . '"' : '';
+        $folioAttr = ' Folio="' . (int)($d['folioPadre'] ?? 0) . '"';
+
+        $xml = '<?xml version="1.0" encoding="UTF-8"?>' . "\n";
+
+        $xml .= '<cfdi:Comprobante' .
+            ' xmlns:cfdi="http://www.sat.gob.mx/cfd/4"' .
+            ' xmlns:pago20="http://www.sat.gob.mx/Pagos20"' .
+            ' xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"' .
+            ' xsi:schemaLocation="http://www.sat.gob.mx/cfd/4 http://www.sat.gob.mx/sitio_internet/cfd/4/cfdv40.xsd http://www.sat.gob.mx/Pagos20 http://www.sat.gob.mx/sitio_internet/cfd/Pagos/Pagos20.xsd"' .
+            ' Version="4.0"' .
+            ' Serie="' . htmlspecialchars($this->serie, ENT_XML1 | ENT_QUOTES) . '"' .
+            ' Folio="' . (int)($d['folioHijo'] ?? 0) . '"' .
+            ' Fecha="' . $fecha . '"' .
+            ' Sello=""' .
+            ' NoCertificado=""' .
+            ' Certificado=""' .
+            ' SubTotal="0"' .
+            ' Moneda="XXX"' .
+            ' Total="0"' .
+            ' TipoDeComprobante="P"' .
+            ' Exportacion="01"' .
+            ' LugarExpedicion="' . $this->cpEmisor . '">' . "\n";
+
+        $xml .= '    <cfdi:Emisor' .
+            ' Rfc="' . $this->rfcEmisor . '"' .
+            ' Nombre="' . htmlspecialchars($this->nombreEmisor, ENT_XML1 | ENT_QUOTES) . '"' .
+            ' RegimenFiscal="' . $this->regimenFiscal . '"/>' . "\n";
+
+        $xml .= '    <cfdi:Receptor' .
+            ' Rfc="' . $rfcReceptor . '"' .
+            ' Nombre="' . htmlspecialchars($nombreReceptor, ENT_XML1 | ENT_QUOTES) . '"' .
+            ' DomicilioFiscalReceptor="' . $cpReceptor . '"' .
+            ' RegimenFiscalReceptor="' . $regReceptor . '"' .
+            ' UsoCFDI="CP01"/>' . "\n";
+
+        // Concepto único obligatorio (ObjetoImp=01: no objeto de impuesto,
+        // por eso no lleva nodo cfdi:Impuestos hijo).
+        $xml .= '    <cfdi:Conceptos>' . "\n";
+        $xml .= '        <cfdi:Concepto ClaveProdServ="84111506" Cantidad="1" ClaveUnidad="ACT"'
+              . ' Descripcion="Pago" ValorUnitario="0" Importe="0" ObjetoImp="01"/>' . "\n";
+        $xml .= '    </cfdi:Conceptos>' . "\n";
+
+        $xml .= '    <cfdi:Complemento>' . "\n";
+        $xml .= '        <pago20:Pagos Version="2.0">' . "\n";
+        $xml .= '            <pago20:Totales TotalTrasladosBaseIVA16="' . $baseIvaF . '"'
+              . ' TotalTrasladosImpuestoIVA16="' . $ivaMontoF . '" MontoTotalPagos="' . $montoF . '"/>' . "\n";
+        $xml .= '            <pago20:Pago FechaPago="' . $fecha . '" FormaDePagoP="' . $formaDePagoP . '"'
+              . ' MonedaP="MXN" TipoCambioP="1" Monto="' . $montoF . '">' . "\n";
+        $xml .= '                <pago20:DoctoRelacionado IdDocumento="' . htmlspecialchars((string)($d['uuidPadre'] ?? ''), ENT_XML1 | ENT_QUOTES) . '"'
+              . $serieAttr . $folioAttr
+              . ' MonedaDR="MXN" EquivalenciaDR="1" NumParcialidad="' . $numParcialidad . '"'
+              . ' ImpSaldoAnt="' . $saldoAntF . '" ImpPagado="' . $montoF . '" ImpSaldoInsoluto="' . $saldoInsolF . '"'
+              . ' ObjetoImpDR="02">' . "\n";
+        $xml .= '                    <pago20:ImpuestosDR><pago20:TrasladosDR>'
+              . '<pago20:TrasladoDR BaseDR="' . $baseIvaF . '" ImpuestoDR="002" TipoFactorDR="Tasa"'
+              . ' TasaOCuotaDR="0.160000" ImporteDR="' . $ivaMontoF . '"/>'
+              . '</pago20:TrasladosDR></pago20:ImpuestosDR>' . "\n";
+        $xml .= '                </pago20:DoctoRelacionado>' . "\n";
+        $xml .= '                <pago20:ImpuestosP><pago20:TrasladosP>'
+              . '<pago20:TrasladoP BaseP="' . $baseIvaF . '" ImpuestoP="002" TipoFactorP="Tasa"'
+              . ' TasaOCuotaP="0.160000" ImporteP="' . $ivaMontoF . '"/>'
+              . '</pago20:TrasladosP></pago20:ImpuestosP>' . "\n";
+        $xml .= '            </pago20:Pago>' . "\n";
+        $xml .= '        </pago20:Pagos>' . "\n";
+        $xml .= '    </cfdi:Complemento>' . "\n";
+        $xml .= '</cfdi:Comprobante>';
+
+        return $xml;
     }
 
     // ─────────────────────────────────────────────────────────────────────
@@ -747,7 +906,7 @@ class DfactureService
         if ($stored === '') {
             throw new \RuntimeException('Contraseña CSD no configurada. Configúrala en Admin → Configuración CFDI.');
         }
-        $encKey      = hex2bin(getenv('CSD_ENCRYPT_KEY'));
+        $encKey      = hex2bin(env('CSD_ENCRYPT_KEY') ?? '');
         $decoded     = base64_decode($stored);
         $iv          = substr($decoded, 0, 16);
         $cifrado     = substr($decoded, 16);
@@ -802,10 +961,13 @@ class DfactureService
         // NOTA: IDEA15 usa un orden diferente al XSLT oficial del SAT en la sección
         // global de Impuestos (pone TotalImpuestosTrasladados DESPUÉS de los traslados).
         // Por eso usamos SIEMPRE el método manual, que ya está ajustado al orden de IDEA15.
+        $esPago = str_contains($xmlString, 'TipoDeComprobante="P"');
         $cadenaXslt   = null; // No usar XSLT — orden incompatible con IDEA15
-        $cadenaManual = $this->generarCadenaOriginal($xmlString);
+        $cadenaManual = $esPago
+            ? $this->generarCadenaOriginalPago($xmlString)
+            : $this->generarCadenaOriginal($xmlString);
         $cadenaOriginal = $cadenaManual;
-        $metodo = 'MANUAL (ajustado al orden de IDEA15)';
+        $metodo = 'MANUAL (ajustado al orden de IDEA15)' . ($esPago ? ' — REP/Pago 2.0' : '');
 
         // ── DEBUG ────────────────────────────────────────────────────────
         $debugPath   = WRITEPATH . 'cfdi_debug.txt';
@@ -851,8 +1013,11 @@ class DfactureService
         // Esto confirma que cuando IDEA15 reciba el XML, el XSLT que aplique
         // sobre él generará la misma cadena que firmamos. Es la verificación
         // definitiva contra el error CFDI40102.
-        $cadenaXmlFinal = $this->generarCadenaOriginalXSLT($xmlFinal);
-        $coincideXmlFinal = ($cadenaXmlFinal !== null && $cadenaXmlFinal === $cadenaOriginal);
+        // Se omite para REP/Pago: el XSLT local (cadenaoriginal_4_0.xslt) solo
+        // conoce el Comprobante base, no el complemento pago20 — compararlo
+        // aquí daría un falso "NO coincide" sin significar nada.
+        $cadenaXmlFinal = $esPago ? null : $this->generarCadenaOriginalXSLT($xmlFinal);
+        $coincideXmlFinal = $esPago ? true : ($cadenaXmlFinal !== null && $cadenaXmlFinal === $cadenaOriginal);
 
         file_put_contents(WRITEPATH . 'cfdi_debug.txt',
             file_get_contents(WRITEPATH . 'cfdi_debug.txt') .
@@ -1105,6 +1270,208 @@ class DfactureService
         }
 
         return '||' . implode('|', $campos) . '||';
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // CADENA ORIGINAL — REP (Complemento de Recepción de Pagos 2.0)
+    //
+    // Igual estructura base que generarCadenaOriginal() para el Comprobante
+    // (Version..LugarExpedicion, Emisor, Receptor, Conceptos — sin nodo
+    // Impuestos porque SubTotal/Total son 0), pero agrega el complemento
+    // pago20:Pagos siguiendo EXACTAMENTE el orden del XSLT oficial del SAT
+    // (http://www.sat.gob.mx/sitio_internet/cfd/Pagos/Pagos20.xslt),
+    // descargado y verificado campo por campo el 2026-09-28.
+    // ─────────────────────────────────────────────────────────────────────
+    private function generarCadenaOriginalPago(string $xmlString): string
+    {
+        $dom = new \DOMDocument();
+        $dom->loadXML($xmlString);
+        $comp   = $dom->documentElement;
+        $campos = [];
+
+        // ── Comprobante (mismos campos base que un CFDI normal) ──────────
+        $campos[] = $comp->getAttribute('Version');
+        $this->co($campos, $comp, 'Serie');
+        $this->co($campos, $comp, 'Folio');
+        $campos[] = $comp->getAttribute('Fecha');
+        $this->co($campos, $comp, 'FormaPago');       // ausente en Pago → se omite
+        $campos[] = $comp->getAttribute('NoCertificado');
+        $this->co($campos, $comp, 'CondicionesDePago');
+        $campos[] = $comp->getAttribute('SubTotal');
+        $this->co($campos, $comp, 'Descuento');
+        $campos[] = $comp->getAttribute('Moneda');
+        $this->co($campos, $comp, 'TipoCambio');
+        $campos[] = $comp->getAttribute('Total');
+        $campos[] = $comp->getAttribute('TipoDeComprobante');
+        $campos[] = $comp->getAttribute('Exportacion');
+        $this->co($campos, $comp, 'MetodoPago');      // ausente en Pago → se omite
+        $campos[] = $comp->getAttribute('LugarExpedicion');
+        $this->co($campos, $comp, 'Confirmacion');
+
+        foreach ($comp->childNodes as $child) {
+            if ($child->nodeType !== XML_ELEMENT_NODE) {
+                continue;
+            }
+
+            switch ($child->localName) {
+                case 'Emisor':
+                    $campos[] = $child->getAttribute('Rfc');
+                    $this->co($campos, $child, 'Nombre');
+                    $campos[] = $child->getAttribute('RegimenFiscal');
+                    $this->co($campos, $child, 'FacAtrAdquirente');
+                    break;
+
+                case 'Receptor':
+                    $campos[] = $child->getAttribute('Rfc');
+                    $this->co($campos, $child, 'Nombre');
+                    $this->co($campos, $child, 'DomicilioFiscalReceptor');
+                    $this->co($campos, $child, 'ResidenciaFiscal');
+                    $this->co($campos, $child, 'NumRegIdTrib');
+                    $this->co($campos, $child, 'RegimenFiscalReceptor');
+                    $campos[] = $child->getAttribute('UsoCFDI');
+                    break;
+
+                case 'Conceptos':
+                    foreach ($child->childNodes as $concepto) {
+                        if ($concepto->nodeType !== XML_ELEMENT_NODE || $concepto->localName !== 'Concepto') {
+                            continue;
+                        }
+                        $campos[] = $concepto->getAttribute('ClaveProdServ');
+                        $this->co($campos, $concepto, 'NoIdentificacion');
+                        $campos[] = $concepto->getAttribute('Cantidad');
+                        $campos[] = $concepto->getAttribute('ClaveUnidad');
+                        $this->co($campos, $concepto, 'Unidad');
+                        $campos[] = $concepto->getAttribute('Descripcion');
+                        $campos[] = $concepto->getAttribute('ValorUnitario');
+                        $campos[] = $concepto->getAttribute('Importe');
+                        $this->co($campos, $concepto, 'Descuento');
+                        $campos[] = $concepto->getAttribute('ObjetoImp');
+                        // Sin nodo Impuestos hijo (ObjetoImp=01 → no aplica)
+                    }
+                    break;
+
+                case 'Complemento':
+                    foreach ($child->childNodes as $comp2) {
+                        if ($comp2->nodeType === XML_ELEMENT_NODE && $comp2->localName === 'Pagos') {
+                            $this->camposPagos($campos, $comp2);
+                        }
+                    }
+                    break;
+            }
+        }
+
+        return '||' . implode('|', $campos) . '||';
+    }
+
+    /** pago20:Pagos — orden exacto del XSLT oficial del SAT (Pagos20.xslt) */
+    private function camposPagos(array &$campos, \DOMElement $pagos): void
+    {
+        $campos[] = $pagos->getAttribute('Version');
+
+        foreach ($pagos->childNodes as $totales) {
+            if ($totales->nodeType === XML_ELEMENT_NODE && $totales->localName === 'Totales') {
+                $this->co($campos, $totales, 'TotalRetencionesIVA');
+                $this->co($campos, $totales, 'TotalRetencionesISR');
+                $this->co($campos, $totales, 'TotalRetencionesIEPS');
+                $this->co($campos, $totales, 'TotalTrasladosBaseIVA16');
+                $this->co($campos, $totales, 'TotalTrasladosImpuestoIVA16');
+                $this->co($campos, $totales, 'TotalTrasladosBaseIVA8');
+                $this->co($campos, $totales, 'TotalTrasladosImpuestoIVA8');
+                $this->co($campos, $totales, 'TotalTrasladosBaseIVA0');
+                $this->co($campos, $totales, 'TotalTrasladosImpuestoIVA0');
+                $this->co($campos, $totales, 'TotalTrasladosBaseIVAExento');
+                $campos[] = $totales->getAttribute('MontoTotalPagos');
+            }
+        }
+
+        foreach ($pagos->childNodes as $pago) {
+            if ($pago->nodeType !== XML_ELEMENT_NODE || $pago->localName !== 'Pago') {
+                continue;
+            }
+            $campos[] = $pago->getAttribute('FechaPago');
+            $campos[] = $pago->getAttribute('FormaDePagoP');
+            $campos[] = $pago->getAttribute('MonedaP');
+            $this->co($campos, $pago, 'TipoCambioP');
+            $campos[] = $pago->getAttribute('Monto');
+            $this->co($campos, $pago, 'NumOperacion');
+            $this->co($campos, $pago, 'RfcEmisorCtaOrd');
+            $this->co($campos, $pago, 'NomBancoOrdExt');
+            $this->co($campos, $pago, 'CtaOrdenante');
+            $this->co($campos, $pago, 'RfcEmisorCtaBen');
+            $this->co($campos, $pago, 'CtaBeneficiario');
+            $this->co($campos, $pago, 'TipoCadPago');
+            $this->co($campos, $pago, 'CertPago');
+            $this->co($campos, $pago, 'CadPago');
+            $this->co($campos, $pago, 'SelloPago');
+
+            foreach ($pago->childNodes as $docto) {
+                if ($docto->nodeType === XML_ELEMENT_NODE && $docto->localName === 'DoctoRelacionado') {
+                    $campos[] = $docto->getAttribute('IdDocumento');
+                    $this->co($campos, $docto, 'Serie');
+                    $this->co($campos, $docto, 'Folio');
+                    $campos[] = $docto->getAttribute('MonedaDR');
+                    $this->co($campos, $docto, 'EquivalenciaDR');
+                    $campos[] = $docto->getAttribute('NumParcialidad');
+                    $campos[] = $docto->getAttribute('ImpSaldoAnt');
+                    $campos[] = $docto->getAttribute('ImpPagado');
+                    $campos[] = $docto->getAttribute('ImpSaldoInsoluto');
+                    $campos[] = $docto->getAttribute('ObjetoImpDR');
+
+                    // ImpuestosDR → RetencionesDR → RetencionDR (todos requeridos)
+                    foreach ($docto->childNodes as $impDR) {
+                        if ($impDR->nodeType !== XML_ELEMENT_NODE || $impDR->localName !== 'ImpuestosDR') continue;
+                        foreach ($impDR->childNodes as $retsDR) {
+                            if ($retsDR->nodeType !== XML_ELEMENT_NODE || $retsDR->localName !== 'RetencionesDR') continue;
+                            foreach ($retsDR->childNodes as $retDR) {
+                                if ($retDR->nodeType !== XML_ELEMENT_NODE || $retDR->localName !== 'RetencionDR') continue;
+                                $campos[] = $retDR->getAttribute('BaseDR');
+                                $campos[] = $retDR->getAttribute('ImpuestoDR');
+                                $campos[] = $retDR->getAttribute('TipoFactorDR');
+                                $campos[] = $retDR->getAttribute('TasaOCuotaDR');
+                                $campos[] = $retDR->getAttribute('ImporteDR');
+                            }
+                        }
+                        // ImpuestosDR → TrasladosDR → TrasladoDR
+                        foreach ($impDR->childNodes as $trasDR) {
+                            if ($trasDR->nodeType !== XML_ELEMENT_NODE || $trasDR->localName !== 'TrasladosDR') continue;
+                            foreach ($trasDR->childNodes as $tDR) {
+                                if ($tDR->nodeType !== XML_ELEMENT_NODE || $tDR->localName !== 'TrasladoDR') continue;
+                                $campos[] = $tDR->getAttribute('BaseDR');
+                                $campos[] = $tDR->getAttribute('ImpuestoDR');
+                                $campos[] = $tDR->getAttribute('TipoFactorDR');
+                                $this->co($campos, $tDR, 'TasaOCuotaDR');
+                                $this->co($campos, $tDR, 'ImporteDR');
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ImpuestosP → RetencionesP → RetencionP
+            foreach ($pago->childNodes as $impP) {
+                if ($impP->nodeType !== XML_ELEMENT_NODE || $impP->localName !== 'ImpuestosP') continue;
+                foreach ($impP->childNodes as $retsP) {
+                    if ($retsP->nodeType !== XML_ELEMENT_NODE || $retsP->localName !== 'RetencionesP') continue;
+                    foreach ($retsP->childNodes as $retP) {
+                        if ($retP->nodeType !== XML_ELEMENT_NODE || $retP->localName !== 'RetencionP') continue;
+                        $campos[] = $retP->getAttribute('ImpuestoP');
+                        $campos[] = $retP->getAttribute('ImporteP');
+                    }
+                }
+                // ImpuestosP → TrasladosP → TrasladoP
+                foreach ($impP->childNodes as $trasP) {
+                    if ($trasP->nodeType !== XML_ELEMENT_NODE || $trasP->localName !== 'TrasladosP') continue;
+                    foreach ($trasP->childNodes as $tP) {
+                        if ($tP->nodeType !== XML_ELEMENT_NODE || $tP->localName !== 'TrasladoP') continue;
+                        $campos[] = $tP->getAttribute('BaseP');
+                        $campos[] = $tP->getAttribute('ImpuestoP');
+                        $campos[] = $tP->getAttribute('TipoFactorP');
+                        $this->co($campos, $tP, 'TasaOCuotaP');
+                        $this->co($campos, $tP, 'ImporteP');
+                    }
+                }
+            }
+        }
     }
 
     /**

@@ -1,0 +1,1044 @@
+PHP Warning:  Module "mysqli" is already loaded in Unknown on line 0
+PHP Warning:  Module "openssl" is already loaded in Unknown on line 0
+
+Warning: Module "mysqli" is already loaded in Unknown on line 0
+
+Warning: Module "openssl" is already loaded in Unknown on line 0
+
+CodeIgniter v4.7.2 Command Line Tool - Server Time: 2026-09-28 21:55:41 UTC-06:00
+
+CodeIgniter development server started on http://localhost:8088
+Press Control-C to stop.
+[Mon Sep 28 21:55:45 2026] PHP Warning:  Module "mysqli" is already loaded in Unknown on line 0
+[Mon Sep 28 21:55:45 2026] PHP Warning:  Module "openssl" is already loaded in Unknown on line 0
+[Mon Sep 28 21:55:45 2026] PHP 8.2.12 Development Server (http://localhost:8088) started
+[Mon Sep 28 21:55:58 2026] [::1]:63162 Accepted
+[Mon Sep 28 21:56:00 2026] [::1]:63162 Closing
+[Mon Sep 28 21:56:01 2026] [::1]:63164 Accepted
+[Mon Sep 28 21:56:02 2026] [::1]:63164 Closing
+[Mon Sep 28 21:56:03 2026] [::1]:63166 Accepted
+[Mon Sep 28 21:56:04 2026] [::1]:63166 Closing
+[Mon Sep 28 21:56:36 2026] [::1]:60699 Accepted
+[Mon Sep 28 21:56:36 2026] [::1]:60699 Closing
+[Mon Sep 28 21:57:13 2026] [::1]:59333 Accepted
+[Mon Sep 28 21:57:14 2026] [::1]:59333 Closing
+[Mon Sep 28 21:57:14 2026] [::1]:62934 Accepted
+[Mon Sep 28 21:57:15 2026] [::1]:62934 Closing
+[Mon Sep 28 21:57:16 2026] [::1]:58174 Accepted
+[Mon Sep 28 21:57:16 2026] [::1]:61169 Accepted
+[Mon Sep 28 21:57:16 2026] [::1]:58967 Accepted
+[Mon Sep 28 21:57:16 2026] [::1]:57638 Accepted
+[Mon Sep 28 21:57:16 2026] [::1]:58174 [200]: GET /assets/vendor/bootstrap.min.css
+[Mon Sep 28 21:57:16 2026] [::1]:58174 Closing
+[Mon Sep 28 21:57:16 2026] [::1]:61169 [200]: GET /assets/vendor/bootstrap.rtl.only.min.css
+[Mon Sep 28 21:57:17 2026] [::1]:58967 Closing
+[Mon Sep 28 21:57:17 2026] [::1]:57638 [200]: GET /assets/main.css
+[Mon Sep 28 21:57:17 2026] [::1]:61169 Closing
+[Mon Sep 28 21:57:17 2026] [::1]:57638 Closing
+[Mon Sep 28 21:57:17 2026] [::1]:57916 Accepted
+[Mon Sep 28 21:57:17 2026] [::1]:57916 [200]: GET /assets/dore.light.bluenavy.min.css
+[Mon Sep 28 21:57:17 2026] [::1]:57916 Closing
+[Mon Sep 28 21:57:17 2026] [::1]:50060 Accepted
+[Mon Sep 28 21:57:17 2026] [::1]:50060 [200]: GET /assets/font/iconsmind-s/css/iconsminds.css
+[Mon Sep 28 21:57:17 2026] [::1]:50060 Closing
+[Mon Sep 28 21:57:17 2026] [::1]:50614 Accepted
+[Mon Sep 28 21:57:17 2026] [::1]:50614 [200]: GET /assets/font/simple-line-icons/css/simple-line-icons.css
+[Mon Sep 28 21:57:17 2026] [::1]:50614 Closing
+[Mon Sep 28 21:57:17 2026] [::1]:62762 Accepted
+[Mon Sep 28 21:57:17 2026] [::1]:62762 [200]: GET /assets/vendor/component-custom-switch.min.css
+[Mon Sep 28 21:57:17 2026] [::1]:62762 Closing
+[Mon Sep 28 21:57:17 2026] [::1]:53697 Accepted
+[Mon Sep 28 21:57:17 2026] [::1]:53697 [200]: GET /assets/vendor/perfect-scrollbar.css
+[Mon Sep 28 21:57:17 2026] [::1]:53697 Closing
+[Mon Sep 28 21:57:17 2026] [::1]:52767 Accepted
+[Mon Sep 28 21:57:17 2026] [::1]:52767 [200]: GET /assets/vendor/dataTables.bootstrap4.min.css
+[Mon Sep 28 21:57:17 2026] [::1]:52767 Closing
+[Mon Sep 28 21:57:17 2026] [::1]:49327 Accepted
+[Mon Sep 28 21:57:17 2026] [::1]:49327 [200]: GET /assets/vendor/datatables.responsive.bootstrap4.min.css
+[Mon Sep 28 21:57:17 2026] [::1]:49327 Closing
+[Mon Sep 28 21:57:17 2026] [::1]:56373 Accepted
+[Mon Sep 28 21:57:17 2026] [::1]:49469 Accepted
+[Mon Sep 28 21:57:17 2026] [::1]:56373 [200]: GET /assets/vendor/select2.min.css
+[Mon Sep 28 21:57:17 2026] [::1]:49469 [200]: GET /assets/vendor/select2-bootstrap.min.css
+[Mon Sep 28 21:57:17 2026] [::1]:56373 Closing
+[Mon Sep 28 21:57:17 2026] [::1]:49469 Closing
+[Mon Sep 28 21:57:17 2026] [::1]:55874 Accepted
+[Mon Sep 28 21:57:17 2026] [::1]:55874 [200]: GET /assets/vendor/bootstrap-float-label.min.css
+[Mon Sep 28 21:57:17 2026] [::1]:55874 Closing
+[Mon Sep 28 21:57:17 2026] [::1]:52678 Accepted
+[Mon Sep 28 21:57:17 2026] [::1]:57713 Accepted
+[Mon Sep 28 21:57:17 2026] [::1]:52678 [200]: GET /assets/vendor/bootstrap-datepicker3.min.css
+[Mon Sep 28 21:57:17 2026] [::1]:57713 [200]: GET /assets/vendor/glide.core.min.css
+[Mon Sep 28 21:57:17 2026] [::1]:52678 Closing
+[Mon Sep 28 21:57:17 2026] [::1]:57713 Closing
+[Mon Sep 28 21:57:17 2026] [::1]:54879 Accepted
+[Mon Sep 28 21:57:17 2026] [::1]:54879 [200]: GET /assets/vendor/nouislider.min.css
+[Mon Sep 28 21:57:17 2026] [::1]:54879 Closing
+[Mon Sep 28 21:57:17 2026] [::1]:60360 Accepted
+[Mon Sep 28 21:57:17 2026] [::1]:54931 Accepted
+[Mon Sep 28 21:57:17 2026] [::1]:52811 Accepted
+[Mon Sep 28 21:57:17 2026] [::1]:60360 [200]: GET /assets/js/vendor/jquery-3.3.1.min.js
+[Mon Sep 28 21:57:17 2026] [::1]:54931 [200]: GET /assets/img/profiles/l-1.jpg
+[Mon Sep 28 21:57:17 2026] [::1]:52811 [200]: GET /assets/logos/logo_yazbek_01.png
+[Mon Sep 28 21:57:17 2026] [::1]:60360 Closing
+[Mon Sep 28 21:57:17 2026] [::1]:54931 Closing
+[Mon Sep 28 21:57:17 2026] [::1]:52811 Closing
+[Mon Sep 28 21:57:17 2026] [::1]:50821 Accepted
+[Mon Sep 28 21:57:17 2026] [::1]:54288 Accepted
+[Mon Sep 28 21:57:17 2026] [::1]:50821 [200]: GET /assets/js/vendor/bootstrap.bundle.min.js
+[Mon Sep 28 21:57:17 2026] [::1]:54288 [200]: GET /assets/js/vendor/perfect-scrollbar.min.js
+[Mon Sep 28 21:57:17 2026] [::1]:50821 Closing
+[Mon Sep 28 21:57:17 2026] [::1]:54288 Closing
+[Mon Sep 28 21:57:17 2026] [::1]:65064 Accepted
+[Mon Sep 28 21:57:17 2026] [::1]:65064 [200]: GET /assets/js/vendor/mousetrap.min.js
+[Mon Sep 28 21:57:17 2026] [::1]:65064 Closing
+[Mon Sep 28 21:57:17 2026] [::1]:50911 Accepted
+[Mon Sep 28 21:57:17 2026] [::1]:61777 Accepted
+[Mon Sep 28 21:57:17 2026] [::1]:50911 [200]: GET /assets/js/vendor/datatables.min.js
+[Mon Sep 28 21:57:17 2026] [::1]:61777 [200]: GET /assets/js/dore.script.js
+[Mon Sep 28 21:57:17 2026] [::1]:50911 Closing
+[Mon Sep 28 21:57:17 2026] [::1]:61777 Closing
+[Mon Sep 28 21:57:17 2026] [::1]:62866 Accepted
+[Mon Sep 28 21:57:17 2026] [::1]:62866 [200]: GET /assets/js/scripts.js
+[Mon Sep 28 21:57:17 2026] [::1]:62866 Closing
+[Mon Sep 28 21:57:17 2026] [::1]:60250 Accepted
+[Mon Sep 28 21:57:17 2026] [::1]:60250 [200]: GET /assets/js/vendor/select2.full.js
+[Mon Sep 28 21:57:17 2026] [::1]:60250 Closing
+[Mon Sep 28 21:57:17 2026] [::1]:52092 Accepted
+[Mon Sep 28 21:57:17 2026] [::1]:52092 [200]: GET /logos/black.svg
+[Mon Sep 28 21:57:17 2026] [::1]:52092 Closing
+[Mon Sep 28 21:57:17 2026] [::1]:51712 Accepted
+[Mon Sep 28 21:57:17 2026] [::1]:62232 Accepted
+[Mon Sep 28 21:57:17 2026] [::1]:64541 Accepted
+[Mon Sep 28 21:57:17 2026] [::1]:51712 [200]: GET /assets/font/simple-line-icons/fonts/Simple-Line-Icons.woff2?v=2.4.0
+[Mon Sep 28 21:57:17 2026] [::1]:62232 [200]: GET /assets/font/iconsmind-s/font/iconsminds.woff2?42207379
+[Mon Sep 28 21:57:18 2026] [::1]:64541 Closing
+[Mon Sep 28 21:57:18 2026] [::1]:57575 Accepted
+[Mon Sep 28 21:57:18 2026] [::1]:51712 Closing
+[Mon Sep 28 21:57:18 2026] [::1]:50230 Accepted
+[Mon Sep 28 21:57:18 2026] [::1]:57575 Closing
+[Mon Sep 28 21:57:18 2026] [::1]:51125 Accepted
+[Mon Sep 28 21:57:19 2026] [::1]:50230 [200]: GET /assets/js/vendor/datatables.spanish.json
+[Mon Sep 28 21:57:19 2026] [::1]:62232 Closing
+[Mon Sep 28 21:57:19 2026] [::1]:51125 Closing
+[Mon Sep 28 21:57:19 2026] [::1]:51506 Accepted
+[Mon Sep 28 21:57:19 2026] [::1]:51506 [200]: GET /favicon.ico
+[Mon Sep 28 21:57:19 2026] [::1]:50230 Closing
+[Mon Sep 28 21:57:19 2026] [::1]:51506 Closing
+[Mon Sep 28 21:57:20 2026] [::1]:50633 Accepted
+[Mon Sep 28 21:57:20 2026] [::1]:50633 Closing
+[Mon Sep 28 21:57:21 2026] [::1]:49699 Accepted
+[Mon Sep 28 21:57:23 2026] [::1]:49699 Closing
+[Mon Sep 28 21:57:23 2026] [::1]:54166 Accepted
+[Mon Sep 28 21:57:24 2026] [::1]:54166 Closing
+[Mon Sep 28 21:57:24 2026] [::1]:50068 Accepted
+[Mon Sep 28 21:57:24 2026] [::1]:50068 Closing
+[Mon Sep 28 21:57:24 2026] [::1]:49406 Accepted
+[Mon Sep 28 21:57:25 2026] [::1]:49406 Closing
+[Mon Sep 28 21:57:25 2026] [::1]:56652 Accepted
+[Mon Sep 28 21:57:25 2026] [::1]:56652 Closing
+[Mon Sep 28 21:57:25 2026] [::1]:58201 Accepted
+[Mon Sep 28 21:57:26 2026] [::1]:58201 Closing
+[Mon Sep 28 21:57:26 2026] [::1]:61432 Accepted
+[Mon Sep 28 21:57:27 2026] [::1]:61432 Closing
+[Mon Sep 28 21:57:27 2026] [::1]:64997 Accepted
+[Mon Sep 28 21:57:27 2026] [::1]:64997 Closing
+[Mon Sep 28 21:57:29 2026] [::1]:64272 Accepted
+[Mon Sep 28 21:57:29 2026] [::1]:64272 Closing
+[Mon Sep 28 21:57:29 2026] [::1]:59924 Accepted
+[Mon Sep 28 21:57:29 2026] [::1]:59924 Closing
+[Mon Sep 28 21:57:30 2026] [::1]:61962 Accepted
+[Mon Sep 28 21:57:30 2026] [::1]:61962 Closing
+[Mon Sep 28 21:57:30 2026] [::1]:50545 Accepted
+[Mon Sep 28 21:57:31 2026] [::1]:50545 Closing
+[Mon Sep 28 21:57:31 2026] [::1]:59192 Accepted
+[Mon Sep 28 21:57:31 2026] [::1]:59192 Closing
+[Mon Sep 28 21:57:32 2026] [::1]:62904 Accepted
+[Mon Sep 28 21:57:32 2026] [::1]:62904 Closing
+[Mon Sep 28 21:57:32 2026] [::1]:54687 Accepted
+[Mon Sep 28 21:57:33 2026] [::1]:54687 Closing
+[Mon Sep 28 21:57:34 2026] [::1]:50496 Accepted
+[Mon Sep 28 21:57:34 2026] [::1]:50496 Closing
+[Mon Sep 28 21:57:34 2026] [::1]:49736 Accepted
+[Mon Sep 28 21:57:35 2026] [::1]:49736 Closing
+[Mon Sep 28 21:57:36 2026] [::1]:52536 Accepted
+[Mon Sep 28 21:57:38 2026] [::1]:52536 Closing
+[Mon Sep 28 21:57:38 2026] [::1]:57197 Accepted
+[Mon Sep 28 21:57:39 2026] [::1]:57197 Closing
+[Mon Sep 28 21:57:39 2026] [::1]:61062 Accepted
+[Mon Sep 28 21:57:41 2026] [::1]:61062 Closing
+[Mon Sep 28 21:57:41 2026] [::1]:51032 Accepted
+[Mon Sep 28 21:57:42 2026] [::1]:51032 Closing
+[Mon Sep 28 21:57:42 2026] [::1]:50463 Accepted
+[Mon Sep 28 21:57:43 2026] [::1]:50463 Closing
+[Mon Sep 28 21:57:43 2026] [::1]:57330 Accepted
+[Mon Sep 28 21:57:44 2026] [::1]:57330 Closing
+[Mon Sep 28 21:57:44 2026] [::1]:62455 Accepted
+[Mon Sep 28 21:57:45 2026] [::1]:62455 Closing
+[Mon Sep 28 21:57:47 2026] [::1]:56486 Accepted
+[Mon Sep 28 21:57:47 2026] [::1]:56486 Closing
+[Mon Sep 28 21:57:49 2026] [::1]:61045 Accepted
+[Mon Sep 28 21:57:49 2026] [::1]:61045 Closing
+[Mon Sep 28 21:57:51 2026] [::1]:56146 Accepted
+[Mon Sep 28 21:57:51 2026] [::1]:56146 Closing
+[Mon Sep 28 21:57:53 2026] [::1]:54475 Accepted
+[Mon Sep 28 21:57:54 2026] [::1]:54475 Closing
+[Mon Sep 28 21:57:54 2026] [::1]:59670 Accepted
+[Mon Sep 28 21:57:54 2026] [::1]:59670 Closing
+[Mon Sep 28 21:57:54 2026] [::1]:52030 Accepted
+[Mon Sep 28 21:57:56 2026] [::1]:52030 Closing
+[Mon Sep 28 21:57:56 2026] [::1]:49847 Accepted
+[Mon Sep 28 21:57:57 2026] [::1]:49847 Closing
+[Mon Sep 28 21:57:57 2026] [::1]:58734 Accepted
+[Mon Sep 28 21:57:57 2026] [::1]:61968 Accepted
+[Mon Sep 28 21:57:57 2026] [::1]:58734 Closing
+[Mon Sep 28 21:57:57 2026] [::1]:49513 Accepted
+[Mon Sep 28 21:57:57 2026] [::1]:61968 [200]: GET /assets/vendor/bootstrap.min.css
+[Mon Sep 28 21:57:57 2026] [::1]:54886 Accepted
+[Mon Sep 28 21:57:57 2026] [::1]:49513 [200]: GET /assets/vendor/bootstrap.rtl.only.min.css
+[Mon Sep 28 21:57:57 2026] [::1]:54886 [200]: GET /assets/main.css
+[Mon Sep 28 21:57:57 2026] [::1]:61968 Closing
+[Mon Sep 28 21:57:57 2026] [::1]:49513 Closing
+[Mon Sep 28 21:57:57 2026] [::1]:54886 Closing
+[Mon Sep 28 21:57:57 2026] [::1]:62873 Accepted
+[Mon Sep 28 21:57:57 2026] [::1]:62873 [200]: GET /assets/dore.light.bluenavy.min.css
+[Mon Sep 28 21:57:57 2026] [::1]:65504 Accepted
+[Mon Sep 28 21:57:57 2026] [::1]:65504 [200]: GET /assets/font/iconsmind-s/css/iconsminds.css
+[Mon Sep 28 21:57:57 2026] [::1]:62873 Closing
+[Mon Sep 28 21:57:57 2026] [::1]:54482 Accepted
+[Mon Sep 28 21:57:57 2026] [::1]:54482 [200]: GET /assets/font/simple-line-icons/css/simple-line-icons.css
+[Mon Sep 28 21:57:57 2026] [::1]:65504 Closing
+[Mon Sep 28 21:57:57 2026] [::1]:54482 Closing
+[Mon Sep 28 21:57:57 2026] [::1]:53719 Accepted
+[Mon Sep 28 21:57:57 2026] [::1]:53719 [200]: GET /assets/vendor/component-custom-switch.min.css
+[Mon Sep 28 21:57:57 2026] [::1]:53719 Closing
+[Mon Sep 28 21:57:57 2026] [::1]:57854 Accepted
+[Mon Sep 28 21:57:57 2026] [::1]:54822 Accepted
+[Mon Sep 28 21:57:57 2026] [::1]:57854 [200]: GET /assets/vendor/perfect-scrollbar.css
+[Mon Sep 28 21:57:57 2026] [::1]:54822 [200]: GET /assets/vendor/dataTables.bootstrap4.min.css
+[Mon Sep 28 21:57:57 2026] [::1]:57854 Closing
+[Mon Sep 28 21:57:57 2026] [::1]:54822 Closing
+[Mon Sep 28 21:57:57 2026] [::1]:57746 Accepted
+[Mon Sep 28 21:57:57 2026] [::1]:57746 [200]: GET /assets/vendor/datatables.responsive.bootstrap4.min.css
+[Mon Sep 28 21:57:57 2026] [::1]:57746 Closing
+[Mon Sep 28 21:57:57 2026] [::1]:58710 Accepted
+[Mon Sep 28 21:57:57 2026] [::1]:58710 [200]: GET /assets/vendor/select2.min.css
+[Mon Sep 28 21:57:57 2026] [::1]:58710 Closing
+[Mon Sep 28 21:57:57 2026] [::1]:58661 Accepted
+[Mon Sep 28 21:57:57 2026] [::1]:54427 Accepted
+[Mon Sep 28 21:57:57 2026] [::1]:58661 [200]: GET /assets/vendor/select2-bootstrap.min.css
+[Mon Sep 28 21:57:57 2026] [::1]:54427 [200]: GET /assets/vendor/bootstrap-float-label.min.css
+[Mon Sep 28 21:57:57 2026] [::1]:58661 Closing
+[Mon Sep 28 21:57:57 2026] [::1]:54427 Closing
+[Mon Sep 28 21:57:57 2026] [::1]:50175 Accepted
+[Mon Sep 28 21:57:57 2026] [::1]:50175 [200]: GET /assets/vendor/bootstrap-datepicker3.min.css
+[Mon Sep 28 21:57:57 2026] [::1]:50175 Closing
+[Mon Sep 28 21:57:57 2026] [::1]:50804 Accepted
+[Mon Sep 28 21:57:57 2026] [::1]:50804 [200]: GET /assets/vendor/glide.core.min.css
+[Mon Sep 28 21:57:57 2026] [::1]:50804 Closing
+[Mon Sep 28 21:57:57 2026] [::1]:60599 Accepted
+[Mon Sep 28 21:57:57 2026] [::1]:60599 [200]: GET /assets/vendor/nouislider.min.css
+[Mon Sep 28 21:57:57 2026] [::1]:60599 Closing
+[Mon Sep 28 21:57:58 2026] [::1]:50438 Accepted
+[Mon Sep 28 21:57:58 2026] [::1]:54902 Accepted
+[Mon Sep 28 21:57:58 2026] [::1]:61763 Accepted
+[Mon Sep 28 21:57:58 2026] [::1]:50438 [200]: GET /assets/js/vendor/jquery-3.3.1.min.js
+[Mon Sep 28 21:57:58 2026] [::1]:50438 Closing
+[Mon Sep 28 21:57:58 2026] [::1]:54902 [200]: GET /assets/img/profiles/l-1.jpg
+[Mon Sep 28 21:57:58 2026] [::1]:61763 [200]: GET /assets/logos/logo_yazbek_01.png
+[Mon Sep 28 21:57:58 2026] [::1]:54902 Closing
+[Mon Sep 28 21:57:58 2026] [::1]:61763 Closing
+[Mon Sep 28 21:57:58 2026] [::1]:56185 Accepted
+[Mon Sep 28 21:57:58 2026] [::1]:56185 [200]: GET /assets/js/vendor/bootstrap.bundle.min.js
+[Mon Sep 28 21:57:58 2026] [::1]:56185 Closing
+[Mon Sep 28 21:57:58 2026] [::1]:64848 Accepted
+[Mon Sep 28 21:57:58 2026] [::1]:57591 Accepted
+[Mon Sep 28 21:57:58 2026] [::1]:64848 [200]: GET /assets/js/vendor/perfect-scrollbar.min.js
+[Mon Sep 28 21:57:58 2026] [::1]:57591 [200]: GET /assets/js/vendor/mousetrap.min.js
+[Mon Sep 28 21:57:58 2026] [::1]:64848 Closing
+[Mon Sep 28 21:57:58 2026] [::1]:57591 Closing
+[Mon Sep 28 21:57:58 2026] [::1]:65267 Accepted
+[Mon Sep 28 21:57:58 2026] [::1]:57291 Accepted
+[Mon Sep 28 21:57:58 2026] [::1]:58241 Accepted
+[Mon Sep 28 21:57:58 2026] [::1]:65267 [200]: GET /assets/js/vendor/datatables.min.js
+[Mon Sep 28 21:57:58 2026] [::1]:57291 [200]: GET /assets/js/dore.script.js
+[Mon Sep 28 21:57:58 2026] [::1]:58241 [200]: GET /assets/js/scripts.js
+[Mon Sep 28 21:57:58 2026] [::1]:65267 Closing
+[Mon Sep 28 21:57:58 2026] [::1]:58241 Closing
+[Mon Sep 28 21:57:58 2026] [::1]:57291 Closing
+[Mon Sep 28 21:57:58 2026] [::1]:62845 Accepted
+[Mon Sep 28 21:57:58 2026] [::1]:62845 [200]: GET /assets/js/vendor/select2.full.js
+[Mon Sep 28 21:57:58 2026] [::1]:62845 Closing
+[Mon Sep 28 21:57:59 2026] [::1]:53548 Accepted
+[Mon Sep 28 21:57:59 2026] [::1]:53548 [200]: GET /logos/black.svg
+[Mon Sep 28 21:57:59 2026] [::1]:53548 Closing
+[Mon Sep 28 21:57:59 2026] [::1]:53428 Accepted
+[Mon Sep 28 21:57:59 2026] [::1]:53428 [200]: GET /assets/font/simple-line-icons/fonts/Simple-Line-Icons.woff2?v=2.4.0
+[Mon Sep 28 21:57:59 2026] [::1]:53428 Closing
+[Mon Sep 28 21:57:59 2026] [::1]:49866 Accepted
+[Mon Sep 28 21:57:59 2026] [::1]:49866 [200]: GET /assets/font/iconsmind-s/font/iconsminds.woff2?42207379
+[Mon Sep 28 21:57:59 2026] [::1]:51257 Accepted
+[Mon Sep 28 21:57:59 2026] [::1]:49866 Closing
+[Mon Sep 28 21:57:59 2026] [::1]:56245 Accepted
+[Mon Sep 28 21:57:59 2026] [::1]:51257 Closing
+[Mon Sep 28 21:57:59 2026] [::1]:49943 Accepted
+[Mon Sep 28 21:58:00 2026] [::1]:56245 Closing
+[Mon Sep 28 21:58:00 2026] [::1]:62385 Accepted
+[Mon Sep 28 21:58:00 2026] [::1]:49943 [200]: GET /assets/js/vendor/datatables.spanish.json
+[Mon Sep 28 21:58:00 2026] [::1]:55831 Accepted
+[Mon Sep 28 21:58:01 2026] [::1]:62385 Closing
+[Mon Sep 28 21:58:01 2026] [::1]:55831 [200]: GET /favicon.ico
+[Mon Sep 28 21:58:01 2026] [::1]:49943 Closing
+[Mon Sep 28 21:58:01 2026] [::1]:55831 Closing
+[Mon Sep 28 21:58:01 2026] [::1]:62402 Accepted
+[Mon Sep 28 21:58:02 2026] [::1]:62402 Closing
+[Mon Sep 28 21:58:02 2026] [::1]:57779 Accepted
+[Mon Sep 28 21:58:03 2026] [::1]:57779 Closing
+[Mon Sep 28 21:58:06 2026] [::1]:61406 Accepted
+[Mon Sep 28 21:58:06 2026] [::1]:61406 Closing
+[Mon Sep 28 21:58:08 2026] [::1]:55151 Accepted
+[Mon Sep 28 21:58:08 2026] [::1]:55151 Closing
+[Mon Sep 28 21:58:10 2026] [::1]:51426 Accepted
+[Mon Sep 28 21:58:10 2026] [::1]:51426 Closing
+[Mon Sep 28 21:58:12 2026] [::1]:60394 Accepted
+[Mon Sep 28 21:58:12 2026] [::1]:60394 Closing
+[Mon Sep 28 21:58:15 2026] [::1]:56395 Accepted
+[Mon Sep 28 21:58:16 2026] [::1]:56395 Closing
+[Mon Sep 28 21:58:16 2026] [::1]:59807 Accepted
+[Mon Sep 28 21:58:17 2026] [::1]:59807 Closing
+[Mon Sep 28 21:58:18 2026] [::1]:64006 Accepted
+[Mon Sep 28 21:58:18 2026] [::1]:64006 Closing
+[Mon Sep 28 21:58:20 2026] [::1]:57748 Accepted
+[Mon Sep 28 21:58:21 2026] [::1]:57748 Closing
+[Mon Sep 28 21:58:22 2026] [::1]:50237 Accepted
+[Mon Sep 28 21:58:22 2026] [::1]:50237 Closing
+[Mon Sep 28 21:58:24 2026] [::1]:61457 Accepted
+[Mon Sep 28 21:58:24 2026] [::1]:61457 Closing
+[Mon Sep 28 21:58:26 2026] [::1]:64497 Accepted
+[Mon Sep 28 21:58:26 2026] [::1]:64497 Closing
+[Mon Sep 28 21:58:28 2026] [::1]:59574 Accepted
+[Mon Sep 28 21:58:28 2026] [::1]:59574 Closing
+[Mon Sep 28 21:58:30 2026] [::1]:55320 Accepted
+[Mon Sep 28 21:58:30 2026] [::1]:55320 Closing
+[Mon Sep 28 21:58:32 2026] [::1]:65153 Accepted
+[Mon Sep 28 21:58:32 2026] [::1]:65153 Closing
+[Mon Sep 28 21:58:34 2026] [::1]:54988 Accepted
+[Mon Sep 28 21:58:34 2026] [::1]:54988 Closing
+[Mon Sep 28 21:58:36 2026] [::1]:56494 Accepted
+[Mon Sep 28 21:58:36 2026] [::1]:56494 Closing
+[Mon Sep 28 21:58:36 2026] [::1]:61732 Accepted
+[Mon Sep 28 21:58:36 2026] [::1]:61732 Closing
+[Mon Sep 28 21:58:38 2026] [::1]:54294 Accepted
+[Mon Sep 28 21:58:39 2026] [::1]:54294 Closing
+[Mon Sep 28 21:58:41 2026] [::1]:60197 Accepted
+[Mon Sep 28 21:58:41 2026] [::1]:60197 Closing
+[Mon Sep 28 21:58:42 2026] [::1]:52608 Accepted
+[Mon Sep 28 21:58:42 2026] [::1]:52608 Closing
+[Mon Sep 28 21:58:44 2026] [::1]:59119 Accepted
+[Mon Sep 28 21:58:44 2026] [::1]:59119 Closing
+[Mon Sep 28 21:58:46 2026] [::1]:62859 Accepted
+[Mon Sep 28 21:58:47 2026] [::1]:62859 Closing
+[Mon Sep 28 21:58:52 2026] [::1]:53339 Accepted
+[Mon Sep 28 21:58:53 2026] [::1]:53339 Closing
+[Mon Sep 28 21:58:53 2026] [::1]:57675 Accepted
+[Mon Sep 28 21:58:53 2026] [::1]:57675 Closing
+[Mon Sep 28 21:58:54 2026] [::1]:60486 Accepted
+[Mon Sep 28 21:58:54 2026] [::1]:60486 Closing
+[Mon Sep 28 21:58:56 2026] [::1]:64870 Accepted
+[Mon Sep 28 21:58:56 2026] [::1]:64870 Closing
+[Mon Sep 28 21:58:58 2026] [::1]:59351 Accepted
+[Mon Sep 28 21:58:58 2026] [::1]:59351 Closing
+[Mon Sep 28 21:59:00 2026] [::1]:56689 Accepted
+[Mon Sep 28 21:59:00 2026] [::1]:56689 Closing
+[Mon Sep 28 21:59:02 2026] [::1]:51537 Accepted
+[Mon Sep 28 21:59:02 2026] [::1]:51537 Closing
+[Mon Sep 28 21:59:04 2026] [::1]:60971 Accepted
+[Mon Sep 28 21:59:04 2026] [::1]:60971 Closing
+[Mon Sep 28 21:59:06 2026] [::1]:49418 Accepted
+[Mon Sep 28 21:59:06 2026] [::1]:49418 Closing
+[Mon Sep 28 21:59:09 2026] [::1]:64094 Accepted
+[Mon Sep 28 21:59:09 2026] [::1]:64094 Closing
+[Mon Sep 28 21:59:10 2026] [::1]:58825 Accepted
+[Mon Sep 28 21:59:10 2026] [::1]:58825 Closing
+[Mon Sep 28 21:59:12 2026] [::1]:50227 Accepted
+[Mon Sep 28 21:59:12 2026] [::1]:50227 Closing
+[Mon Sep 28 21:59:14 2026] [::1]:60680 Accepted
+[Mon Sep 28 21:59:14 2026] [::1]:60680 Closing
+[Mon Sep 28 21:59:16 2026] [::1]:62652 Accepted
+[Mon Sep 28 21:59:16 2026] [::1]:62652 Closing
+[Mon Sep 28 21:59:18 2026] [::1]:50624 Accepted
+[Mon Sep 28 21:59:18 2026] [::1]:50624 Closing
+[Mon Sep 28 21:59:20 2026] [::1]:62496 Accepted
+[Mon Sep 28 21:59:20 2026] [::1]:62496 Closing
+[Mon Sep 28 21:59:22 2026] [::1]:60367 Accepted
+[Mon Sep 28 21:59:22 2026] [::1]:60367 Closing
+[Mon Sep 28 21:59:24 2026] [::1]:58852 Accepted
+[Mon Sep 28 21:59:24 2026] [::1]:58852 Closing
+[Mon Sep 28 21:59:26 2026] [::1]:65152 Accepted
+[Mon Sep 28 21:59:26 2026] [::1]:65152 Closing
+[Mon Sep 28 21:59:28 2026] [::1]:58571 Accepted
+[Mon Sep 28 21:59:28 2026] [::1]:58571 Closing
+[Mon Sep 28 21:59:30 2026] [::1]:58674 Accepted
+[Mon Sep 28 21:59:31 2026] [::1]:58674 Closing
+[Mon Sep 28 21:59:33 2026] [::1]:49479 Accepted
+[Mon Sep 28 21:59:33 2026] [::1]:49479 Closing
+[Mon Sep 28 21:59:34 2026] [::1]:56334 Accepted
+[Mon Sep 28 21:59:34 2026] [::1]:56334 Closing
+[Mon Sep 28 21:59:36 2026] [::1]:49681 Accepted
+[Mon Sep 28 21:59:36 2026] [::1]:49681 Closing
+[Mon Sep 28 21:59:36 2026] [::1]:56012 Accepted
+[Mon Sep 28 21:59:36 2026] [::1]:56012 Closing
+[Mon Sep 28 21:59:38 2026] [::1]:58615 Accepted
+[Mon Sep 28 21:59:38 2026] [::1]:58615 Closing
+[Mon Sep 28 21:59:40 2026] [::1]:51681 Accepted
+[Mon Sep 28 21:59:41 2026] [::1]:51681 Closing
+[Mon Sep 28 21:59:42 2026] [::1]:64409 Accepted
+[Mon Sep 28 21:59:42 2026] [::1]:64409 Closing
+[Mon Sep 28 21:59:44 2026] [::1]:54067 Accepted
+[Mon Sep 28 21:59:44 2026] [::1]:54067 Closing
+[Mon Sep 28 21:59:46 2026] [::1]:61368 Accepted
+[Mon Sep 28 21:59:47 2026] [::1]:61368 Closing
+[Mon Sep 28 21:59:48 2026] [::1]:54105 Accepted
+[Mon Sep 28 21:59:48 2026] [::1]:54105 Closing
+[Mon Sep 28 21:59:50 2026] [::1]:53660 Accepted
+[Mon Sep 28 21:59:50 2026] [::1]:53660 Closing
+[Mon Sep 28 21:59:52 2026] [::1]:60427 Accepted
+[Mon Sep 28 21:59:53 2026] [::1]:60427 Closing
+[Mon Sep 28 21:59:54 2026] [::1]:49685 Accepted
+[Mon Sep 28 21:59:55 2026] [::1]:49685 Closing
+[Mon Sep 28 21:59:58 2026] [::1]:61396 Accepted
+[Mon Sep 28 21:59:59 2026] [::1]:61396 Closing
+[Mon Sep 28 21:59:59 2026] [::1]:64154 Accepted
+[Mon Sep 28 21:59:59 2026] [::1]:64154 Closing
+[Mon Sep 28 22:00:00 2026] [::1]:55682 Accepted
+[Mon Sep 28 22:00:01 2026] [::1]:55682 Closing
+[Mon Sep 28 22:00:02 2026] [::1]:65107 Accepted
+[Mon Sep 28 22:00:03 2026] [::1]:65107 Closing
+[Mon Sep 28 22:00:04 2026] [::1]:64026 Accepted
+[Mon Sep 28 22:00:04 2026] [::1]:64026 Closing
+[Mon Sep 28 22:00:06 2026] [::1]:54506 Accepted
+[Mon Sep 28 22:00:06 2026] [::1]:54506 Closing
+[Mon Sep 28 22:00:08 2026] [::1]:55908 Accepted
+[Mon Sep 28 22:00:08 2026] [::1]:55908 Closing
+[Mon Sep 28 22:00:10 2026] [::1]:61647 Accepted
+[Mon Sep 28 22:00:10 2026] [::1]:61647 Closing
+[Mon Sep 28 22:00:12 2026] [::1]:52420 Accepted
+[Mon Sep 28 22:00:13 2026] [::1]:52420 Closing
+[Mon Sep 28 22:00:14 2026] [::1]:62037 Accepted
+[Mon Sep 28 22:00:15 2026] [::1]:62037 Closing
+[Mon Sep 28 22:00:16 2026] [::1]:63251 Accepted
+[Mon Sep 28 22:00:16 2026] [::1]:63251 Closing
+[Mon Sep 28 22:00:18 2026] [::1]:61560 Accepted
+[Mon Sep 28 22:00:18 2026] [::1]:61560 Closing
+[Mon Sep 28 22:00:20 2026] [::1]:50530 Accepted
+[Mon Sep 28 22:00:20 2026] [::1]:50530 Closing
+[Mon Sep 28 22:00:22 2026] [::1]:65051 Accepted
+[Mon Sep 28 22:00:23 2026] [::1]:65051 Closing
+[Mon Sep 28 22:00:24 2026] [::1]:64254 Accepted
+[Mon Sep 28 22:00:24 2026] [::1]:64254 Closing
+[Mon Sep 28 22:00:26 2026] [::1]:51187 Accepted
+[Mon Sep 28 22:00:26 2026] [::1]:51187 Closing
+[Mon Sep 28 22:00:28 2026] [::1]:50454 Accepted
+[Mon Sep 28 22:00:28 2026] [::1]:50454 Closing
+[Mon Sep 28 22:00:30 2026] [::1]:51005 Accepted
+[Mon Sep 28 22:00:31 2026] [::1]:51005 Closing
+[Mon Sep 28 22:00:32 2026] [::1]:63492 Accepted
+[Mon Sep 28 22:00:32 2026] [::1]:63492 Closing
+[Mon Sep 28 22:00:34 2026] [::1]:58523 Accepted
+[Mon Sep 28 22:00:34 2026] [::1]:58523 Closing
+[Mon Sep 28 22:00:36 2026] [::1]:51399 Accepted
+[Mon Sep 28 22:00:37 2026] [::1]:51399 Closing
+[Mon Sep 28 22:00:37 2026] [::1]:61114 Accepted
+[Mon Sep 28 22:00:38 2026] [::1]:61114 Closing
+[Mon Sep 28 22:00:38 2026] [::1]:54700 Accepted
+[Mon Sep 28 22:00:39 2026] [::1]:54700 Closing
+[Mon Sep 28 22:00:40 2026] [::1]:61724 Accepted
+[Mon Sep 28 22:00:40 2026] [::1]:61724 Closing
+[Mon Sep 28 22:00:42 2026] [::1]:56704 Accepted
+[Mon Sep 28 22:00:42 2026] [::1]:56704 Closing
+[Mon Sep 28 22:00:44 2026] [::1]:51452 Accepted
+[Mon Sep 28 22:00:44 2026] [::1]:51452 Closing
+[Mon Sep 28 22:00:46 2026] [::1]:61400 Accepted
+[Mon Sep 28 22:00:46 2026] [::1]:61400 Closing
+[Mon Sep 28 22:00:48 2026] [::1]:53603 Accepted
+[Mon Sep 28 22:00:48 2026] [::1]:53603 Closing
+[Mon Sep 28 22:00:50 2026] [::1]:52654 Accepted
+[Mon Sep 28 22:00:50 2026] [::1]:52654 Closing
+[Mon Sep 28 22:00:52 2026] [::1]:58396 Accepted
+[Mon Sep 28 22:00:52 2026] [::1]:58396 Closing
+[Mon Sep 28 22:00:54 2026] [::1]:55351 Accepted
+[Mon Sep 28 22:00:55 2026] [::1]:55351 Closing
+[Mon Sep 28 22:00:56 2026] [::1]:59589 Accepted
+[Mon Sep 28 22:00:56 2026] [::1]:59589 Closing
+[Mon Sep 28 22:00:58 2026] [::1]:64787 Accepted
+[Mon Sep 28 22:00:58 2026] [::1]:64787 Closing
+[Mon Sep 28 22:01:00 2026] [::1]:56084 Accepted
+[Mon Sep 28 22:01:00 2026] [::1]:56084 Closing
+[Mon Sep 28 22:01:02 2026] [::1]:53254 Accepted
+[Mon Sep 28 22:01:03 2026] [::1]:53254 Closing
+[Mon Sep 28 22:01:03 2026] [::1]:58351 Accepted
+[Mon Sep 28 22:01:03 2026] [::1]:58351 Closing
+[Mon Sep 28 22:01:04 2026] [::1]:51124 Accepted
+[Mon Sep 28 22:01:04 2026] [::1]:51124 Closing
+[Mon Sep 28 22:01:04 2026] [::1]:56645 Accepted
+[Mon Sep 28 22:01:04 2026] [::1]:56645 Closing
+[Mon Sep 28 22:01:06 2026] [::1]:56957 Accepted
+[Mon Sep 28 22:01:06 2026] [::1]:56957 Closing
+[Mon Sep 28 22:01:06 2026] [::1]:63480 Accepted
+[Mon Sep 28 22:01:06 2026] [::1]:63480 Closing
+[Mon Sep 28 22:01:08 2026] [::1]:63260 Accepted
+[Mon Sep 28 22:01:10 2026] [::1]:63260 Closing
+[Mon Sep 28 22:01:10 2026] [::1]:51828 Accepted
+[Mon Sep 28 22:01:10 2026] [::1]:49729 Accepted
+[Mon Sep 28 22:01:10 2026] [::1]:51828 [200]: GET /assets/vendor/bootstrap.min.css
+[Mon Sep 28 22:01:10 2026] [::1]:54586 Accepted
+[Mon Sep 28 22:01:10 2026] [::1]:49729 [200]: GET /assets/vendor/bootstrap.rtl.only.min.css
+[Mon Sep 28 22:01:10 2026] [::1]:53147 Accepted
+[Mon Sep 28 22:01:10 2026] [::1]:54586 [200]: GET /assets/main.css
+[Mon Sep 28 22:01:10 2026] [::1]:58809 Accepted
+[Mon Sep 28 22:01:10 2026] [::1]:53147 [200]: GET /assets/dore.light.bluenavy.min.css
+[Mon Sep 28 22:01:10 2026] [::1]:65396 Accepted
+[Mon Sep 28 22:01:10 2026] [::1]:58809 [200]: GET /assets/font/iconsmind-s/css/iconsminds.css
+[Mon Sep 28 22:01:10 2026] [::1]:51828 Closing
+[Mon Sep 28 22:01:10 2026] [::1]:49729 Closing
+[Mon Sep 28 22:01:10 2026] [::1]:59943 Accepted
+[Mon Sep 28 22:01:10 2026] [::1]:65396 [200]: GET /assets/font/simple-line-icons/css/simple-line-icons.css
+[Mon Sep 28 22:01:10 2026] [::1]:54586 Closing
+[Mon Sep 28 22:01:10 2026] [::1]:63441 Accepted
+[Mon Sep 28 22:01:10 2026] [::1]:59943 [200]: GET /assets/vendor/component-custom-switch.min.css
+[Mon Sep 28 22:01:10 2026] [::1]:58983 Accepted
+[Mon Sep 28 22:01:10 2026] [::1]:63441 [200]: GET /assets/vendor/perfect-scrollbar.css
+[Mon Sep 28 22:01:10 2026] [::1]:58809 Closing
+[Mon Sep 28 22:01:10 2026] [::1]:56664 Accepted
+[Mon Sep 28 22:01:10 2026] [::1]:58983 [200]: GET /assets/vendor/dataTables.bootstrap4.min.css
+[Mon Sep 28 22:01:10 2026] [::1]:53147 Closing
+[Mon Sep 28 22:01:10 2026] [::1]:65396 Closing
+[Mon Sep 28 22:01:10 2026] [::1]:61607 Accepted
+[Mon Sep 28 22:01:10 2026] [::1]:56664 [200]: GET /assets/vendor/datatables.responsive.bootstrap4.min.css
+[Mon Sep 28 22:01:10 2026] [::1]:59943 Closing
+[Mon Sep 28 22:01:10 2026] [::1]:60473 Accepted
+[Mon Sep 28 22:01:10 2026] [::1]:61607 [200]: GET /assets/vendor/select2.min.css
+[Mon Sep 28 22:01:10 2026] [::1]:63441 Closing
+[Mon Sep 28 22:01:10 2026] [::1]:57254 Accepted
+[Mon Sep 28 22:01:10 2026] [::1]:60473 [200]: GET /assets/vendor/select2-bootstrap.min.css
+[Mon Sep 28 22:01:10 2026] [::1]:58983 Closing
+[Mon Sep 28 22:01:10 2026] [::1]:53215 Accepted
+[Mon Sep 28 22:01:10 2026] [::1]:57254 [200]: GET /assets/vendor/bootstrap-float-label.min.css
+[Mon Sep 28 22:01:10 2026] [::1]:56664 Closing
+[Mon Sep 28 22:01:10 2026] [::1]:61880 Accepted
+[Mon Sep 28 22:01:10 2026] [::1]:53215 [200]: GET /assets/vendor/bootstrap-datepicker3.min.css
+[Mon Sep 28 22:01:10 2026] [::1]:61607 Closing
+[Mon Sep 28 22:01:10 2026] [::1]:54803 Accepted
+[Mon Sep 28 22:01:10 2026] [::1]:61880 [200]: GET /assets/vendor/glide.core.min.css
+[Mon Sep 28 22:01:10 2026] [::1]:60473 Closing
+[Mon Sep 28 22:01:10 2026] [::1]:61019 Accepted
+[Mon Sep 28 22:01:10 2026] [::1]:54803 [200]: GET /assets/vendor/nouislider.min.css
+[Mon Sep 28 22:01:10 2026] [::1]:57254 Closing
+[Mon Sep 28 22:01:10 2026] [::1]:61787 Accepted
+[Mon Sep 28 22:01:11 2026] [::1]:61019 Closing
+[Mon Sep 28 22:01:11 2026] [::1]:53215 Closing
+[Mon Sep 28 22:01:11 2026] [::1]:51649 Accepted
+[Mon Sep 28 22:01:11 2026] [::1]:61787 Closing
+[Mon Sep 28 22:01:11 2026] [::1]:61880 Closing
+[Mon Sep 28 22:01:11 2026] [::1]:58984 Accepted
+[Mon Sep 28 22:01:12 2026] [::1]:51649 Closing
+[Mon Sep 28 22:01:12 2026] [::1]:54803 Closing
+[Mon Sep 28 22:01:12 2026] [::1]:59315 Accepted
+[Mon Sep 28 22:01:12 2026] [::1]:58984 Closing
+[Mon Sep 28 22:01:12 2026] [::1]:59315 Closing
+[Mon Sep 28 22:01:12 2026] [::1]:62040 Accepted
+[Mon Sep 28 22:01:13 2026] [::1]:62040 Closing
+[Mon Sep 28 22:01:13 2026] [::1]:50578 Accepted
+[Mon Sep 28 22:01:14 2026] [::1]:50578 Closing
+[Mon Sep 28 22:01:14 2026] [::1]:51567 Accepted
+[Mon Sep 28 22:01:16 2026] [::1]:51567 Closing
+[Mon Sep 28 22:01:16 2026] [::1]:56860 Accepted
+[Mon Sep 28 22:01:16 2026] [::1]:51176 Accepted
+[Mon Sep 28 22:01:16 2026] [::1]:56860 Closing
+[Mon Sep 28 22:01:17 2026] [::1]:51176 Closing
+[Mon Sep 28 22:01:17 2026] [::1]:51238 Accepted
+[Mon Sep 28 22:01:18 2026] [::1]:51238 Closing
+[Mon Sep 28 22:01:18 2026] [::1]:58789 Accepted
+[Mon Sep 28 22:01:18 2026] [::1]:58789 Closing
+[Mon Sep 28 22:01:18 2026] [::1]:60472 Accepted
+[Mon Sep 28 22:01:19 2026] [::1]:60472 Closing
+[Mon Sep 28 22:01:19 2026] [::1]:53420 Accepted
+[Mon Sep 28 22:01:19 2026] [::1]:53420 Closing
+[Mon Sep 28 22:01:19 2026] [::1]:61010 Accepted
+[Mon Sep 28 22:01:20 2026] [::1]:61010 Closing
+[Mon Sep 28 22:01:20 2026] [::1]:64262 Accepted
+[Mon Sep 28 22:01:21 2026] [::1]:64262 Closing
+[Mon Sep 28 22:01:21 2026] [::1]:59283 Accepted
+[Mon Sep 28 22:01:21 2026] [::1]:59283 Closing
+[Mon Sep 28 22:01:21 2026] [::1]:52119 Accepted
+[Mon Sep 28 22:01:21 2026] [::1]:52119 Closing
+[Mon Sep 28 22:01:22 2026] [::1]:62771 Accepted
+[Mon Sep 28 22:01:22 2026] [::1]:62771 Closing
+[Mon Sep 28 22:01:22 2026] [::1]:63364 Accepted
+[Mon Sep 28 22:01:22 2026] [::1]:63364 Closing
+[Mon Sep 28 22:01:24 2026] [::1]:57915 Accepted
+[Mon Sep 28 22:01:24 2026] [::1]:57915 Closing
+[Mon Sep 28 22:01:24 2026] [::1]:59032 Accepted
+[Mon Sep 28 22:01:24 2026] [::1]:59032 Closing
+[Mon Sep 28 22:01:26 2026] [::1]:49807 Accepted
+[Mon Sep 28 22:01:26 2026] [::1]:49807 Closing
+[Mon Sep 28 22:01:26 2026] [::1]:62672 Accepted
+[Mon Sep 28 22:01:27 2026] [::1]:62672 Closing
+[Mon Sep 28 22:01:28 2026] [::1]:60821 Accepted
+[Mon Sep 28 22:01:30 2026] [::1]:60821 Closing
+[Mon Sep 28 22:01:30 2026] [::1]:60091 Accepted
+[Mon Sep 28 22:01:31 2026] [::1]:60091 Closing
+[Mon Sep 28 22:01:31 2026] [::1]:56986 Accepted
+[Mon Sep 28 22:01:34 2026] [::1]:56986 Closing
+[Mon Sep 28 22:01:34 2026] [::1]:58990 Accepted
+[Mon Sep 28 22:01:36 2026] [::1]:58990 Closing
+[Mon Sep 28 22:01:36 2026] [::1]:62763 Accepted
+[Mon Sep 28 22:01:37 2026] [::1]:62763 Closing
+[Mon Sep 28 22:01:37 2026] [::1]:55092 Accepted
+[Mon Sep 28 22:01:37 2026] [::1]:51360 Accepted
+[Mon Sep 28 22:01:39 2026] [::1]:55092 Closing
+[Mon Sep 28 22:01:39 2026] [::1]:50127 Accepted
+[Mon Sep 28 22:01:39 2026] [::1]:51360 Closing
+[Mon Sep 28 22:01:39 2026] [::1]:57051 Accepted
+[Mon Sep 28 22:01:41 2026] [::1]:50127 Closing
+[Mon Sep 28 22:01:41 2026] [::1]:57051 Closing
+[Mon Sep 28 22:01:41 2026] [::1]:63941 Accepted
+[Mon Sep 28 22:01:43 2026] [::1]:63941 Closing
+[Mon Sep 28 22:01:43 2026] [::1]:57169 Accepted
+[Mon Sep 28 22:01:43 2026] [::1]:57169 Closing
+[Mon Sep 28 22:01:43 2026] [::1]:54179 Accepted
+[Mon Sep 28 22:01:45 2026] [::1]:54179 Closing
+[Mon Sep 28 22:01:45 2026] [::1]:64432 Accepted
+[Mon Sep 28 22:01:46 2026] [::1]:64432 Closing
+[Mon Sep 28 22:01:46 2026] [::1]:54600 Accepted
+[Mon Sep 28 22:01:47 2026] [::1]:54600 Closing
+[Mon Sep 28 22:01:47 2026] [::1]:61306 Accepted
+[Mon Sep 28 22:01:47 2026] [::1]:61306 Closing
+[Mon Sep 28 22:01:47 2026] [::1]:51212 Accepted
+[Mon Sep 28 22:01:48 2026] [::1]:51212 Closing
+[Mon Sep 28 22:01:48 2026] [::1]:59796 Accepted
+[Mon Sep 28 22:01:48 2026] [::1]:59796 Closing
+[Mon Sep 28 22:01:48 2026] [::1]:60418 Accepted
+[Mon Sep 28 22:01:49 2026] [::1]:60418 Closing
+[Mon Sep 28 22:01:49 2026] [::1]:56741 Accepted
+[Mon Sep 28 22:01:49 2026] [::1]:56741 Closing
+[Mon Sep 28 22:01:49 2026] [::1]:55580 Accepted
+[Mon Sep 28 22:01:50 2026] [::1]:55580 Closing
+[Mon Sep 28 22:01:50 2026] [::1]:55750 Accepted
+[Mon Sep 28 22:01:50 2026] [::1]:55750 Closing
+[Mon Sep 28 22:01:50 2026] [::1]:59135 Accepted
+[Mon Sep 28 22:01:50 2026] [::1]:59135 Closing
+[Mon Sep 28 22:01:52 2026] [::1]:57802 Accepted
+[Mon Sep 28 22:01:52 2026] [::1]:57802 Closing
+[Mon Sep 28 22:01:54 2026] [::1]:61437 Accepted
+[Mon Sep 28 22:01:55 2026] [::1]:61437 Closing
+[Mon Sep 28 22:01:58 2026] [::1]:51390 Accepted
+[Mon Sep 28 22:01:58 2026] [::1]:51390 Closing
+[Mon Sep 28 22:02:00 2026] [::1]:64725 Accepted
+[Mon Sep 28 22:02:00 2026] [::1]:64725 Closing
+[Mon Sep 28 22:02:02 2026] [::1]:63342 Accepted
+[Mon Sep 28 22:02:02 2026] [::1]:63342 Closing
+[Mon Sep 28 22:02:04 2026] [::1]:55240 Accepted
+[Mon Sep 28 22:02:05 2026] [::1]:55240 Closing
+[Mon Sep 28 22:02:05 2026] [::1]:54457 Accepted
+[Mon Sep 28 22:02:05 2026] [::1]:54457 Closing
+[Mon Sep 28 22:02:06 2026] [::1]:64458 Accepted
+[Mon Sep 28 22:02:06 2026] [::1]:61274 Accepted
+[Mon Sep 28 22:02:06 2026] [::1]:64458 Closing
+[Mon Sep 28 22:02:06 2026] [::1]:54660 Accepted
+[Mon Sep 28 22:02:06 2026] [::1]:61274 [200]: GET /assets/vendor/bootstrap.min.css
+[Mon Sep 28 22:02:06 2026] [::1]:62270 Accepted
+[Mon Sep 28 22:02:06 2026] [::1]:54660 [200]: GET /assets/vendor/bootstrap.rtl.only.min.css
+[Mon Sep 28 22:02:06 2026] [::1]:62270 [200]: GET /assets/main.css
+[Mon Sep 28 22:02:06 2026] [::1]:54660 Closing
+[Mon Sep 28 22:02:06 2026] [::1]:61274 Closing
+[Mon Sep 28 22:02:06 2026] [::1]:62270 Closing
+[Mon Sep 28 22:02:06 2026] [::1]:58702 Accepted
+[Mon Sep 28 22:02:06 2026] [::1]:58702 [200]: GET /assets/dore.light.bluenavy.min.css
+[Mon Sep 28 22:02:06 2026] [::1]:61971 Accepted
+[Mon Sep 28 22:02:06 2026] [::1]:61971 [200]: GET /assets/font/iconsmind-s/css/iconsminds.css
+[Mon Sep 28 22:02:06 2026] [::1]:61553 Accepted
+[Mon Sep 28 22:02:06 2026] [::1]:58702 Closing
+[Mon Sep 28 22:02:06 2026] [::1]:61553 [200]: GET /assets/font/simple-line-icons/css/simple-line-icons.css
+[Mon Sep 28 22:02:06 2026] [::1]:61971 Closing
+[Mon Sep 28 22:02:06 2026] [::1]:61553 Closing
+[Mon Sep 28 22:02:06 2026] [::1]:49467 Accepted
+[Mon Sep 28 22:02:06 2026] [::1]:50861 Accepted
+[Mon Sep 28 22:02:06 2026] [::1]:49467 [200]: GET /assets/vendor/component-custom-switch.min.css
+[Mon Sep 28 22:02:06 2026] [::1]:52019 Accepted
+[Mon Sep 28 22:02:06 2026] [::1]:49467 Closing
+[Mon Sep 28 22:02:06 2026] [::1]:50861 [200]: GET /assets/vendor/perfect-scrollbar.css
+[Mon Sep 28 22:02:06 2026] [::1]:52019 [200]: GET /assets/vendor/dataTables.bootstrap4.min.css
+[Mon Sep 28 22:02:06 2026] [::1]:50861 Closing
+[Mon Sep 28 22:02:06 2026] [::1]:52019 Closing
+[Mon Sep 28 22:02:06 2026] [::1]:62158 Accepted
+[Mon Sep 28 22:02:06 2026] [::1]:62158 [200]: GET /assets/vendor/datatables.responsive.bootstrap4.min.css
+[Mon Sep 28 22:02:06 2026] [::1]:65105 Accepted
+[Mon Sep 28 22:02:06 2026] [::1]:56012 Accepted
+[Mon Sep 28 22:02:06 2026] [::1]:62158 Closing
+[Mon Sep 28 22:02:06 2026] [::1]:65105 [200]: GET /assets/vendor/select2.min.css
+[Mon Sep 28 22:02:06 2026] [::1]:56012 [200]: GET /assets/vendor/select2-bootstrap.min.css
+[Mon Sep 28 22:02:06 2026] [::1]:65105 Closing
+[Mon Sep 28 22:02:06 2026] [::1]:56012 Closing
+[Mon Sep 28 22:02:06 2026] [::1]:57177 Accepted
+[Mon Sep 28 22:02:06 2026] [::1]:57177 [200]: GET /assets/vendor/bootstrap-float-label.min.css
+[Mon Sep 28 22:02:06 2026] [::1]:56210 Accepted
+[Mon Sep 28 22:02:06 2026] [::1]:57177 Closing
+[Mon Sep 28 22:02:06 2026] [::1]:56210 [200]: GET /assets/vendor/bootstrap-datepicker3.min.css
+[Mon Sep 28 22:02:06 2026] [::1]:52554 Accepted
+[Mon Sep 28 22:02:06 2026] [::1]:56210 Closing
+[Mon Sep 28 22:02:06 2026] [::1]:52554 [200]: GET /assets/vendor/glide.core.min.css
+[Mon Sep 28 22:02:06 2026] [::1]:52554 Closing
+[Mon Sep 28 22:02:06 2026] [::1]:53916 Accepted
+[Mon Sep 28 22:02:06 2026] [::1]:53916 [200]: GET /assets/vendor/nouislider.min.css
+[Mon Sep 28 22:02:06 2026] [::1]:53916 Closing
+[Mon Sep 28 22:02:06 2026] [::1]:63481 Accepted
+[Mon Sep 28 22:02:06 2026] [::1]:60435 Accepted
+[Mon Sep 28 22:02:06 2026] [::1]:58231 Accepted
+[Mon Sep 28 22:02:06 2026] [::1]:63481 [200]: GET /assets/js/vendor/jquery-3.3.1.min.js
+[Mon Sep 28 22:02:06 2026] [::1]:63481 Closing
+[Mon Sep 28 22:02:06 2026] [::1]:60435 [200]: GET /assets/img/profiles/l-1.jpg
+[Mon Sep 28 22:02:06 2026] [::1]:60435 Closing
+[Mon Sep 28 22:02:06 2026] [::1]:58231 [200]: GET /assets/logos/logo_yazbek_01.png
+[Mon Sep 28 22:02:06 2026] [::1]:58231 Closing
+[Mon Sep 28 22:02:07 2026] [::1]:59829 Accepted
+[Mon Sep 28 22:02:07 2026] [::1]:59829 [200]: GET /assets/js/vendor/bootstrap.bundle.min.js
+[Mon Sep 28 22:02:07 2026] [::1]:59829 Closing
+[Mon Sep 28 22:02:07 2026] [::1]:59978 Accepted
+[Mon Sep 28 22:02:07 2026] [::1]:61762 Accepted
+[Mon Sep 28 22:02:07 2026] [::1]:59978 [200]: GET /assets/js/vendor/perfect-scrollbar.min.js
+[Mon Sep 28 22:02:07 2026] [::1]:59978 Closing
+[Mon Sep 28 22:02:07 2026] [::1]:61762 [200]: GET /assets/js/vendor/mousetrap.min.js
+[Mon Sep 28 22:02:07 2026] [::1]:61762 Closing
+[Mon Sep 28 22:02:07 2026] [::1]:59036 Accepted
+[Mon Sep 28 22:02:07 2026] [::1]:59036 [200]: GET /assets/js/vendor/datatables.min.js
+[Mon Sep 28 22:02:07 2026] [::1]:59036 Closing
+[Mon Sep 28 22:02:07 2026] [::1]:62610 Accepted
+[Mon Sep 28 22:02:07 2026] [::1]:62610 [200]: GET /assets/js/dore.script.js
+[Mon Sep 28 22:02:07 2026] [::1]:63852 Accepted
+[Mon Sep 28 22:02:07 2026] [::1]:62610 Closing
+[Mon Sep 28 22:02:07 2026] [::1]:63852 [200]: GET /assets/js/scripts.js
+[Mon Sep 28 22:02:07 2026] [::1]:63852 Closing
+[Mon Sep 28 22:02:07 2026] [::1]:57287 Accepted
+[Mon Sep 28 22:02:07 2026] [::1]:57287 [200]: GET /assets/js/vendor/select2.full.js
+[Mon Sep 28 22:02:07 2026] [::1]:57287 Closing
+[Mon Sep 28 22:02:07 2026] [::1]:65431 Accepted
+[Mon Sep 28 22:02:07 2026] [::1]:65431 Closing
+[Mon Sep 28 22:02:08 2026] [::1]:54164 Accepted
+[Mon Sep 28 22:02:08 2026] [::1]:54164 Closing
+[Mon Sep 28 22:02:08 2026] [::1]:53995 Accepted
+[Mon Sep 28 22:02:08 2026] [::1]:52672 Accepted
+[Mon Sep 28 22:02:08 2026] [::1]:53995 [200]: GET /logos/black.svg
+[Mon Sep 28 22:02:08 2026] [::1]:50219 Accepted
+[Mon Sep 28 22:02:08 2026] [::1]:52672 [200]: GET /assets/font/iconsmind-s/font/iconsminds.woff2?42207379
+[Mon Sep 28 22:02:08 2026] [::1]:50219 [200]: GET /assets/font/simple-line-icons/fonts/Simple-Line-Icons.woff2?v=2.4.0
+[Mon Sep 28 22:02:08 2026] [::1]:53995 Closing
+[Mon Sep 28 22:02:08 2026] [::1]:52672 Closing
+[Mon Sep 28 22:02:08 2026] [::1]:50219 Closing
+[Mon Sep 28 22:02:10 2026] [::1]:57577 Accepted
+[Mon Sep 28 22:02:10 2026] [::1]:57577 Closing
+[Mon Sep 28 22:02:12 2026] [::1]:63492 Accepted
+[Mon Sep 28 22:02:12 2026] [::1]:63492 Closing
+[Mon Sep 28 22:02:14 2026] [::1]:62263 Accepted
+[Mon Sep 28 22:02:14 2026] [::1]:62263 Closing
+[Mon Sep 28 22:02:17 2026] [::1]:62248 Accepted
+[Mon Sep 28 22:02:17 2026] [::1]:62248 Closing
+[Mon Sep 28 22:02:18 2026] [::1]:55412 Accepted
+[Mon Sep 28 22:02:18 2026] [::1]:55412 Closing
+[Mon Sep 28 22:02:20 2026] [::1]:61213 Accepted
+[Mon Sep 28 22:02:20 2026] [::1]:61213 Closing
+[Mon Sep 28 22:02:22 2026] [::1]:62129 Accepted
+[Mon Sep 28 22:02:22 2026] [::1]:62129 Closing
+[Mon Sep 28 22:02:22 2026] [::1]:62270 Accepted
+[Mon Sep 28 22:02:22 2026] [::1]:62270 Closing
+[Mon Sep 28 22:02:22 2026] [::1]:55566 Accepted
+[Mon Sep 28 22:02:40 2026] [::1]:55566 Closing
+[Mon Sep 28 22:02:40 2026] [::1]:64517 Accepted
+[Mon Sep 28 22:02:40 2026] [::1]:55112 Accepted
+[Mon Sep 28 22:02:41 2026] [::1]:64517 Closing
+[Mon Sep 28 22:02:41 2026] [::1]:58573 Accepted
+[Mon Sep 28 22:02:41 2026] [::1]:55112 Closing
+[Mon Sep 28 22:02:41 2026] [::1]:60336 Accepted
+[Mon Sep 28 22:02:42 2026] [::1]:58573 Closing
+[Mon Sep 28 22:02:43 2026] [::1]:60336 Closing
+[Mon Sep 28 22:02:43 2026] [::1]:60543 Accepted
+[Mon Sep 28 22:02:43 2026] [::1]:65481 Accepted
+[Mon Sep 28 22:02:53 2026] [::1]:60543 Closing
+[Mon Sep 28 22:02:53 2026] [::1]:65481 Closing
+[Mon Sep 28 22:02:53 2026] [::1]:54771 Accepted
+[Mon Sep 28 22:02:53 2026] [::1]:56369 Accepted
+[Mon Sep 28 22:02:54 2026] [::1]:54771 Closing
+[Mon Sep 28 22:02:54 2026] [::1]:52790 Accepted
+[Mon Sep 28 22:02:54 2026] [::1]:56369 [200]: GET /assets/vendor/bootstrap.min.css
+[Mon Sep 28 22:02:54 2026] [::1]:64104 Accepted
+[Mon Sep 28 22:02:54 2026] [::1]:52790 [200]: GET /assets/vendor/bootstrap.rtl.only.min.css
+[Mon Sep 28 22:02:54 2026] [::1]:50533 Accepted
+[Mon Sep 28 22:02:54 2026] [::1]:64104 [200]: GET /assets/main.css
+[Mon Sep 28 22:02:54 2026] [::1]:54779 Accepted
+[Mon Sep 28 22:02:54 2026] [::1]:50533 [200]: GET /assets/dore.light.bluenavy.min.css
+[Mon Sep 28 22:02:54 2026] [::1]:60391 Accepted
+[Mon Sep 28 22:02:54 2026] [::1]:54779 Closing
+[Mon Sep 28 22:02:54 2026] [::1]:56369 Closing
+[Mon Sep 28 22:02:54 2026] [::1]:52790 Closing
+[Mon Sep 28 22:02:54 2026] [::1]:56217 Accepted
+[Mon Sep 28 22:02:54 2026] [::1]:60391 [200]: GET /assets/font/iconsmind-s/css/iconsminds.css
+[Mon Sep 28 22:02:54 2026] [::1]:64104 Closing
+[Mon Sep 28 22:02:54 2026] [::1]:53519 Accepted
+[Mon Sep 28 22:02:54 2026] [::1]:56217 [200]: GET /assets/font/simple-line-icons/css/simple-line-icons.css
+[Mon Sep 28 22:02:54 2026] [::1]:63714 Accepted
+[Mon Sep 28 22:02:54 2026] [::1]:53519 [200]: GET /assets/vendor/component-custom-switch.min.css
+[Mon Sep 28 22:02:54 2026] [::1]:50533 Closing
+[Mon Sep 28 22:02:54 2026] [::1]:59729 Accepted
+[Mon Sep 28 22:02:55 2026] [::1]:63714 Closing
+[Mon Sep 28 22:02:55 2026] [::1]:60391 Closing
+[Mon Sep 28 22:02:55 2026] [::1]:63856 Accepted
+[Mon Sep 28 22:02:55 2026] [::1]:59729 [200]: GET /assets/vendor/perfect-scrollbar.css
+[Mon Sep 28 22:02:55 2026] [::1]:56217 Closing
+[Mon Sep 28 22:02:55 2026] [::1]:54934 Accepted
+[Mon Sep 28 22:02:55 2026] [::1]:63856 [200]: GET /assets/vendor/dataTables.bootstrap4.min.css
+[Mon Sep 28 22:02:55 2026] [::1]:53519 Closing
+[Mon Sep 28 22:02:55 2026] [::1]:51381 Accepted
+[Mon Sep 28 22:02:55 2026] [::1]:54934 [200]: GET /assets/vendor/datatables.responsive.bootstrap4.min.css
+[Mon Sep 28 22:02:55 2026] [::1]:56057 Accepted
+[Mon Sep 28 22:02:56 2026] [::1]:51381 Closing
+[Mon Sep 28 22:02:56 2026] [::1]:59729 Closing
+[Mon Sep 28 22:02:56 2026] [::1]:56244 Accepted
+[Mon Sep 28 22:02:56 2026] [::1]:56057 [200]: GET /assets/vendor/select2.min.css
+[Mon Sep 28 22:02:56 2026] [::1]:63856 Closing
+[Mon Sep 28 22:02:56 2026] [::1]:51359 Accepted
+[Mon Sep 28 22:02:56 2026] [::1]:56244 [200]: GET /assets/vendor/select2-bootstrap.min.css
+[Mon Sep 28 22:02:56 2026] [::1]:54934 Closing
+[Mon Sep 28 22:02:56 2026] [::1]:56101 Accepted
+[Mon Sep 28 22:02:56 2026] [::1]:51359 [200]: GET /assets/vendor/bootstrap-float-label.min.css
+[Mon Sep 28 22:02:56 2026] [::1]:61221 Accepted
+[Mon Sep 28 22:02:57 2026] [::1]:56101 Closing
+[Mon Sep 28 22:02:57 2026] [::1]:56057 Closing
+[Mon Sep 28 22:02:57 2026] [::1]:59904 Accepted
+[Mon Sep 28 22:02:57 2026] [::1]:61221 [200]: GET /assets/vendor/bootstrap-datepicker3.min.css
+[Mon Sep 28 22:02:57 2026] [::1]:56244 Closing
+[Mon Sep 28 22:02:57 2026] [::1]:54034 Accepted
+[Mon Sep 28 22:02:57 2026] [::1]:59904 [200]: GET /assets/vendor/glide.core.min.css
+[Mon Sep 28 22:02:57 2026] [::1]:51359 Closing
+[Mon Sep 28 22:02:57 2026] [::1]:61729 Accepted
+[Mon Sep 28 22:02:57 2026] [::1]:54034 [200]: GET /assets/vendor/nouislider.min.css
+[Mon Sep 28 22:02:57 2026] [::1]:53324 Accepted
+[Mon Sep 28 22:02:57 2026] [::1]:61221 Closing
+[Mon Sep 28 22:02:57 2026] [::1]:61729 [200]: GET /assets/js/vendor/jquery-3.3.1.min.js
+[Mon Sep 28 22:02:57 2026] [::1]:59904 Closing
+[Mon Sep 28 22:02:57 2026] [::1]:54034 Closing
+[Mon Sep 28 22:02:57 2026] [::1]:61729 Closing
+[Mon Sep 28 22:02:57 2026] [::1]:53324 [200]: GET /assets/img/profiles/l-1.jpg
+[Mon Sep 28 22:02:57 2026] [::1]:53324 Closing
+[Mon Sep 28 22:02:57 2026] [::1]:63559 Accepted
+[Mon Sep 28 22:02:57 2026] [::1]:63559 [200]: GET /assets/js/vendor/bootstrap.bundle.min.js
+[Mon Sep 28 22:02:57 2026] [::1]:63559 Closing
+[Mon Sep 28 22:02:57 2026] [::1]:55839 Accepted
+[Mon Sep 28 22:02:57 2026] [::1]:53996 Accepted
+[Mon Sep 28 22:02:57 2026] [::1]:53504 Accepted
+[Mon Sep 28 22:02:57 2026] [::1]:53996 [200]: GET /assets/js/vendor/perfect-scrollbar.min.js
+[Mon Sep 28 22:02:57 2026] [::1]:53504 [200]: GET /assets/js/vendor/mousetrap.min.js
+[Mon Sep 28 22:02:57 2026] [::1]:53996 Closing
+[Mon Sep 28 22:02:57 2026] [::1]:53504 Closing
+[Mon Sep 28 22:02:57 2026] [::1]:50118 Accepted
+[Mon Sep 28 22:02:57 2026] [::1]:50118 [200]: GET /assets/js/vendor/datatables.min.js
+[Mon Sep 28 22:02:57 2026] [::1]:51870 Accepted
+[Mon Sep 28 22:02:57 2026] [::1]:51870 [200]: GET /assets/js/dore.script.js
+[Mon Sep 28 22:02:57 2026] [::1]:64186 Accepted
+[Mon Sep 28 22:02:57 2026] [::1]:50118 Closing
+[Mon Sep 28 22:02:57 2026] [::1]:51870 Closing
+[Mon Sep 28 22:02:57 2026] [::1]:64186 [200]: GET /assets/js/scripts.js
+[Mon Sep 28 22:02:57 2026] [::1]:64186 Closing
+[Mon Sep 28 22:02:58 2026] [::1]:55839 Closing
+[Mon Sep 28 22:02:58 2026] [::1]:60898 Accepted
+[Mon Sep 28 22:02:58 2026] [::1]:60898 Closing
+[Mon Sep 28 22:02:58 2026] [::1]:53772 Accepted
+[Mon Sep 28 22:02:59 2026] [::1]:53772 Closing
+[Mon Sep 28 22:02:59 2026] [::1]:60907 Accepted
+[Mon Sep 28 22:02:59 2026] [::1]:60907 Closing
+[Mon Sep 28 22:02:59 2026] [::1]:62332 Accepted
+[Mon Sep 28 22:03:00 2026] [::1]:62332 Closing
+[Mon Sep 28 22:03:00 2026] [::1]:65107 Accepted
+[Mon Sep 28 22:03:00 2026] [::1]:65107 Closing
+[Mon Sep 28 22:03:00 2026] [::1]:56882 Accepted
+[Mon Sep 28 22:03:01 2026] [::1]:56882 Closing
+[Mon Sep 28 22:03:01 2026] [::1]:62450 Accepted
+[Mon Sep 28 22:03:02 2026] [::1]:62450 Closing
+[Mon Sep 28 22:03:02 2026] [::1]:59686 Accepted
+[Mon Sep 28 22:03:03 2026] [::1]:59686 Closing
+[Mon Sep 28 22:03:03 2026] [::1]:50060 Accepted
+[Mon Sep 28 22:03:05 2026] [::1]:50060 Closing
+[Mon Sep 28 22:03:05 2026] [::1]:57703 Accepted
+[Mon Sep 28 22:03:06 2026] [::1]:57703 Closing
+[Mon Sep 28 22:03:06 2026] [::1]:56513 Accepted
+[Mon Sep 28 22:03:06 2026] [::1]:56002 Accepted
+[Mon Sep 28 22:03:07 2026] [::1]:56513 Closing
+[Mon Sep 28 22:03:07 2026] [::1]:53559 Accepted
+[Mon Sep 28 22:03:07 2026] [::1]:56002 [200]: GET /assets/vendor/bootstrap.min.css
+[Mon Sep 28 22:03:07 2026] [::1]:63329 Accepted
+[Mon Sep 28 22:03:07 2026] [::1]:53559 [200]: GET /assets/vendor/bootstrap.rtl.only.min.css
+[Mon Sep 28 22:03:08 2026] [::1]:63329 Closing
+[Mon Sep 28 22:03:08 2026] [::1]:61686 Accepted
+[Mon Sep 28 22:03:08 2026] [::1]:51463 Accepted
+[Mon Sep 28 22:03:08 2026] [::1]:61686 [200]: GET /assets/main.css
+[Mon Sep 28 22:03:08 2026] [::1]:56002 Closing
+[Mon Sep 28 22:03:08 2026] [::1]:53559 Closing
+[Mon Sep 28 22:03:08 2026] [::1]:61686 Closing
+[Mon Sep 28 22:03:09 2026] [::1]:51463 Closing
+[Mon Sep 28 22:03:09 2026] [::1]:65353 Accepted
+[Mon Sep 28 22:03:09 2026] [::1]:56266 Accepted
+[Mon Sep 28 22:03:09 2026] [::1]:65353 [200]: GET /assets/dore.light.bluenavy.min.css
+[Mon Sep 28 22:03:09 2026] [::1]:60916 Accepted
+[Mon Sep 28 22:03:09 2026] [::1]:56266 [200]: GET /assets/font/iconsmind-s/css/iconsminds.css
+[Mon Sep 28 22:03:09 2026] [::1]:57021 Accepted
+[Mon Sep 28 22:03:09 2026] [::1]:60916 [200]: GET /assets/font/simple-line-icons/css/simple-line-icons.css
+[Mon Sep 28 22:03:10 2026] [::1]:57021 Closing
+[Mon Sep 28 22:03:10 2026] [::1]:65353 Closing
+[Mon Sep 28 22:03:10 2026] [::1]:56266 Closing
+[Mon Sep 28 22:03:10 2026] [::1]:60916 Closing
+[Mon Sep 28 22:03:10 2026] [::1]:57289 Accepted
+[Mon Sep 28 22:03:10 2026] [::1]:56762 Accepted
+[Mon Sep 28 22:03:10 2026] [::1]:56762 [200]: GET /assets/vendor/perfect-scrollbar.css
+[Mon Sep 28 22:03:10 2026] [::1]:56762 Closing
+[Mon Sep 28 22:03:10 2026] [::1]:49839 Accepted
+[Mon Sep 28 22:03:10 2026] [::1]:49839 Closing
+[Mon Sep 28 22:03:10 2026] [::1]:52942 Accepted
+[Mon Sep 28 22:03:10 2026] [::1]:57289 [200]: GET /assets/vendor/component-custom-switch.min.css
+[Mon Sep 28 22:03:10 2026] [::1]:58564 Accepted
+[Mon Sep 28 22:03:10 2026] [::1]:52942 [200]: GET /assets/vendor/dataTables.bootstrap4.min.css
+[Mon Sep 28 22:03:10 2026] [::1]:58564 [200]: GET /assets/vendor/datatables.responsive.bootstrap4.min.css
+[Mon Sep 28 22:03:10 2026] [::1]:57289 Closing
+[Mon Sep 28 22:03:10 2026] [::1]:52942 Closing
+[Mon Sep 28 22:03:10 2026] [::1]:58564 Closing
+[Mon Sep 28 22:03:11 2026] [::1]:50066 Accepted
+[Mon Sep 28 22:03:11 2026] [::1]:50066 [200]: GET /assets/vendor/select2.min.css
+[Mon Sep 28 22:03:11 2026] [::1]:61839 Accepted
+[Mon Sep 28 22:03:11 2026] [::1]:50066 Closing
+[Mon Sep 28 22:03:11 2026] [::1]:49712 Accepted
+[Mon Sep 28 22:03:11 2026] [::1]:61839 [200]: GET /assets/vendor/select2-bootstrap.min.css
+[Mon Sep 28 22:03:11 2026] [::1]:61839 Closing
+[Mon Sep 28 22:03:11 2026] [::1]:49712 [200]: GET /assets/vendor/bootstrap-float-label.min.css
+[Mon Sep 28 22:03:11 2026] [::1]:49712 Closing
+[Mon Sep 28 22:03:11 2026] [::1]:57363 Accepted
+[Mon Sep 28 22:03:11 2026] [::1]:57363 [200]: GET /assets/vendor/bootstrap-datepicker3.min.css
+[Mon Sep 28 22:03:11 2026] [::1]:51800 Accepted
+[Mon Sep 28 22:03:11 2026] [::1]:57363 Closing
+[Mon Sep 28 22:03:11 2026] [::1]:61921 Accepted
+[Mon Sep 28 22:03:11 2026] [::1]:51800 [200]: GET /assets/vendor/glide.core.min.css
+[Mon Sep 28 22:03:11 2026] [::1]:61921 [200]: GET /assets/vendor/nouislider.min.css
+[Mon Sep 28 22:03:11 2026] [::1]:51800 Closing
+[Mon Sep 28 22:03:11 2026] [::1]:61921 Closing
+[Mon Sep 28 22:03:11 2026] [::1]:62167 Accepted
+[Mon Sep 28 22:03:11 2026] [::1]:49294 Accepted
+[Mon Sep 28 22:03:11 2026] [::1]:62167 [200]: GET /assets/js/vendor/jquery-3.3.1.min.js
+[Mon Sep 28 22:03:11 2026] [::1]:61403 Accepted
+[Mon Sep 28 22:03:11 2026] [::1]:62167 Closing
+[Mon Sep 28 22:03:11 2026] [::1]:61403 [200]: GET /assets/logos/logo_yazbek_01.png
+[Mon Sep 28 22:03:11 2026] [::1]:49294 [200]: GET /assets/img/profiles/l-1.jpg
+[Mon Sep 28 22:03:11 2026] [::1]:61403 Closing
+[Mon Sep 28 22:03:11 2026] [::1]:49294 Closing
+[Mon Sep 28 22:03:11 2026] [::1]:59252 Accepted
+[Mon Sep 28 22:03:11 2026] [::1]:53706 Accepted
+[Mon Sep 28 22:03:11 2026] [::1]:59252 [200]: GET /assets/js/vendor/bootstrap.bundle.min.js
+[Mon Sep 28 22:03:11 2026] [::1]:53706 [200]: GET /assets/js/vendor/perfect-scrollbar.min.js
+[Mon Sep 28 22:03:11 2026] [::1]:59252 Closing
+[Mon Sep 28 22:03:11 2026] [::1]:53706 Closing
+[Mon Sep 28 22:03:11 2026] [::1]:59404 Accepted
+[Mon Sep 28 22:03:11 2026] [::1]:59404 [200]: GET /assets/js/vendor/mousetrap.min.js
+[Mon Sep 28 22:03:11 2026] [::1]:59404 Closing
+[Mon Sep 28 22:03:11 2026] [::1]:60660 Accepted
+[Mon Sep 28 22:03:11 2026] [::1]:60660 [200]: GET /assets/js/vendor/datatables.min.js
+[Mon Sep 28 22:03:11 2026] [::1]:63385 Accepted
+[Mon Sep 28 22:03:11 2026] [::1]:60660 Closing
+[Mon Sep 28 22:03:11 2026] [::1]:63385 [200]: GET /assets/js/dore.script.js
+[Mon Sep 28 22:03:11 2026] [::1]:65096 Accepted
+[Mon Sep 28 22:03:11 2026] [::1]:63385 Closing
+[Mon Sep 28 22:03:11 2026] [::1]:65096 [200]: GET /assets/js/scripts.js
+[Mon Sep 28 22:03:11 2026] [::1]:65096 Closing
+[Mon Sep 28 22:03:11 2026] [::1]:55052 Accepted
+[Mon Sep 28 22:03:11 2026] [::1]:55052 [200]: GET /assets/js/vendor/select2.full.js
+[Mon Sep 28 22:03:11 2026] [::1]:55052 Closing
+[Mon Sep 28 22:03:11 2026] [::1]:55771 Accepted
+[Mon Sep 28 22:03:11 2026] [::1]:55771 [200]: GET /logos/black.svg
+[Mon Sep 28 22:03:11 2026] [::1]:55771 Closing
+[Mon Sep 28 22:03:11 2026] [::1]:52581 Accepted
+[Mon Sep 28 22:03:11 2026] [::1]:59917 Accepted
+[Mon Sep 28 22:03:11 2026] [::1]:52581 [200]: GET /assets/font/simple-line-icons/fonts/Simple-Line-Icons.woff2?v=2.4.0
+[Mon Sep 28 22:03:11 2026] [::1]:52581 Closing
+[Mon Sep 28 22:03:11 2026] [::1]:59917 [200]: GET /assets/font/iconsmind-s/font/iconsminds.woff2?42207379
+[Mon Sep 28 22:03:11 2026] [::1]:63695 Accepted
+[Mon Sep 28 22:03:11 2026] [::1]:50652 Accepted
+[Mon Sep 28 22:03:11 2026] [::1]:59917 Closing
+[Mon Sep 28 22:03:12 2026] [::1]:63695 Closing
+[Mon Sep 28 22:03:12 2026] [::1]:62095 Accepted
+[Mon Sep 28 22:03:13 2026] [::1]:50652 Closing
+[Mon Sep 28 22:03:13 2026] [::1]:50063 Accepted
+[Mon Sep 28 22:03:13 2026] [::1]:62095 [200]: GET /assets/js/vendor/datatables.spanish.json
+[Mon Sep 28 22:03:13 2026] [::1]:61426 Accepted
+[Mon Sep 28 22:03:14 2026] [::1]:50063 Closing
+[Mon Sep 28 22:03:14 2026] [::1]:61426 [200]: GET /favicon.ico
+[Mon Sep 28 22:03:14 2026] [::1]:62095 Closing
+[Mon Sep 28 22:03:14 2026] [::1]:61426 Closing
+[Mon Sep 28 22:03:14 2026] [::1]:56054 Accepted
+[Mon Sep 28 22:03:15 2026] [::1]:56054 Closing
+[Mon Sep 28 22:03:15 2026] [::1]:63081 Accepted
+[Mon Sep 28 22:03:15 2026] [::1]:63081 Closing
+[Mon Sep 28 22:03:16 2026] [::1]:49280 Accepted
+[Mon Sep 28 22:03:16 2026] [::1]:49280 Closing
+[Mon Sep 28 22:03:18 2026] [::1]:64305 Accepted
+[Mon Sep 28 22:03:18 2026] [::1]:64305 Closing
+[Mon Sep 28 22:03:20 2026] [::1]:65275 Accepted
+[Mon Sep 28 22:03:21 2026] [::1]:65275 Closing
+[Mon Sep 28 22:03:22 2026] [::1]:54495 Accepted
+[Mon Sep 28 22:03:22 2026] [::1]:54495 Closing
+[Mon Sep 28 22:03:24 2026] [::1]:57826 Accepted
+[Mon Sep 28 22:03:24 2026] [::1]:57826 Closing
+[Mon Sep 28 22:03:26 2026] [::1]:49579 Accepted
+[Mon Sep 28 22:03:26 2026] [::1]:49579 Closing
+[Mon Sep 28 22:03:28 2026] [::1]:52562 Accepted
+[Mon Sep 28 22:03:28 2026] [::1]:52562 Closing
+[Mon Sep 28 22:03:30 2026] [::1]:57795 Accepted
+[Mon Sep 28 22:03:31 2026] [::1]:57795 Closing
+[Mon Sep 28 22:03:32 2026] [::1]:57559 Accepted
+[Mon Sep 28 22:03:33 2026] [::1]:57559 Closing
+[Mon Sep 28 22:03:34 2026] [::1]:60310 Accepted
+[Mon Sep 28 22:03:34 2026] [::1]:60310 Closing
+[Mon Sep 28 22:03:36 2026] [::1]:58909 Accepted
+[Mon Sep 28 22:03:36 2026] [::1]:58909 Closing
+[Mon Sep 28 22:03:38 2026] [::1]:64930 Accepted
+[Mon Sep 28 22:03:39 2026] [::1]:64930 Closing
+[Mon Sep 28 22:03:40 2026] [::1]:50256 Accepted
+[Mon Sep 28 22:03:40 2026] [::1]:50256 Closing
+[Mon Sep 28 22:03:42 2026] [::1]:61869 Accepted
+[Mon Sep 28 22:03:43 2026] [::1]:61869 Closing
+[Mon Sep 28 22:03:45 2026] [::1]:56014 Accepted
+[Mon Sep 28 22:03:46 2026] [::1]:56014 Closing
+[Mon Sep 28 22:03:47 2026] [::1]:49331 Accepted
+[Mon Sep 28 22:03:47 2026] [::1]:49331 Closing
+[Mon Sep 28 22:03:49 2026] [::1]:53451 Accepted
+[Mon Sep 28 22:03:49 2026] [::1]:53451 Closing
+[Mon Sep 28 22:03:51 2026] [::1]:58131 Accepted
+[Mon Sep 28 22:03:52 2026] [::1]:58131 Closing
+[Mon Sep 28 22:03:53 2026] [::1]:54388 Accepted
+[Mon Sep 28 22:03:53 2026] [::1]:54388 Closing
+[Mon Sep 28 22:03:55 2026] [::1]:55999 Accepted
+[Mon Sep 28 22:03:56 2026] [::1]:55999 Closing
+[Mon Sep 28 22:03:57 2026] [::1]:56940 Accepted
+[Mon Sep 28 22:03:57 2026] [::1]:56940 Closing
+[Mon Sep 28 22:03:59 2026] [::1]:51824 Accepted
+[Mon Sep 28 22:03:59 2026] [::1]:51824 Closing
+[Mon Sep 28 22:04:01 2026] [::1]:60439 Accepted
+[Mon Sep 28 22:04:01 2026] [::1]:60439 Closing
+[Mon Sep 28 22:04:03 2026] [::1]:54126 Accepted
+[Mon Sep 28 22:04:03 2026] [::1]:54126 Closing
+[Mon Sep 28 22:04:05 2026] [::1]:55059 Accepted
+[Mon Sep 28 22:04:05 2026] [::1]:55059 Closing
+[Mon Sep 28 22:04:07 2026] [::1]:65132 Accepted
+[Mon Sep 28 22:04:08 2026] [::1]:65132 Closing
+[Mon Sep 28 22:04:09 2026] [::1]:54113 Accepted
+[Mon Sep 28 22:04:09 2026] [::1]:54113 Closing
+[Mon Sep 28 22:04:11 2026] [::1]:61382 Accepted
+[Mon Sep 28 22:04:11 2026] [::1]:61382 Closing
+[Mon Sep 28 22:04:13 2026] [::1]:56500 Accepted
+[Mon Sep 28 22:04:13 2026] [::1]:56500 Closing
+[Mon Sep 28 22:04:15 2026] [::1]:53902 Accepted
+[Mon Sep 28 22:04:16 2026] [::1]:53902 Closing

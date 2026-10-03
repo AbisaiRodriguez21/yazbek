@@ -1460,6 +1460,39 @@ class AdminController extends BaseController
     }
 
     // ──────────────────────────────────────────────────────────────
+    // POST /admin/folio/:folio/confirmar  —  Confirma un folio padre "Sin
+    // Pagar" SIN liquidarlo: habilita la factura del padre (99/PPD) pero
+    // mantiene status=2 para que los abonos (folios hijo) sigan disponibles.
+    // La liquidación real (status=6, "Pagado") sigue ocurriendo, como hasta
+    // ahora, de forma automática cuando los abonos cubren el total.
+    // ──────────────────────────────────────────────────────────────
+    public function confirmarPadreSinPagar(int $folio): \CodeIgniter\HTTP\Response
+    {
+        $nota = $this->notaModel->getPorFolio($folio);
+        if (! $nota) {
+            return $this->response->setJSON(['ok' => false, 'error' => 'Nota no encontrada.']);
+        }
+        if ((int) ($nota['referencia'] ?? 0) > 0) {
+            return $this->response->setJSON(['ok' => false, 'error' => 'Esta acción no aplica a un abono; solo a la nota principal de la venta.']);
+        }
+        if (! $this->esFolioPadreSinPagar($nota)) {
+            return $this->response->setJSON(['ok' => false, 'error' => 'Esta acción solo aplica a ventas a crédito (Sin Pagar).']);
+        }
+        if (in_array($nota['verificado'] ?? '', ['Confirmado', 'Pagado', '1'], true)) {
+            return $this->response->setJSON(['ok' => false, 'error' => "La nota #{$folio} ya fue confirmada o ya está pagada."]);
+        }
+
+        $this->notaModel->confirmarPadreSinPagar((int) $nota['Id_Notas_1']);
+        AuditService::log(AuditService::VENTA_VERIFICADA, 'notas_1', $folio,
+            "Folio padre #{$folio} confirmado por caja (Sin Pagar/PPD) — habilitado para facturar; los abonos (folios hijo) siguen disponibles.");
+
+        return $this->response->setJSON([
+            'ok'      => true,
+            'mensaje' => "Nota #{$folio} confirmada. Ya se puede generar su factura. El cliente puede seguir abonando con normalidad.",
+        ]);
+    }
+
+    // ──────────────────────────────────────────────────────────────
     // GET /admin/folio/:folio/datos-fiscales
     // Devuelve los datos SAT para pre-llenar el modal de facturación.
     // Prioridad: datos guardados en notas_1 → datos del cliente → vacío.
@@ -1470,7 +1503,7 @@ class AdminController extends BaseController
         $nota = $db->query(
             "SELECT n.rfc_receptor, n.razon_social_receptor, n.cp_receptor,
                     n.uso_cfdi, n.regimen_fiscal_receptor, n.forma_pago_cfdi,
-                    n.idCliente, COALESCE(n.referencia, 0) AS referencia
+                    n.idCliente, COALESCE(n.referencia, 0) AS referencia, n.tipoPago
              FROM notas_1 n WHERE n.folio = ? LIMIT 1",
             [$folio]
         )->getRowArray();
@@ -1482,6 +1515,11 @@ class AdminController extends BaseController
         // Un folio hijo (referencia > 0) es un abono: se factura SIEMPRE con
         // Método PUE + la forma de pago real del abono (combinación válida SAT).
         $esAbono = (int)($nota['referencia'] ?? 0) > 0;
+
+        // Folio PADRE "Sin Pagar" (crédito): el SAT espera 99/PPD para una
+        // venta a crédito que aún no está liquidada, sin importar lo cobrado
+        // hasta ahora en abonos.
+        $esSinPagarPadre = $this->esFolioPadreSinPagar($nota);
 
         // Cargar datos del cliente como respaldo
         $cliente = [];
@@ -1511,9 +1549,10 @@ class AdminController extends BaseController
             'cpReceptor'            => trim($cp),
             'usoCFDI'               => $uso,
             'regimenFiscalReceptor' => $reg,
-            'formaPagoCFDI'         => $esAbono ? ($forma === '99' ? '01' : $forma) : $forma,
-            'metodoPagoCFDI'        => 'PUE',
+            'formaPagoCFDI'         => $esSinPagarPadre ? '99' : ($esAbono ? ($forma === '99' ? '01' : $forma) : $forma),
+            'metodoPagoCFDI'        => $esSinPagarPadre ? 'PPD' : 'PUE',
             'esAbono'               => $esAbono,
+            'esSinPagarPadre'       => $esSinPagarPadre,
             'idCliente'             => (int)($nota['idCliente'] ?? 0),
             'correoCliente'         => trim($cliente['mail'] ?? ''),
         ]);
@@ -2407,9 +2446,26 @@ class AdminController extends BaseController
         if ($statusId !== 3) {
             $html .= '<td></td>';
             $html .= '<td colspan="2" class="text-right no-border"><button type="button" class="btn btn-danger" onclick="fn_modal_calcelar_nota()">Cancelar Nota</button></td>';
+
+            // Un folio padre "Sin Pagar" (crédito) recién creado NO se debe
+            // liquidar de un solo golpe: eso registraría un pago falso por el
+            // total y bloquearía los abonos (folios hijo). En su lugar se
+            // ofrece un botón de CONFIRMACIÓN (no toca status, solo habilita
+            // la factura) hasta que los abonos ya cubran el total — momento en
+            // el que la liquidación real ya ocurre sola (ver
+            // recibirPagoYLiquidar()/nuevoPagoAnticipo()).
+            $esPadreSinPagar = (int) ($nota['referencia'] ?? 0) === 0 && $this->esFolioPadreSinPagar($nota);
+            $cubreTotal      = $sumPagado >= ((float) ($nota['total'] ?? 0) - 0.99);
+
             if (! $esLiquidado) {
-                $btnLabelLiquidar = ($statusId === 2 && empty($pagos)) ? 'Verificar Pago' : 'Liquidar';
-                $html .= '<td colspan="2" class="text-right no-border"><button type="button" class="btn btn-success" onclick="fn_liquidar_modal()">' . $btnLabelLiquidar . '</button></td>';
+                if ($esPadreSinPagar && $statusId === 2 && ! $cubreTotal) {
+                    if ($verificado !== 'Confirmado') {
+                        $html .= '<td colspan="2" class="text-right no-border"><button type="button" class="btn btn-info" onclick="fn_confirmar_padre_modal()">Confirmar para Facturar</button></td>';
+                    }
+                } else {
+                    $btnLabelLiquidar = ($statusId === 2 && empty($pagos)) ? 'Verificar Pago' : 'Liquidar';
+                    $html .= '<td colspan="2" class="text-right no-border"><button type="button" class="btn btn-success" onclick="fn_liquidar_modal()">' . $btnLabelLiquidar . '</button></td>';
+                }
             }
         }
         $html .= '</tr>';
@@ -2420,10 +2476,11 @@ class AdminController extends BaseController
                . '<i class="simple-icon-printer mr-1"></i> Ver Ticket</button>'
                . '</td></tr>';
 
-        // Botón Facturar en modal (solo folio PADRE, pagado/liquidado, no cancelado, no ya facturado)
+        // Botón Facturar en modal (solo folio PADRE, pagado/liquidado o
+        // confirmado como "Sin Pagar", no cancelado, no ya facturado).
         // Los folios hijos (abonos) no tienen productos propios — la factura siempre
         // se solicita sobre el padre, una sola vez.
-        if ((int)($nota['referencia'] ?? 0) === 0 && $statusId !== 3 && ($statusId === 5 || $esLiquidado) && empty($uuidFact)) {
+        if ((int)($nota['referencia'] ?? 0) === 0 && $statusId !== 3 && ($statusId === 5 || $esLiquidado || $verificado === 'Confirmado') && empty($uuidFact)) {
             $btnLabel = $statusFact === 1 ? 'Facturar' : 'Solicitar Factura';
             $html .= '<tr><td colspan="4" class="text-right pt-2">'
                    . '<button type="button" class="btn btn-primary" '
@@ -3578,7 +3635,13 @@ class AdminController extends BaseController
     /**
      * GET /admin/facturacion/datatable
      * Server-side DataTable con filtros: cliente, folio, desde, hasta, estado.
-     * Solo notas cerradas (idstatus 5 = Pagada, 6 = Liquidado), nota padre (referencia=0).
+     * Incluye dos tipos de folio facturable (esquema 99/PPD + Recepción de
+     * Pagos):
+     *  · Padre: venta completa ya lista para facturar (status 5/6, o
+     *    "Confirmado" — ver AdminController::confirmarPadreSinPagar), y que
+     *    ningún hijo se haya facturado ya.
+     *  · Hijo (abono): recibo de pago (REP) ligado al UUID del padre — solo
+     *    si el padre YA tiene factura y el abono ya fue confirmado por caja.
      */
     public function facturacionDatatable(): \CodeIgniter\HTTP\Response
     {
@@ -3610,15 +3673,33 @@ class AdminController extends BaseController
                         LEFT JOIN clientes c ON c.id  = n.idCliente
                         LEFT JOIN usuarios u ON u.Id  = n.idVendedor";
 
-            // ── Condiciones base: solo notas pagadas/liquidadas padre ─
+            // ── Condición base: folio padre O abono ya listos para facturar ─
+            $condFacturable = "(
+                (COALESCE(n.referencia, 0) = 0
+                 AND (n.status IN (5, 6) OR n.verificado = 'Confirmado')
+                 AND NOT EXISTS (
+                     SELECT 1 FROM notas_1 h
+                     WHERE h.referencia = n.folio AND h.status != 3
+                       AND COALESCE(h.uuid_fiscal, '') <> ''
+                 )
+                )
+                OR
+                (COALESCE(n.referencia, 0) > 0
+                 AND (n.status IN (5, 6) OR n.verificado = 'Pagado')
+                 AND EXISTS (
+                     SELECT 1 FROM notas_1 p
+                     WHERE p.folio = n.referencia AND COALESCE(p.uuid_fiscal, '') <> ''
+                 )
+                )
+            )";
+
             $whereClauses = [];
             $params       = [];
 
-            $whereClauses[] = "n.status IN (5, 6)";
-            $whereClauses[] = "COALESCE(n.referencia, 0) = 0";
+            $whereClauses[] = $condFacturable;
 
             // Total base (solo condiciones de negocio, sin filtros de usuario)
-            $baseWhere = "WHERE n.status IN (5, 6) AND COALESCE(n.referencia, 0) = 0";
+            $baseWhere = "WHERE $condFacturable";
             $total     = (int) $db->query("SELECT COUNT(*) AS total $baseSql $baseWhere")->getRow()->total;
 
             // Filtro cliente (ID exacto seleccionado por Select2)
@@ -3689,7 +3770,8 @@ class AdminController extends BaseController
                         n.status                              AS idstatus,
                         COALESCE(n.uuid_fiscal, '')           AS uuid_fiscal,
                         COALESCE(n.status_facturacion, 0)     AS status_facturacion,
-                        n.factura
+                        n.factura,
+                        COALESCE(n.referencia, 0)             AS referencia
                  $baseSql $where
                  ORDER BY $orderCol $orderDir
                  LIMIT ? OFFSET ?",
@@ -3729,7 +3811,27 @@ class AdminController extends BaseController
         $desde     = trim($req->getGet('desde')   ?? '');
         $hasta     = trim($req->getGet('hasta')   ?? '');
 
-        $where  = ["n.status IN (5,6)", "COALESCE(n.referencia, 0) = 0"];
+        // Misma condición de "facturable" que facturacionDatatable(): padre
+        // (status 5/6 o Confirmado, sin hijo ya facturado) o abono/REP
+        // (status 5/6 o Pagado, con el padre ya facturado).
+        $where  = ["(
+            (COALESCE(n.referencia, 0) = 0
+             AND (n.status IN (5, 6) OR n.verificado = 'Confirmado')
+             AND NOT EXISTS (
+                 SELECT 1 FROM notas_1 h
+                 WHERE h.referencia = n.folio AND h.status != 3
+                   AND COALESCE(h.uuid_fiscal, '') <> ''
+             )
+            )
+            OR
+            (COALESCE(n.referencia, 0) > 0
+             AND (n.status IN (5, 6) OR n.verificado = 'Pagado')
+             AND EXISTS (
+                 SELECT 1 FROM notas_1 p
+                 WHERE p.folio = n.referencia AND COALESCE(p.uuid_fiscal, '') <> ''
+             )
+            )
+        )"];
         $params = [];
 
         if ($clienteId > 0)  { $where[] = "n.idCliente = ?"; $params[] = $clienteId; }
@@ -3772,11 +3874,18 @@ class AdminController extends BaseController
         $desde     = trim($req->getGet('desde')   ?? '');
         $hasta     = trim($req->getGet('hasta')   ?? '');
 
+        // Solo folios PADRE con productos propios — un abono/REP no tiene
+        // productos y no se puede mezclar en una factura consolidada.
         $where  = [
-            "n.status IN (5,6)",
             "COALESCE(n.referencia, 0) = 0",
+            "(n.status IN (5,6) OR n.verificado = 'Confirmado')",
             "(n.uuid_fiscal IS NULL OR n.uuid_fiscal = '')",
             "COALESCE(n.status_facturacion, 0) != 2",
+            "NOT EXISTS (
+                SELECT 1 FROM notas_1 h
+                WHERE h.referencia = n.folio AND h.status != 3
+                  AND COALESCE(h.uuid_fiscal, '') <> ''
+             )",
         ];
         $params = [];
 
@@ -3963,6 +4072,12 @@ class AdminController extends BaseController
                 'Factura global consolidada UUID=' . $uuid . ' folios=' . implode(',', $folios));
 
             // ── Enviar correo ─────────────────────────────────────────
+            // El resultado de enviar() se captura y se registra siempre (éxito
+            // o fallo) — antes se descartaba, así que una falla de correo
+            // (SMTP mal configurado, timeout, etc.) no dejaba ningún rastro:
+            // la factura quedaba timbrada pero nadie se enteraba de que el
+            // correo nunca llegó.
+            $correoCliente = $cliente['mail'] ?? '';
             try {
                 $cfgRows    = $db->query("SELECT clave, valor FROM ticket_config")->getResultArray();
                 $cfgMap     = array_column($cfgRows, 'valor', 'clave');
@@ -3970,12 +4085,28 @@ class AdminController extends BaseController
                 $pdfService = new \App\Libraries\CfdiPdfService();
                 $pdfBytes   = $pdfService->generarPDF($xmlDecoded, $cfgMap);
                 $emailSvc   = new \App\Libraries\CfdiEmailService();
-                $emailSvc->enviar($xmlDecoded, $pdfBytes, $uuid,
+                $emailResult = $emailSvc->enviar($xmlDecoded, $pdfBytes, $uuid,
                     'Consolidado (' . count($folios) . ' folios)',
-                    $cliente['mail'] ?? '', $cliente['nombre'] ?? '',
+                    $correoCliente, $cliente['nombre'] ?? '',
                     $folios);
+
+                $correoEnviado = (bool)($emailResult['success'] ?? false);
+                $correoMsg     = (string)($emailResult['message'] ?? ($correoEnviado ? 'Enviado' : 'Falló'));
+
+                if (! $correoEnviado) {
+                    log_message('warning', "[facturacionConsolidada] correo folio={$folioBase}: " . $correoMsg);
+                }
+                \App\Libraries\AuditService::log(
+                    $correoEnviado ? \App\Libraries\AuditService::FACTURA_CORREO_OK : \App\Libraries\AuditService::FACTURA_CORREO_FALLIDO,
+                    'notas_1', $folioBase,
+                    ($correoEnviado
+                        ? "Factura consolidada (UUID {$uuid}) enviada a {$correoCliente}"
+                        : "No se envió la factura consolidada (UUID {$uuid}) a {$correoCliente}: {$correoMsg}"));
             } catch (\Throwable $eEmail) {
-                log_message('error', '[facturacionConsolidada] correo: ' . $eEmail->getMessage());
+                log_message('error', '[facturacionConsolidada] correo folio=' . $folioBase . ': ' . $eEmail->getMessage());
+                \App\Libraries\AuditService::log(\App\Libraries\AuditService::FACTURA_CORREO_FALLIDO,
+                    'notas_1', $folioBase,
+                    "No se envió la factura consolidada (UUID {$uuid}) a {$correoCliente}: " . $eEmail->getMessage());
             }
 
             return $this->response->setJSON([
@@ -4051,7 +4182,7 @@ class AdminController extends BaseController
         // ── 1b. Contraseña CSD → cifrada con AES-256-CBC antes de guardar en BD ──
         $csdPassword = trim((string) $request->getPost('csd_password'));
         if ($csdPassword !== '') {
-            $encKey   = hex2bin(getenv('CSD_ENCRYPT_KEY'));
+            $encKey   = hex2bin(env('CSD_ENCRYPT_KEY') ?? '');
             $iv       = random_bytes(16);
             $cifrado  = openssl_encrypt($csdPassword, 'AES-256-CBC', $encKey, OPENSSL_RAW_DATA, $iv);
             $valor    = base64_encode($iv . $cifrado);

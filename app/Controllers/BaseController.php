@@ -122,4 +122,24 @@ abstract class BaseController extends Controller
 
         return $mapaSat[(int) $row['idTipoPago']] ?? null;
     }
+
+    // tipopago.id = 7 → "Sin Pagar" (crédito). Mismo id usado en el mapa de
+    // calcularFormaPagoDominante().
+    protected const TIPO_PAGO_SIN_PAGAR_ID = 7;
+
+    // ──────────────────────────────────────────────────────────────
+    // Un folio PADRE (no un folio hijo/abono) cuyo propio tipoPago es "Sin
+    // Pagar" (crédito) debe facturarse con FormaPago=99 (Por definir) y
+    // MetodoPago=PPD (Pago en Parcialidades o Diferido) — así es como el SAT
+    // espera una venta a crédito que todavía no se liquida por completo,
+    // sin importar qué se haya cobrado ya en sus abonos.
+    // ──────────────────────────────────────────────────────────────
+    protected function esFolioPadreSinPagar(array $nota): bool
+    {
+        $esHijo = (int)($nota['referencia'] ?? 0) > 0;
+        if ($esHijo) {
+            return false;
+        }
+        return (int)($nota['tipoPago'] ?? 0) === self::TIPO_PAGO_SIN_PAGAR_ID;
+    }
 }

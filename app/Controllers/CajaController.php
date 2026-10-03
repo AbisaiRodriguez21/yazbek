@@ -221,6 +221,39 @@ class CajaController extends BaseController
     }
 
     // ──────────────────────────────────────────────────────────────
+    // POST /caja/folio/:folio/confirmar  —  Confirma un folio padre "Sin
+    // Pagar" SIN liquidarlo: habilita la factura del padre (99/PPD) pero
+    // mantiene status=2 para que los abonos (folios hijo) sigan disponibles.
+    // La liquidación real (status=6, "Pagado") sigue ocurriendo, como hasta
+    // ahora, de forma automática cuando los abonos cubren el total.
+    // ──────────────────────────────────────────────────────────────
+    public function confirmarPadreSinPagar(int $folio): \CodeIgniter\HTTP\Response
+    {
+        $nota = $this->notaModel->getPorFolio($folio);
+        if (! $nota) {
+            return $this->response->setJSON(['ok' => false, 'error' => 'Nota no encontrada.']);
+        }
+        if ((int) ($nota['referencia'] ?? 0) > 0) {
+            return $this->response->setJSON(['ok' => false, 'error' => 'Esta acción no aplica a un abono; solo a la nota principal de la venta.']);
+        }
+        if (! $this->esFolioPadreSinPagar($nota)) {
+            return $this->response->setJSON(['ok' => false, 'error' => 'Esta acción solo aplica a ventas a crédito (Sin Pagar).']);
+        }
+        if (in_array($nota['verificado'] ?? '', ['Confirmado', 'Pagado', '1'], true)) {
+            return $this->response->setJSON(['ok' => false, 'error' => "La nota #{$folio} ya fue confirmada o ya está pagada."]);
+        }
+
+        $this->notaModel->confirmarPadreSinPagar((int) $nota['Id_Notas_1']);
+        AuditService::log(AuditService::VENTA_VERIFICADA, 'notas_1', $folio,
+            "Folio padre #{$folio} confirmado por caja (Sin Pagar/PPD) — habilitado para facturar; los abonos (folios hijo) siguen disponibles.");
+
+        return $this->response->setJSON([
+            'ok'      => true,
+            'mensaje' => "Nota #{$folio} confirmada. Ya se puede generar su factura. El cliente puede seguir abonando con normalidad.",
+        ]);
+    }
+
+    // ──────────────────────────────────────────────────────────────
     // POST /caja/pago/procesar  —  Procesa un pago y actualiza la nota
     // ──────────────────────────────────────────────────────────────
     public function procesarPago(): \CodeIgniter\HTTP\RedirectResponse
@@ -1089,9 +1122,24 @@ class CajaController extends BaseController
         $html .= '<input type="hidden" id="folio_input_caja_modal" value="' . $nota['folio'] . '" />';
         if ($statusId !== 3 && $statusId !== 5 && !$esLiquidado) {
             $html .= '<button type="button" class="btn btn-danger mr-2" onclick="cajaModalCancelar()">Cancelar Nota</button>';
+
+            // Un folio padre "Sin Pagar" (crédito) recién creado NO se debe
+            // liquidar de un solo golpe: eso registraría un pago falso por el
+            // total y bloquearía los abonos (folios hijo). Se ofrece un botón
+            // de CONFIRMACIÓN (no toca status, solo habilita la factura)
+            // hasta que los abonos cubran el total — ahí la liquidación real
+            // ya ocurre sola (ver pagoVerificado()/nuevoPagoAnticipo()).
+            $esPadreSinPagar = $referenciaPadre === 0 && $this->esFolioPadreSinPagar($nota);
+            $cubreTotal      = $sumPagado >= ((float) ($nota['total'] ?? 0) - 0.99);
+
             if ($statusId === 2) {
-                $btnLabelPago = 'Verificar Pago';
-                $html .= '<button type="button" class="btn btn-success" onclick="cajaModalVerificar()">' . $btnLabelPago . '</button>';
+                if ($esPadreSinPagar && ! $cubreTotal) {
+                    if ($verificado !== 'Confirmado') {
+                        $html .= '<button type="button" class="btn btn-info" onclick="cajaModalConfirmarPadre()">Confirmar para Facturar</button>';
+                    }
+                } else {
+                    $html .= '<button type="button" class="btn btn-success" onclick="cajaModalVerificar()">Verificar Pago</button>';
+                }
             }
         }
         $html .= '</td></tr>';
@@ -1102,10 +1150,11 @@ class CajaController extends BaseController
                . '<i class="simple-icon-printer mr-1"></i> Ver Ticket</button>'
                . '</td></tr>';
 
-        // Botón Facturar en modal (solo folio PADRE, pagado/liquidado, no cancelado, no ya facturado)
+        // Botón Facturar en modal (solo folio PADRE, pagado/liquidado o
+        // confirmado como "Sin Pagar", no cancelado, no ya facturado).
         // Los folios hijos (abonos) no tienen productos propios — la factura siempre
         // se solicita sobre el padre, una sola vez.
-        if ($referenciaPadre === 0 && $statusId !== 3 && ($statusId === 5 || $esLiquidado) && empty($uuidFact2)) {
+        if ($referenciaPadre === 0 && $statusId !== 3 && ($statusId === 5 || $esLiquidado || $verificado === 'Confirmado') && empty($uuidFact2)) {
             $btnLabel2 = $statusFact2 === 1 ? 'Facturar' : 'Solicitar Factura';
             $html .= '<tr><td colspan="4" class="text-right pt-2">'
                    . '<button type="button" class="btn btn-primary" '
@@ -1203,7 +1252,7 @@ class CajaController extends BaseController
         $nota = $db->query(
             "SELECT n.rfc_receptor, n.razon_social_receptor, n.cp_receptor,
                     n.uso_cfdi, n.regimen_fiscal_receptor, n.forma_pago_cfdi,
-                    n.idCliente, COALESCE(n.referencia, 0) AS referencia
+                    n.idCliente, COALESCE(n.referencia, 0) AS referencia, n.tipoPago
              FROM notas_1 n WHERE n.folio = ? LIMIT 1",
             [$folio]
         )->getRowArray();
@@ -1214,6 +1263,11 @@ class CajaController extends BaseController
 
         // Folio hijo (referencia > 0) = abono: siempre Método PUE + forma real.
         $esAbono = (int)($nota['referencia'] ?? 0) > 0;
+
+        // Folio PADRE "Sin Pagar" (crédito): el SAT espera 99/PPD para una
+        // venta a crédito que aún no está liquidada, sin importar lo cobrado
+        // hasta ahora en abonos.
+        $esSinPagarPadre = $this->esFolioPadreSinPagar($nota);
 
         $cliente = [];
         if (! empty($nota['idCliente'])) {
@@ -1241,9 +1295,10 @@ class CajaController extends BaseController
             'cpReceptor'            => trim($cp),
             'usoCFDI'               => $uso,
             'regimenFiscalReceptor' => $reg,
-            'formaPagoCFDI'         => $esAbono ? ($forma === '99' ? '01' : $forma) : $forma,
-            'metodoPagoCFDI'        => 'PUE',
+            'formaPagoCFDI'         => $esSinPagarPadre ? '99' : ($esAbono ? ($forma === '99' ? '01' : $forma) : $forma),
+            'metodoPagoCFDI'        => $esSinPagarPadre ? 'PPD' : 'PUE',
             'esAbono'               => $esAbono,
+            'esSinPagarPadre'       => $esSinPagarPadre,
             'idCliente'             => (int)($nota['idCliente'] ?? 0),
             'correoCliente'         => trim($cliente['mail'] ?? ''),
         ]);
